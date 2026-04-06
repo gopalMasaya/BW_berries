@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="he">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>התחברות — Plants Tracker</title>
+  <link rel="stylesheet" href="app.css">
+  <style>
+    body { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+    .login-card{
+      max-width:420px;
+      width:100%;
+      margin:0 16px;
+      padding:36px 28px;
+      animation: fadeUp 0.4s cubic-bezier(.4,0,.2,1);
+    }
+    @keyframes fadeUp {
+      from { opacity:0; transform:translateY(12px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .login-title{
+      text-align:center;
+      font-size:28px;
+      font-weight:800;
+      color:var(--text);
+      margin-bottom:6px;
+    }
+    .login-subtitle{
+      text-align:center;
+      font-size:14px;
+      color:var(--muted);
+      margin-bottom:28px;
+    }
+    .login-error{
+      color:var(--bad);
+      font-size:14px;
+      min-height:20px;
+      text-align:center;
+      margin-top:10px;
+    }
+    .login-btn{
+      width:100%;
+      padding:12px 18px;
+      font-size:16px;
+      font-weight:700;
+      border:none;
+      background:var(--primary);
+      color:#fff;
+      border-radius:var(--radius-sm);
+      cursor:pointer;
+      transition: all 0.2s cubic-bezier(.4,0,.2,1);
+    }
+    .login-btn:hover{
+      background:var(--primary-dark);
+      transform:translateY(-1px);
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+    }
+    .login-btn:active{
+      transform:translateY(0);
+    }
+    .login-btn:disabled{
+      opacity:0.7;
+      cursor:not-allowed;
+      transform:none;
+      box-shadow:none;
+    }
+    .otp-inputs {
+      display:flex;
+      gap:8px;
+      justify-content:center;
+      direction:ltr;
+    }
+    .otp-inputs input {
+      width:44px;
+      height:52px;
+      text-align:center;
+      font-size:22px;
+      font-weight:700;
+      border:2px solid var(--border);
+      border-radius:var(--radius-sm);
+      background:var(--surface);
+      color:var(--text);
+      transition: border-color 0.2s;
+    }
+    .otp-inputs input:focus {
+      outline:none;
+      border-color:var(--primary);
+    }
+    .step { display:none; }
+    .step.active { display:block; }
+    .back-link {
+      text-align:center;
+      margin-top:14px;
+      font-size:13px;
+    }
+    .back-link a {
+      color:var(--primary);
+      cursor:pointer;
+      text-decoration:underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="card login-card">
+    <div class="login-title">🌱 Plants Tracker</div>
+    <div class="login-subtitle">התחברות למערכת</div>
+
+    <!-- Step 1: Phone number -->
+    <div id="step1" class="step active">
+      <div class="form-grid" style="grid-template-columns:1fr;">
+        <div class="field">
+          <label>מספר טלפון</label>
+          <input id="phoneInput" type="tel" placeholder="050-1234567" dir="ltr" autocomplete="tel" />
+        </div>
+      </div>
+      <div style="margin-top:18px;">
+        <button class="login-btn" id="sendOtpBtn">שלח קוד</button>
+      </div>
+    </div>
+
+    <!-- Step 2: OTP code -->
+    <div id="step2" class="step">
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:14px;color:var(--muted);">קוד אימות נשלח אל</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);margin-top:4px;" id="sentToPhone" dir="ltr"></div>
+      </div>
+      <div class="otp-inputs" id="otpInputs">
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+      </div>
+      <div style="margin-top:18px;">
+        <button class="login-btn" id="verifyBtn">אמת</button>
+      </div>
+      <div class="back-link">
+        <a id="backBtn">חזור לשלב הקודם</a>
+      </div>
+    </div>
+
+    <div class="login-error" id="error"></div>
+
+    <!-- Invisible reCAPTCHA container -->
+    <div id="recaptcha-container"></div>
+  </div>
+
+  <script type="module">
+    import { waitForAuth, sendOTP, verifyOTP, normalizePhone, phoneKey, getPhoneProfile, ensureUserProfile, logout } from "./auth.mjs";
+
+    // If already logged in, go to dashboard
+    const user = await waitForAuth();
+    if (user) location.replace("index.html");
+
+    const phoneInput  = document.getElementById("phoneInput");
+    const errorEl     = document.getElementById("error");
+    const sendOtpBtn  = document.getElementById("sendOtpBtn");
+    const verifyBtn   = document.getElementById("verifyBtn");
+    const step1       = document.getElementById("step1");
+    const step2       = document.getElementById("step2");
+    const sentToPhone = document.getElementById("sentToPhone");
+    const otpBoxes    = document.querySelectorAll("#otpInputs input");
+
+    let confirmationResult = null;
+
+    // ── OTP input behavior ─────────────────────
+    otpBoxes.forEach((box, i) => {
+      box.addEventListener("input", (e) => {
+        const val = e.target.value.replace(/\D/g, "");
+        e.target.value = val;
+        if (val && i < otpBoxes.length - 1) otpBoxes[i + 1].focus();
+        if (val && i === otpBoxes.length - 1) verifyBtn.focus();
+      });
+      box.addEventListener("keydown", (e) => {
+        if (e.key === "Backspace" && !e.target.value && i > 0) {
+          otpBoxes[i - 1].focus();
+        }
+        if (e.key === "Enter") doVerify();
+      });
+      box.addEventListener("paste", (e) => {
+        e.preventDefault();
+        const pasted = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, 6);
+        for (let j = 0; j < pasted.length; j++) {
+          if (otpBoxes[j]) otpBoxes[j].value = pasted[j];
+        }
+        if (pasted.length === 6) verifyBtn.focus();
+      });
+    });
+
+    function getOtpCode() {
+      return Array.from(otpBoxes).map(b => b.value).join("");
+    }
+
+    function showStep(n) {
+      step1.classList.toggle("active", n === 1);
+      step2.classList.toggle("active", n === 2);
+      errorEl.textContent = "";
+    }
+
+    // ── Step 1: Send OTP ───────────────────────
+    async function doSendOtp() {
+      errorEl.textContent = "";
+      const raw = phoneInput.value.trim();
+      if (!raw) { errorEl.textContent = "נא להזין מספר טלפון"; return; }
+
+      sendOtpBtn.disabled = true;
+      sendOtpBtn.textContent = "שולח...";
+
+      try {
+        confirmationResult = await sendOTP(raw, "recaptcha-container");
+        sentToPhone.textContent = normalizePhone(raw);
+        showStep(2);
+        otpBoxes[0].focus();
+      } catch (e) {
+        console.error("sendOTP error", e);
+        const msg =
+          e.code === "auth/invalid-phone-number" ? "מספר טלפון לא תקין" :
+          e.code === "auth/too-many-requests"     ? "יותר מדי ניסיונות, נסה מאוחר יותר" :
+          "שגיאה בשליחת קוד: " + (e.message || e);
+        errorEl.textContent = msg;
+      } finally {
+        sendOtpBtn.disabled = false;
+        sendOtpBtn.textContent = "שלח קוד";
+      }
+    }
+
+    // ── Step 2: Verify OTP ─────────────────────
+    async function doVerify() {
+      errorEl.textContent = "";
+      const code = getOtpCode();
+      if (code.length < 6) { errorEl.textContent = "נא להזין את כל 6 הספרות"; return; }
+
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = "מאמת...";
+
+      try {
+        const cred = await verifyOTP(confirmationResult, code);
+        const fbUser = cred.user;
+
+        // Check if phone is pre-registered
+        const phoneProf = await getPhoneProfile(fbUser.phoneNumber);
+        if (!phoneProf) {
+          await logout();
+          errorEl.textContent = "מספר טלפון לא רשום במערכת. פנה למנהל.";
+          showStep(1);
+          return;
+        }
+
+        // Create/update user profile
+        await ensureUserProfile(fbUser.uid, phoneProf);
+        location.replace("index.html");
+      } catch (e) {
+        console.error("verifyOTP error", e);
+        const msg =
+          e.code === "auth/invalid-verification-code" ? "קוד שגוי, נסה שוב" :
+          e.code === "auth/code-expired"              ? "הקוד פג תוקף, שלח קוד חדש" :
+          "שגיאה באימות: " + (e.message || e);
+        errorEl.textContent = msg;
+      } finally {
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = "אמת";
+      }
+    }
+
+    sendOtpBtn.addEventListener("click", doSendOtp);
+    phoneInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doSendOtp(); });
+    verifyBtn.addEventListener("click", doVerify);
+    document.getElementById("backBtn").addEventListener("click", () => {
+      showStep(1);
+      otpBoxes.forEach(b => b.value = "");
+      confirmationResult = null;
+    });
+  </script>
+</body>
+</html>

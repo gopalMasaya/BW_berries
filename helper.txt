@@ -1,0 +1,305 @@
+
+deploying command = firebase deploy --only hosting
+
+
+plantstracker-f1274
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDPARUw3kGIyg1piZwjsVZOktBJ79CgICM",
+  authDomain: "plantstracker-f1274.firebaseapp.com",
+  projectId: "plantstracker-f1274",
+  storageBucket: "plantstracker-f1274.firebasestorage.app",
+  messagingSenderId: "979362379595",
+  appId: "1:979362379595:web:6bdae62b701467f92c5ace",
+  measurementId: "G-GW43ZW0CQ4"
+};
+
+DATABASE_URL "https://plantstracker-f1274.firebaseio.com"
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Sensor Data</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-database.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: black;
+            color: white;
+        }
+        #chart-container {
+            width: 60%;
+            height: 50vh;
+            z-index: 1;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            position: absolute;
+            left:20%;
+            top:20%
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: -1;
+        }
+    </style>
+</head>
+<body>
+   
+    
+    <!-- Chart container -->
+    <div id="chart-container">
+        <canvas id="sensorChart"></canvas>
+    </div>
+
+    <script>
+
+const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+            projectId: "YOUR_PROJECT",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+        
+        let tempCheckbox, humidityCheckbox, waterlevel;
+        let showTemperature = true;
+        let showHumidity = true;
+        let particles = [];
+        let hum,temp,id;
+        let dataSources = [];
+        let dataMap = {};
+
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            
+  let parentDiv = createDiv('').id('parentDiv');
+  parentDiv.style('display', 'flex');
+  parentDiv.style('flex-direction', 'column');
+  parentDiv.style('gap', '10px');
+  parentDiv.style('position', 'relative');
+  parentDiv.style('left', '-40%');
+  parentDiv.style('padding', '10px');
+  parentDiv.style('border', '1px solid black');
+  parentDiv.style('height', '90%'); // Limit height
+  parentDiv.style('width', '12%');
+  parentDiv.style('overflow-y', 'scroll'); // Enable scrolling
+            
+  
+  for (let i = 1; i <= 20; i++) {
+    dataSources.push({ id: id, humidty: hum,temp:temp });
+  }
+
+  // Create child divs for each data source
+   for (let i = 1; i <= 20; i++) {
+    let childDiv = createDiv('').id(`source-${i}`).class('childDiv');
+    childDiv.style('padding', '10px');
+    childDiv.style('border', '1px solid gray');
+    childDiv.style('height', '200px');
+    childDiv.style('background-color', '#f0f0f0');
+    //box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+    childDiv.style('box-shadow','0 0 4px rgba(55, 55, 255, 0.8 ');
+    childDiv.style('color', 'gray');
+    childDiv.style('margin-bottom', '5px');
+    childDiv.html(`<strong>Data Source ${i}</strong><br>Waiting for data...`);
+    childDiv.mousePressed(() => logData(i));
+    childDiv.mouseOver(() =>{
+         childDiv.style('background-color', 'white')
+         childDiv.style('box-shadow', '0 0 8px rgba(55, 55, 255, 0.8)')});
+    childDiv.mouseOut(() => {
+    childDiv.style('background-color', '#f0f0f0');
+    childDiv.style('box-shadow', '0 0 4px rgba(55, 55, 255, 0.8)');
+});
+
+    parentDiv.child(childDiv);
+    dataMap[i] = childDiv;
+  }
+
+  // Temperature Checkbox
+            tempCheckbox = createCheckbox('Temperature (°C)', true).class('childDiv');
+            tempCheckbox.style('color', 'gray');
+            tempCheckbox.style('font-size', '16px');
+            tempCheckbox.style('position', 'absolute');
+            tempCheckbox.style('left', '22%');
+            tempCheckbox.style('top', '3%');
+            tempCheckbox.style('z-index', '1');
+            //tempCheckbox.position(20, 60);
+            tempCheckbox.changed(updateSelection);
+
+            // Humidity Checkbox
+            humidityCheckbox = createCheckbox('Humidity (%)', true);
+            humidityCheckbox.style('color', 'gray');
+            humidityCheckbox.style('font-size', '16px');
+            humidityCheckbox.style('position', 'absolute');
+            humidityCheckbox.style('left', '22%');
+            humidityCheckbox.style('top', '6%');
+            humidityCheckbox.changed(updateSelection);
+
+            for (let i = 0; i < 100; i++) particles.push(new Particle());
+        }
+
+        function draw() {
+            background(240, 240, 250);
+           // particles.forEach(p => p.update());
+        }
+
+        function updateSelection() {
+            showTemperature = tempCheckbox.checked();
+            showHumidity = humidityCheckbox.checked();
+
+            // Update Chart Visibility
+            sensorChart.data.datasets[0].hidden = !showTemperature;
+            sensorChart.data.datasets[1].hidden = !showHumidity;
+            sensorChart.update();
+        }
+
+        class Particle {
+            constructor() {
+                this.x = random(width);
+                this.y = random(height);
+                this.size = random(2, 6);
+                this.speed = random(1, 3);
+            }
+            update() {
+                this.y += this.speed;
+                if (this.y > height) this.y = 0;
+                fill(100, 200, 255, 150);
+                noStroke();
+                ellipse(this.x, this.y, this.size);
+            }
+        }
+        
+        function updateDiv(sourceId, temp,hum) {
+  
+    dataMap[1].html(`<strong>Data ID: ${sourceId}</strong><br>${temp}<strong><br>humidity ${hum}`);
+  
+     }
+
+     function logData(sourceId) {
+  if (dataMap[sourceId]) {
+    console.log(sourceId);
+  }
+}
+
+        // WebSocket Connection to ESP32
+        const ESP_IP = "ws://192.168.1.26:5500"; // Change this to your ESP32 WebSocket address
+        let socket = new WebSocket(ESP_IP);
+
+        socket.onopen = () => console.log("Connected to WebSocket");
+        socket.onmessage = (event) => {
+            let data = JSON.parse(event.data); // Convert JSON string to object
+         hum =  data.humidity
+         temp = data.temperature
+         let sourceId = data.id;
+         console.log(id);
+         let newData = `Temp ${temp}`;
+         updateDiv(sourceId, newData,hum);
+        // console.log("Temperature:", data.temperature);
+        // console.log("Humidity:", data.humidity);
+        // console.log("id:", data.id);
+           // console.log("Received:", event.data.humidity);
+            try {
+                let data = JSON.parse(event.data);
+                updateChartData(data);
+            } catch (e) {
+                console.error("Invalid JSON:", event.data);
+            }
+        };
+        socket.onerror = (error) => console.error("WebSocket Error:", error);
+        socket.onclose = () => setTimeout(() => socket = new WebSocket(ESP_IP), 5000);
+
+        // Chart.js Real-Time Graph
+        const ctx = document.getElementById('sensorChart').getContext('2d');
+        const sensorChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Temperature (°C)',
+                        data: [],
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        borderWidth: 2,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'Humidity (%)',
+                        data: [],
+                        borderColor: 'rgba(99, 132, 255, 1)',
+                        backgroundColor: 'rgba(99, 132, 255, 0.2)',
+                        borderWidth: 2,
+                        pointRadius: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Time (s)' } },
+                    y: { beginAtZero: true, max: 100, title: { display: true, text: 'Value' } }
+                }
+            }
+        });
+
+        // Simulated Data for Testing
+        let elapsedTime = 0;
+        setInterval(() => {
+            const temp = Math.floor(Math.random() * 40) + 10;
+            const humidity = Math.floor(Math.random() * 100);
+            updateChartData({ temperature: temp, humidity: humidity });
+        }, 7000);
+
+        // Update Chart with New Data
+        function updateChartData(data) {
+            elapsedTime += 1;
+            if (sensorChart.data.labels.length > 20) {
+                sensorChart.data.labels.shift();
+                sensorChart.data.datasets[0].data.shift();
+                sensorChart.data.datasets[1].data.shift();
+            }
+            sensorChart.data.labels.push(elapsedTime);
+            sensorChart.data.datasets[0].data.push(data.temperature);
+            sensorChart.data.datasets[1].data.push(data.humidity);
+            sensorChart.update();
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+$headers = @{
+  "X-Station-Id" = "station1"
+  "X-Device-Secret" = "s0001mh0001"
+}
+
+Invoke-RestMethod -Uri "https://us-central1-plantstracker-f1274.cloudfunctions.net/api/watering?stationId=station1" -Method Get -Headers $headers

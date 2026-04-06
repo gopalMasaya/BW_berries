@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="he">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>הגדרות השקיה — Plants Tracker</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <div class="app-layout">
+    <nav class="sidebar" id="sidebar"></nav>
+    <main class="main-content">
+      <button class="hamburger-btn" id="hamburgerBtn"><span></span><span></span><span></span></button>
+      <div class="container">
+
+        <div class="page-header">
+          <h1 class="page-title">הגדרות השקיה</h1>
+        </div>
+
+        <div class="card">
+          <div style="margin-bottom:16px;">
+            <label style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">תחנה</label>
+            <select id="stationSelect" style="width:100%;max-width:300px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;"></select>
+          </div>
+
+          <div id="configForm" style="display:none;">
+            <div class="field" style="margin-bottom:18px;">
+              <label style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">מצב עבודה</label>
+              <select id="fOperationMode" style="width:100%;max-width:300px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;">
+                <option value="control">שליטה מלאה — המערכת שולטת בשסתום</option>
+                <option value="monitor">ניטור בלבד — המערכת קוראת נתונים, השקיה חיצונית</option>
+              </select>
+              <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">במצב ניטור, המערכת תזהה השקיה לפי חיישני זרימה ותישאר ערה לדגימה תכופה</span>
+            </div>
+
+            <div class="field" style="margin-bottom:18px;">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                <input id="fWateringEnabled" type="checkbox" style="width:20px;height:20px;" />
+                <span style="font-size:15px;font-weight:600;">השקיה פעילה</span>
+              </label>
+              <span style="font-size:13px;color:var(--muted);">כבה בימי גשם — המערכת תמשיך לקרוא חיישנים ולשלוח נתונים בלבד</span>
+            </div>
+
+            <div id="wateringFields">
+            <div class="form-grid">
+              <div class="field">
+                <label>סף לחות קרקע 1 להתחלת השקיה (%)</label>
+                <input id="fSoil1Threshold" type="number" step="0.1" min="0" max="100" dir="ltr" />
+              </div>
+              <div class="field">
+                <label>עליית לחות קרקע 2 לסגירה (%)</label>
+                <input id="fSoil2Rise" type="number" step="0.1" min="0" max="100" dir="ltr" />
+              </div>
+              <div class="field">
+                <label>זמן ללא עלייה לשגיאה (דקות)</label>
+                <input id="fNoRiseTimeout" type="number" step="1" min="1" max="60" dir="ltr" />
+              </div>
+              <div class="field">
+                <label>זמן השקיה מקסימלי (דקות)</label>
+                <input id="fMaxWatering" type="number" step="1" min="1" max="120" dir="ltr" />
+              </div>
+              <div class="field">
+                <label>המתנה לאחר סגירת שסתום (דקות)</label>
+                <input id="fPostWait" type="number" step="1" min="0" max="60" dir="ltr" />
+              </div>
+            </div>
+            </div>
+
+            <div style="color:var(--bad);font-size:14px;min-height:20px;margin-top:12px;" id="formError"></div>
+            <div style="color:var(--good);font-size:14px;min-height:20px;" id="formSuccess"></div>
+
+            <div class="row" style="justify-content:flex-start;margin-top:14px;">
+              <button class="btn-primary" id="saveBtn">שמור הגדרות</button>
+            </div>
+          </div>
+
+          <div id="loadingMsg" style="padding:20px;color:var(--muted);text-align:center;">טוען...</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { requireAuth } from "./guard.mjs";
+    import { initSidebar } from "./sidebar.mjs";
+    import { db, ref, get, set } from "./auth.mjs";
+
+    const { user, profile } = await requireAuth(["manager"]);
+    initSidebar(profile);
+
+    const STATIONS = ["station1"];
+
+    const DEFAULTS = {
+      monitorOnly: false,
+      wateringEnabled: true,
+      soil1Threshold: 60,
+      soil2RiseToStop: 5,
+      noRiseTimeoutMin: 10,
+      maxWateringMin: 25,
+      postWateringWaitMin: 20
+    };
+
+    const stationSelect = document.getElementById("stationSelect");
+    const configForm = document.getElementById("configForm");
+    const loadingMsg = document.getElementById("loadingMsg");
+    const formError = document.getElementById("formError");
+    const formSuccess = document.getElementById("formSuccess");
+
+    const fOperationMode = document.getElementById("fOperationMode");
+    const fWateringEnabled = document.getElementById("fWateringEnabled");
+    const wateringFields = document.getElementById("wateringFields");
+    const fSoil1Threshold = document.getElementById("fSoil1Threshold");
+    const fSoil2Rise = document.getElementById("fSoil2Rise");
+    const fNoRiseTimeout = document.getElementById("fNoRiseTimeout");
+    const fMaxWatering = document.getElementById("fMaxWatering");
+    const fPostWait = document.getElementById("fPostWait");
+
+    // Populate station dropdown
+    for (const s of STATIONS) {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      stationSelect.appendChild(opt);
+    }
+
+    async function loadConfig(stationId) {
+      configForm.style.display = "none";
+      loadingMsg.style.display = "";
+      formError.textContent = "";
+      formSuccess.textContent = "";
+
+      try {
+        const snap = await get(ref(db, `berries/${stationId}/control/wateringConfig`));
+        const config = snap.val() || {};
+
+        fOperationMode.value = (config.monitorOnly ?? DEFAULTS.monitorOnly) ? "monitor" : "control";
+        fWateringEnabled.checked = config.wateringEnabled ?? DEFAULTS.wateringEnabled;
+        wateringFields.style.display = (fWateringEnabled.checked && fOperationMode.value === "control") ? "" : "none";
+        fSoil1Threshold.value = config.soil1Threshold ?? DEFAULTS.soil1Threshold;
+        fSoil2Rise.value = config.soil2RiseToStop ?? DEFAULTS.soil2RiseToStop;
+        fNoRiseTimeout.value = config.noRiseTimeoutMin ?? DEFAULTS.noRiseTimeoutMin;
+        fMaxWatering.value = config.maxWateringMin ?? DEFAULTS.maxWateringMin;
+        fPostWait.value = config.postWateringWaitMin ?? DEFAULTS.postWateringWaitMin;
+
+        loadingMsg.style.display = "none";
+        configForm.style.display = "";
+      } catch (e) {
+        loadingMsg.textContent = "שגיאה בטעינה: " + (e.message || e);
+      }
+    }
+
+    function updateFieldVisibility() {
+      const isControl = fOperationMode.value === "control";
+      wateringFields.style.display = (fWateringEnabled.checked && isControl) ? "" : "none";
+    }
+    fWateringEnabled.addEventListener("change", updateFieldVisibility);
+    fOperationMode.addEventListener("change", updateFieldVisibility);
+
+    stationSelect.addEventListener("change", () => loadConfig(stationSelect.value));
+
+    document.getElementById("saveBtn").addEventListener("click", async () => {
+      formError.textContent = "";
+      formSuccess.textContent = "";
+
+      const soil1Threshold = parseFloat(fSoil1Threshold.value);
+      const soil2RiseToStop = parseFloat(fSoil2Rise.value);
+      const noRiseTimeoutMin = parseInt(fNoRiseTimeout.value, 10);
+      const maxWateringMin = parseInt(fMaxWatering.value, 10);
+      const postWateringWaitMin = parseInt(fPostWait.value, 10);
+
+      if (isNaN(soil1Threshold) || soil1Threshold < 0 || soil1Threshold > 100) {
+        formError.textContent = "סף לחות קרקע 1 חייב להיות בין 0 ל-100";
+        return;
+      }
+      if (isNaN(soil2RiseToStop) || soil2RiseToStop <= 0 || soil2RiseToStop > 100) {
+        formError.textContent = "עליית לחות קרקע 2 חייבת להיות בין 0.1 ל-100";
+        return;
+      }
+      if (isNaN(noRiseTimeoutMin) || noRiseTimeoutMin < 1 || noRiseTimeoutMin > 60) {
+        formError.textContent = "זמן ללא עלייה חייב להיות בין 1 ל-60 דקות";
+        return;
+      }
+      if (isNaN(maxWateringMin) || maxWateringMin < 1 || maxWateringMin > 120) {
+        formError.textContent = "זמן השקיה מקסימלי חייב להיות בין 1 ל-120 דקות";
+        return;
+      }
+      if (isNaN(postWateringWaitMin) || postWateringWaitMin < 0 || postWateringWaitMin > 60) {
+        formError.textContent = "זמן המתנה חייב להיות בין 0 ל-60 דקות";
+        return;
+      }
+
+      const saveBtn = document.getElementById("saveBtn");
+      saveBtn.disabled = true;
+      saveBtn.textContent = "שומר...";
+
+      try {
+        const stationId = stationSelect.value;
+        await set(ref(db, `berries/${stationId}/control/wateringConfig`), {
+          monitorOnly: fOperationMode.value === "monitor",
+          wateringEnabled: fWateringEnabled.checked,
+          soil1Threshold,
+          soil2RiseToStop,
+          noRiseTimeoutMin,
+          maxWateringMin,
+          postWateringWaitMin,
+          updatedAt: new Date().toISOString()
+        });
+        formSuccess.textContent = "ההגדרות נשמרו בהצלחה";
+      } catch (e) {
+        formError.textContent = "שגיאה בשמירה: " + (e.message || e);
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "שמור הגדרות";
+      }
+    });
+
+    // Load first station
+    loadConfig(stationSelect.value);
+  </script>
+</body>
+</html>

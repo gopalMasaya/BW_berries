@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="he">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Galcon — Plants Tracker</title>
+  <link rel="stylesheet" href="app.css">
+  <style>
+    .filters { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:20px; }
+    .filters .field { margin:0; min-width:140px; }
+    .filters .field label { font-size:13px; margin-bottom:4px; }
+    .filters .field input, .filters .field select { padding:8px 10px; font-size:14px; }
+
+    .tabs { display:flex; gap:4px; margin-bottom:20px; }
+    .tab-btn {
+      padding:10px 20px; border:1px solid var(--border); background:var(--card);
+      border-radius:var(--radius-sm); cursor:pointer; font-weight:600; font-size:14px;
+      color:var(--text-secondary); transition:all 0.15s; font-family:inherit;
+    }
+    .tab-btn.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .tab-btn:hover:not(.active) { background:#f8fafc; }
+
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
+
+    .stats-row { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+    .stat-card {
+      flex:1; min-width:160px; background:var(--card); border:1px solid var(--border);
+      border-radius:var(--radius); padding:16px; box-shadow:var(--shadow-sm);
+    }
+    .stat-card .label { font-size:13px; color:var(--muted); margin-bottom:4px; }
+    .stat-card .value { font-size:24px; font-weight:800; color:var(--text); }
+
+    .valve-table-wrap { overflow-x:auto; }
+
+    table.crm tbody td { font-size:13px; padding:8px 10px; white-space:nowrap; }
+    table.crm thead th { font-size:12px; padding:8px 10px; }
+
+    .sensor-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media (max-width:900px) { .sensor-grid { grid-template-columns:1fr; } }
+
+    .sensor-card {
+      background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+      padding:16px; box-shadow:var(--shadow-sm);
+    }
+    .sensor-card h3 { margin:0 0 8px; font-size:15px; color:var(--text); }
+    .sensor-chart { width:100%; height:200px; position:relative; }
+    .sensor-chart canvas { width:100% !important; height:100% !important; }
+
+    .no-data { text-align:center; padding:40px; color:var(--muted); }
+
+    .badge {
+      display:inline-block; padding:2px 8px; border-radius:999px;
+      font-size:11px; font-weight:700;
+    }
+    .badge-ok { background:rgba(22,163,74,0.1); color:var(--good); }
+    .badge-warn { background:rgba(217,119,6,0.1); color:var(--warn); }
+  </style>
+</head>
+<body>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <div class="app-layout">
+    <nav class="sidebar" id="sidebar"></nav>
+    <main class="main-content">
+      <button class="hamburger-btn" id="hamburgerBtn"><span></span><span></span><span></span></button>
+      <div class="container">
+
+        <div class="page-header">
+          <h1 class="page-title">Galcon Irrigation Data</h1>
+        </div>
+
+        <div id="loadingMsg" style="padding:40px;text-align:center;color:var(--muted);">Loading...</div>
+
+        <div id="mainContent" style="display:none;">
+
+          <div id="statsRow" class="stats-row"></div>
+
+          <div class="tabs">
+            <button class="tab-btn active" data-tab="valves">Valve Events</button>
+            <button class="tab-btn" data-tab="sensors">Sensor Data</button>
+          </div>
+
+          <!-- VALVE EVENTS TAB -->
+          <div class="tab-panel active" id="tab-valves">
+            <div class="card">
+              <div class="filters">
+                <div class="field">
+                  <label>From</label>
+                  <input type="date" id="vFrom" />
+                </div>
+                <div class="field">
+                  <label>To</label>
+                  <input type="date" id="vTo" />
+                </div>
+                <div class="field">
+                  <label>Controller</label>
+                  <select id="vController"><option value="">All</option></select>
+                </div>
+                <button class="btn-primary" id="vLoadBtn" style="height:38px;align-self:flex-end;">Load</button>
+              </div>
+              <div id="valveCount" style="font-size:13px;color:var(--muted);margin-bottom:8px;"></div>
+              <div class="valve-table-wrap">
+                <table class="crm" id="valveTable">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Start</th>
+                      <th>Stop</th>
+                      <th>Controller</th>
+                      <th>Valve</th>
+                      <th>Prog</th>
+                      <th>Duration (min)</th>
+                      <th>Flow (m3/h)</th>
+                      <th>Volume (m3)</th>
+                      <th>pH</th>
+                      <th>EC</th>
+                    </tr>
+                  </thead>
+                  <tbody id="valveBody"></tbody>
+                </table>
+              </div>
+              <div id="valveEmpty" class="no-data" style="display:none;">No valve events for this period</div>
+            </div>
+          </div>
+
+          <!-- SENSOR DATA TAB -->
+          <div class="tab-panel" id="tab-sensors">
+            <div class="card">
+              <div class="filters">
+                <div class="field">
+                  <label>Zone</label>
+                  <select id="sGroup"></select>
+                </div>
+                <div class="field">
+                  <label>From</label>
+                  <input type="date" id="sFrom" />
+                </div>
+                <div class="field">
+                  <label>To</label>
+                  <input type="date" id="sTo" />
+                </div>
+                <button class="btn-primary" id="sLoadBtn" style="height:38px;align-self:flex-end;">Load</button>
+              </div>
+              <div id="sensorGrid" class="sensor-grid"></div>
+              <div id="sensorEmpty" class="no-data" style="display:none;">Select a zone and click Load</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script type="module">
+    import { requireAuth } from "./guard.mjs";
+    import { initSidebar } from "./sidebar.mjs";
+    import { waitForAuth } from "./auth.mjs";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+
+    const { user, profile } = await requireAuth(["manager"]);
+    initSidebar(profile);
+
+    const API_BASE = "https://us-central1-plantstracker-f1274.cloudfunctions.net/galcon";
+
+    async function galconFetch(path, params = {}) {
+      const auth = getAuth();
+      const token = await auth.currentUser.getIdToken();
+      const qs = new URLSearchParams(params).toString();
+      const url = `${API_BASE}${path}${qs ? "?" + qs : ""}`;
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    }
+
+    // ── State ──
+    let controllers = [];
+    let sensorGroups = [];
+    const charts = {};
+
+    // ── Date helpers ──
+    function todayStr() { return new Date().toISOString().slice(0, 10); }
+    function daysAgo(n) { return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10); }
+    function fmtDate(d) { if (!d) return "—"; const dt = new Date(d); return dt.toLocaleDateString("en-GB"); }
+    function fmtTime(d) { if (!d) return "—"; const dt = new Date(d); return dt.toLocaleTimeString("en-GB", {hour:"2-digit",minute:"2-digit"}); }
+    function fmtNum(v, dec=1) { if (v == null) return "—"; return Number(v).toFixed(dec); }
+
+    // ── Tabs ──
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+      });
+    });
+
+    // ── Load overview ──
+    async function loadOverview() {
+      try {
+        const data = await galconFetch("/overview");
+        controllers = data.controllers || [];
+        sensorGroups = data.sensorGroups || [];
+        const valveStats = data.valveStats || [];
+
+        const totalEvents = valveStats.reduce((s, v) => s + v.totalEvents, 0);
+        const lastEvent = valveStats.reduce((latest, v) => {
+          const t = new Date(v.lastEvent).getTime();
+          return t > latest ? t : latest;
+        }, 0);
+
+        document.getElementById("statsRow").innerHTML = `
+          <div class="stat-card"><div class="label">Controllers</div><div class="value">${controllers.length}</div></div>
+          <div class="stat-card"><div class="label">Zones</div><div class="value">${sensorGroups.length}</div></div>
+          <div class="stat-card"><div class="label">Total Valve Events</div><div class="value">${totalEvents.toLocaleString()}</div></div>
+          <div class="stat-card"><div class="label">Last Event</div><div class="value" style="font-size:16px;">${lastEvent ? fmtDate(lastEvent) + " " + fmtTime(lastEvent) : "—"}</div></div>
+        `;
+
+        // Populate controller dropdown
+        const vCtrl = document.getElementById("vController");
+        controllers.forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = c.ID;
+          opt.textContent = `#${c.ID} — ${c.SerialNumber.slice(-6)}`;
+          vCtrl.appendChild(opt);
+        });
+
+        // Populate zone dropdown
+        const sGroup = document.getElementById("sGroup");
+        sensorGroups.forEach(g => {
+          const opt = document.createElement("option");
+          opt.value = g;
+          opt.textContent = g;
+          sGroup.appendChild(opt);
+        });
+
+        document.getElementById("loadingMsg").style.display = "none";
+        document.getElementById("mainContent").style.display = "";
+
+        // Auto-load valves
+        loadValves();
+      } catch (err) {
+        document.getElementById("loadingMsg").textContent = "Error loading: " + err.message;
+        console.error(err);
+      }
+    }
+
+    // ── Valve events ──
+    async function loadValves() {
+      const from = document.getElementById("vFrom").value;
+      const to = document.getElementById("vTo").value;
+      const cid = document.getElementById("vController").value;
+
+      const params = { from, to };
+      if (cid) params.controllerId = cid;
+
+      document.getElementById("vLoadBtn").disabled = true;
+      document.getElementById("vLoadBtn").textContent = "Loading...";
+
+      try {
+        const data = await galconFetch("/valves", params);
+        const valves = data.valves || [];
+        const tbody = document.getElementById("valveBody");
+        const empty = document.getElementById("valveEmpty");
+        const count = document.getElementById("valveCount");
+
+        count.textContent = `${valves.length} events`;
+
+        if (valves.length === 0) {
+          tbody.innerHTML = "";
+          empty.style.display = "";
+          return;
+        }
+        empty.style.display = "none";
+
+        tbody.innerHTML = valves.map(v => `
+          <tr>
+            <td>${fmtDate(v.DateTimeStartValve)}</td>
+            <td>${fmtTime(v.DateTimeStartValve)}</td>
+            <td>${fmtTime(v.DateTimeStopValve)}</td>
+            <td>${v.SerialNumber ? v.SerialNumber.slice(-6) : v.ControllerID}</td>
+            <td><strong>${v.ValveNo}</strong></td>
+            <td>${v.ProgNum}</td>
+            <td>${fmtNum(v.DurationValve)}</td>
+            <td>${fmtNum(v.FlowRateM3h)}</td>
+            <td>${fmtNum(v.VolumeM3Valve, 2)}</td>
+            <td>${v.PhMed > 0 ? `${fmtNum(v.PhMin)}–${fmtNum(v.PhMax)}` : "—"}</td>
+            <td>${v.EcMed > 0 ? `${fmtNum(v.EcMin, 2)}–${fmtNum(v.EcMax, 2)}` : "—"}</td>
+          </tr>
+        `).join("");
+      } catch (err) {
+        console.error("valve load error", err);
+        document.getElementById("valveCount").textContent = "Error: " + err.message;
+      } finally {
+        document.getElementById("vLoadBtn").disabled = false;
+        document.getElementById("vLoadBtn").textContent = "Load";
+      }
+    }
+
+    document.getElementById("vLoadBtn").addEventListener("click", loadValves);
+
+    // ── Sensor data ──
+    async function loadSensors() {
+      const group = document.getElementById("sGroup").value;
+      const from = document.getElementById("sFrom").value;
+      const to = document.getElementById("sTo").value;
+
+      if (!group) return;
+
+      document.getElementById("sLoadBtn").disabled = true;
+      document.getElementById("sLoadBtn").textContent = "Loading...";
+
+      try {
+        const data = await galconFetch("/sensors", { group, from, to });
+        const sensors = data.sensors || [];
+        const grid = document.getElementById("sensorGrid");
+        const empty = document.getElementById("sensorEmpty");
+
+        if (sensors.length === 0) {
+          grid.innerHTML = "";
+          empty.style.display = "";
+          return;
+        }
+        empty.style.display = "none";
+
+        // Group by label
+        const byLabel = {};
+        for (const row of sensors) {
+          if (!byLabel[row.label]) byLabel[row.label] = [];
+          byLabel[row.label].push({ time: new Date(row.Time), value: Number(row.Value) });
+        }
+
+        const LABEL_CONFIG = {
+          Weight:     { color: "#2563eb", unit: "g",    title: "Substrate Weight" },
+          Irrigation: { color: "#16a34a", unit: "L",    title: "Irrigation" },
+          EC:         { color: "#d97706", unit: "mS/cm", title: "EC" },
+          Drain:      { color: "#7c3aed", unit: "L",    title: "Drain" },
+        };
+
+        grid.innerHTML = "";
+        for (const [label, points] of Object.entries(byLabel)) {
+          const cfg = LABEL_CONFIG[label] || { color: "#64748b", unit: "", title: label };
+          const card = document.createElement("div");
+          card.className = "sensor-card";
+          card.innerHTML = `<h3>${cfg.title} (${cfg.unit})</h3><div class="sensor-chart"><canvas id="chart-${label}"></canvas></div>`;
+          grid.appendChild(card);
+
+          // Destroy old chart
+          if (charts[label]) charts[label].destroy();
+
+          const ctx = card.querySelector("canvas").getContext("2d");
+          charts[label] = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels: points.map(p => p.time),
+              datasets: [{
+                label: cfg.title,
+                data: points.map(p => p.value),
+                borderColor: cfg.color,
+                backgroundColor: cfg.color + "18",
+                fill: label === "Irrigation",
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.3,
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                x: {
+                  type: "time",
+                  time: { unit: "hour", displayFormats: { hour: "dd/MM HH:mm" } },
+                  ticks: { maxTicksLimit: 8, font: { size: 10 } },
+                  grid: { display: false },
+                },
+                y: {
+                  ticks: { font: { size: 10 } },
+                  grid: { color: "#e2e8f022" },
+                },
+              },
+              interaction: { mode: "index", intersect: false },
+            },
+          });
+        }
+      } catch (err) {
+        console.error("sensor load error", err);
+        document.getElementById("sensorGrid").innerHTML = `<div class="no-data">Error: ${err.message}</div>`;
+      } finally {
+        document.getElementById("sLoadBtn").disabled = false;
+        document.getElementById("sLoadBtn").textContent = "Load";
+      }
+    }
+
+    document.getElementById("sLoadBtn").addEventListener("click", loadSensors);
+
+    // ── Init ──
+    document.getElementById("vFrom").value = daysAgo(7);
+    document.getElementById("vTo").value = todayStr();
+    document.getElementById("sFrom").value = daysAgo(2);
+    document.getElementById("sTo").value = todayStr();
+
+    loadOverview();
+  </script>
+</body>
+</html>

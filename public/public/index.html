@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Sensor Data</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+    <!-- chart.js will be re-added when search/history feature is built -->
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-database.js"></script>
+
+    <style>
+        #login-container {
+            display: none;
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(255, 255, 255, 0.2);
+            text-align: center;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        input[type="text"], input[type="email"], input[type="password"] {
+        width: 90%;
+        padding: 10px;
+        margin: 10px 0;
+        border: none;
+        border-radius: 5px;
+        background: #2c2c2c;
+        color: white;
+        font-size: 16px;
+        outline: none;
+        }
+
+        button {
+            width: 12%;
+            padding: 10px;
+            margin-top: 1%;
+            border: none;
+            background: #ff5722;
+            color: white;
+            border-radius: 5px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        button:hover {
+            background: #e64a19;
+        }
+        #logoutBtn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 15px;
+            font-size: 14px;
+            border-radius: 5px;
+            background: red;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: white;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            z-index: -1;
+        }
+       
+    </style>
+</head>
+<body>
+    <!-- Connection Status Indicator -->
+    <div id="connection-status" class="disconnected">Disconnected</div>
+
+    <!-- Login Form -->
+    <div id="login-container">
+        <h2>Login</h2>
+        <input type="email" id="email" placeholder="Email">
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="login()">Login</button>
+        <p id="errorMsg" style="color: red;"></p>
+    </div>
+
+    <!-- Logout Button -->
+    <button id="logoutBtn" onclick="logout()">Logout</button>
+
+    <!-- Chart container will be re-added with search/history feature -->
+
+    <script>
+        // Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDPARUw3kGIyg1piZwjsVZOktBJ79CgICM",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://plantstracker-f1274-default-rtdb.firebaseio.com/",
+            projectId: "plantstracker-f1274",
+            storageBucket:  "plantstracker-f1274.firebasestorage.app",
+            messagingSenderId: "979362379595",
+           appId: "1:979362379595:web:6bdae62b701467f92c5ace",
+           measurementId: "G-GW43ZW0CQ4"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        var database = firebase.database();
+        const auth = firebase.auth();
+
+        let dataMap = {};
+        let connectionStatusElement = null;
+        var latestData = null;
+        let pollInterval = null;
+
+        function getCurrentMonthKey() {
+            const now = new Date();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const yyyy = String(now.getFullYear());
+            return mm + yyyy;
+        }
+
+        function fetchLatestDataPoint() {
+            const monthKey = getCurrentMonthKey();
+            const ref = database.ref('berries/station1/' + monthKey);
+
+            ref.orderByKey().limitToLast(1).once('value', function(snap) {
+                const val = snap.val();
+                if (!val) {
+                    console.log('No data for month ' + monthKey);
+                    return;
+                }
+                const tsKey = Object.keys(val)[0];
+                const entry = val[tsKey];
+                latestData = entry;
+
+                console.log('Latest data point:', tsKey, entry);
+                updateDiv(1, entry);
+                updateConnectionStatus('connected');
+            }, function(err) {
+                console.log('Database error:', err);
+                updateConnectionStatus('disconnected', 'Error fetching data');
+            });
+        }
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            checkAuthState();
+
+            connectionStatusElement = document.getElementById('connection-status');
+
+            // Create parent div for data sources
+            let parentDiv = createDiv('').id('parentDiv');
+            parentDiv.style('display', 'flex');
+            parentDiv.style('flex-direction', 'column');
+            parentDiv.style('gap', '10px');
+            parentDiv.style('position', 'relative');
+            parentDiv.style('left', '-42%');
+            parentDiv.style('top', '1%');
+            parentDiv.style('padding', '10px');
+            parentDiv.style('border', '1px solid black');
+            parentDiv.style('height', '90%');
+            parentDiv.style('width', '12%');
+            parentDiv.style('overflow-y', 'scroll');
+
+            let childDiv = createDiv('').id('source-1').class('childDiv');
+            childDiv.style('padding', '10px');
+            childDiv.style('border', '1px solid gray');
+            childDiv.style('height', '200px');
+            childDiv.style('background-color', '#f0f0f0');
+            childDiv.style('box-shadow','0 0 4px rgba(55, 55, 255, 0.8)');
+            childDiv.style('color', 'gray');
+            childDiv.style('margin-bottom', '5px');
+            childDiv.html('<strong>Station 1</strong><br>Waiting for data...');
+            parentDiv.child(childDiv);
+            dataMap[1] = childDiv;
+
+            // Fetch latest data point now and every 10 minutes
+            fetchLatestDataPoint();
+            pollInterval = setInterval(fetchLatestDataPoint, 10 * 60 * 1000);
+        }
+        
+        // Display latest data point in the side panel
+        function formatTimestamp(entry) {
+            if (entry.time) return entry.time;
+            if (entry.serverTimestamp) {
+                var d = new Date(entry.serverTimestamp);
+                return d.toLocaleString();
+            }
+            return '';
+        }
+        
+        function draw() {
+            background(255);
+            textSize(60);
+            fill(255, 160, 20);
+        }
+
+        function updateDiv(sourceId, entry) {
+            if (dataMap[sourceId] && entry) {
+                var ts = formatTimestamp(entry);
+                var wIn = entry.waterIn ? (entry.waterIn / 2 * 0.05).toFixed(2) : '0';
+                var wOut = entry.waterOut ? (entry.waterOut / 2 * 0.05).toFixed(2) : '0';
+                dataMap[sourceId].html(
+                    `<strong>Station ${sourceId}</strong><br>` +
+                    `<strong>Time:</strong> ${ts}<br>` +
+                    `<strong>Scale 1:</strong> ${entry.scale1 || 0}<br>` +
+                    `<strong>Scale 2:</strong> ${entry.scale2 || 0}<br>` +
+                    `<strong>Voltage:</strong> ${entry.voltage || 0} V<br>` +
+                    `<strong>EC:</strong> ${entry.ec || 0}<br>` +
+                    `<strong>Water In:</strong> ${wIn} L<br>` +
+                    `<strong>Water Out:</strong> ${wOut} L<br>` +
+                    `<strong>Charging:</strong> ${entry.charging ? 'Yes' : 'No'}`
+                );
+            }
+        }
+
+        // Check Auth State
+        function checkAuthState() {
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    document.getElementById("login-container").style.display = "none";
+                    document.getElementById("logoutBtn").style.display = "block";
+                    console.log("User authenticated");
+                } else {
+                    document.getElementById("login-container").style.display = "block";
+                    document.getElementById("logoutBtn").style.display = "none";
+                    console.log("User not authenticated, showing login");
+                }
+            });
+        }
+
+        // Login Function
+        function login() {
+            let email = document.getElementById("email").value;
+            let password = document.getElementById("password").value;
+
+            auth.signInWithEmailAndPassword(email, password)
+                .then(userCredential => {
+                    console.log("Logged in:", userCredential.user);
+                })
+                .catch(error => {
+                    document.getElementById("errorMsg").innerText = error.message;
+                });
+        }
+
+        // Logout Function
+        function logout() {
+            auth.signOut();
+        }
+
+        function updateConnectionStatus(status, message = '') {
+            if (!connectionStatusElement) return;
+            connectionStatusElement.classList.remove('connected', 'disconnected', 'connecting');
+            connectionStatusElement.classList.add(status);
+            switch(status) {
+                case 'connected':
+                    connectionStatusElement.textContent = 'Connected';
+                    break;
+                case 'disconnected':
+                    connectionStatusElement.textContent = message || 'Disconnected';
+                    break;
+                case 'connecting':
+                    connectionStatusElement.textContent = message || 'Connecting...';
+                    break;
+            }
+        }
+
+    </script>
+</body>
+</html>

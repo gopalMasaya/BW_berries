@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Sensor Data - Multi Chart</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-database.js"></script>
+
+    <style>
+        #login-container {
+            display: none;
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(255, 255, 255, 0.2);
+            text-align: center;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        input[type="text"], input[type="email"], input[type="password"] {
+            width: 90%;
+            padding: 10px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 5px;
+            background: #2c2c2c;
+            color: white;
+            font-size: 16px;
+            outline: none;
+        }
+
+        button {
+            width: 12%;
+            padding: 10px;
+            margin-top: 1%;
+            border: none;
+            background: #ff5722;
+            color: white;
+            border-radius: 5px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        
+        button:hover {
+            background: #e64a19;
+        }
+        
+        #logoutBtn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 15px;
+            font-size: 14px;
+            border-radius: 5px;
+            background: red;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background: white;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            min-height: 100vh;
+        }
+        
+        #charts-container {
+            display: none;
+            grid-template-columns: 1fr;
+            grid-template-rows: repeat(6, 1fr);
+            gap: 25px;
+            height: calc(120vh - 200px);
+            width:100%;
+            margin-top: 80px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+        
+        #charts-container.single-chart {
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr;
+            gap: 0;
+        }
+        
+        .chart-wrapper {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-height: 300px;
+        }
+        
+        .chart-wrapper:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        .chart-wrapper.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 9999;
+            border-radius: 0;
+            padding: 40px;
+            cursor: default;
+        }
+        
+        .chart-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #ffeaa7, #dda0dd);
+        }
+        
+        .chart-title {
+            color: #333;
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: relative;
+        }
+        
+        .chart-title::after {
+            content: '🔍 Click to expand';
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px;
+            color: #666;
+            font-weight: normal;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        
+        .chart-wrapper.fullscreen .chart-title::after {
+            content: '✕ Click to close';
+            color: #e74c3c;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            z-index: -1;
+        }
+       
+        #date-filter-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 25px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+        }
+        
+        #date-filter-container label {
+            font-size: 14px;
+            color: white;
+            font-weight: 500;
+        }
+        
+        #date-filter-container input {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+        }
+        
+        #apply-date-filter, #last24h-button {
+            width: auto;
+            padding: 8px 16px;
+            margin: 0;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        #apply-date-filter {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+        }
+        
+        #last24h-button {
+            background: linear-gradient(45deg, #2196F3, #1976D2);
+        }
+        
+        #apply-date-filter:hover, #last24h-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        #data-source-panel {
+            position: fixed;
+            left: 20px;
+            top: 0px;
+            width: 250px;
+            height: calc(100vh - 140px);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .data-source-item {
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+           box-shadow: 0 0 4px rgba(55, 55, 255, 0.8);
+        }
+        
+        .data-source-item:hover {
+            background: rgba(255, 255, 255, 1);
+           transform: translateX(1px);
+            box-shadow: 0 0px 8px rgba(0, 0, 255, 0.9);
+        }
+        
+        .data-source-item strong {
+            color: #2c3e50;
+            display: block;
+            margin-bottom: 8px;
+        }
+        
+        #charts-main-container {
+            margin-left: 300px;
+            margin-right: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Form -->
+    <div id="login-container">
+        <h2>Login</h2>
+        <input type="email" id="email" placeholder="Email">
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="login()">Login</button>
+        <p id="errorMsg" style="color: red;"></p>
+    </div>
+
+    <!-- Logout Button -->
+    <button id="logoutBtn" onclick="logout()">Logout</button>
+
+    <!-- Date Range Filter -->
+    <div id="date-filter-container" style="display: none;">
+        <label for="fromDate">From:</label>
+        <input type="date" id="fromDate">
+        <label for="toDate">To:</label>
+        <input type="date" id="toDate">
+        <button id="apply-date-filter">Apply Filter</button>
+        <button id="last24h-button">Last 24h</button>
+    </div>
+
+    <!-- Data Source Panel -->
+    <div id="data-source-panel" style="display: none;">
+        <h3 style="color: gray; text-align: center; margin-bottom: 20px;">Station Data</h3>
+        <div id="data-sources-list"></div>
+    </div>
+
+    <!-- Charts Container -->
+    <div id="charts-main-container">
+        <div id="charts-container">
+           
+
+            <!-- Scale 1 Chart -->
+            <div class="chart-wrapper" onclick="toggleFullscreen(this)">
+                <div class="chart-title">Scale 1</div>
+                <canvas id="scale1Chart"></canvas>
+            </div>
+            
+            <!-- Scale 2 Chart -->
+            <div class="chart-wrapper" onclick="toggleFullscreen(this)">
+                <div class="chart-title">Scale 2</div>
+                <canvas id="scale2Chart"></canvas>
+            </div>
+
+ 
+          <div class="chart-wrapper" id="combinedChartWrapper">
+    <div class="chart-title" onclick="toggleFullscreen(document.getElementById('combinedChartWrapper'))">
+        Combined Chart (EC, Water Input, Water Drain)
+        <span class="fullscreen-icon">⛶</span>
+    </div>
+    <canvas id="combinedChart"></canvas>
+</div>
+
+   <!-- Temp Chart -->
+            <div class="chart-wrapper" onclick="toggleFullscreen(this)">
+                <div class="chart-title">Temprature</div>
+                <canvas id="TempChart"></canvas>
+            </div>
+    
+
+    <script>
+        // Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDPARUw3kGIyg1piZwjsVZOktBJ79CgICM",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://plantstracker-f1274-default-rtdb.firebaseio.com/",
+            projectId: "plantstracker-f1274",
+            storageBucket: "plantstracker-f1274.firebasestorage.app",
+            messagingSenderId: "979362379595",
+            appId: "1:979362379595:web:6bdae62b701467f92c5ace",
+            measurementId: "G-GW43ZW0CQ4"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        var database = firebase.database();
+        const auth = firebase.auth();
+
+        let particles = [];
+        let hum, temp, id;
+        let dataSources = [];
+        let dataMap = {};
+        var voltage = 0;
+        let waterInput = 0;
+        let waterOutput = 0;
+        var ref;
+        var ec;
+        var temprature;
+       
+        
+        // Data Storage
+        var allData = {
+            dates: [],
+            sc1: [],
+            sc2: [],
+            voltage: [],
+            waterFlow: [],
+            waterDrain: [],
+            ec: [],
+            temprature: []
+        };
+        
+        // Date filter variables
+        let fromDate, toDate;
+        let dateFilterApplied = false;
+
+        // Chart instances
+        let charts = {};
+
+        // Fullscreen toggle function - THIS WAS MISSING!
+        function toggleFullscreen(element) {
+            const chartsContainer = document.getElementById('charts-container');
+            const isFullscreen = element.classList.contains('fullscreen');
+            
+            if (isFullscreen) {
+                // Exit fullscreen
+                element.classList.remove('fullscreen');
+                chartsContainer.classList.remove('single-chart');
+                
+                // Show all other chart wrappers
+                const allWrappers = document.querySelectorAll('.chart-wrapper');
+                allWrappers.forEach(wrapper => {
+                    if (wrapper !== element) {
+                        wrapper.style.display = 'block';
+                    }
+                });
+                
+                // Show other UI elements
+                document.getElementById('date-filter-container').style.display = 'flex';
+                document.getElementById('data-source-panel').style.display = 'block';
+                document.getElementById('logoutBtn').style.display = 'block';
+            } else {
+                // Enter fullscreen
+                element.classList.add('fullscreen');
+                chartsContainer.classList.add('single-chart');
+                
+                // Hide all other chart wrappers
+                const allWrappers = document.querySelectorAll('.chart-wrapper');
+                allWrappers.forEach(wrapper => {
+                    if (wrapper !== element) {
+                        wrapper.style.display = 'none';
+                    }
+                });
+                
+                // Hide other UI elements for cleaner fullscreen view
+                document.getElementById('date-filter-container').style.display = 'none';
+                document.getElementById('data-source-panel').style.display = 'none';
+                document.getElementById('logoutBtn').style.display = 'none';
+            }
+            
+            // Trigger chart resize after a short delay to ensure proper rendering
+            setTimeout(() => {
+                const canvas = element.querySelector('canvas');
+                const chartId = canvas.id;
+                const chartMap = {
+                    'ecChart': 'ec',
+                    'TempChart': 'temprature',
+                    'scale1Chart': 'scale1',
+                    'scale2Chart': 'scale2',
+                    'waterInputChart': 'waterInput',
+                    'waterDrainChart': 'waterDrain'
+                };
+                
+                if (charts[chartMap[chartId]]) {
+                    charts[chartMap[chartId]].resize();
+                }
+            }, 100);
+        }
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            checkAuthState();
+            let currentDate = new Date();
+            const month = currentDate.getMonth() + 1;
+            console.log(month);
+
+            ref = database.ref('berries/station1/0'+month+'2025');
+            ref.on('value', stream, error);
+            
+            // Create data sources in the panel
+            createDataSourcePanel();
+
+            // Set up date filter event listeners
+            document.getElementById('apply-date-filter').addEventListener('click', applyDateFilter);
+            document.getElementById('last24h-button').addEventListener('click', showDataForLast24Hours);
+            
+            // Initialize charts
+            initializeCharts();
+        }
+        
+        function createDataSourcePanel() {
+            const panel = document.getElementById('data-sources-list');
+            
+            for (let i = 1; i <= 20; i++) {
+                const sourceDiv = document.createElement('div');
+                sourceDiv.className = 'data-source-item';
+                sourceDiv.id = `source-${i}`;
+                sourceDiv.innerHTML = `<strong>Station ID: ${i}</strong>Waiting for data...`;
+                sourceDiv.onclick = () => logData(i);
+                panel.appendChild(sourceDiv);
+                dataMap[i] = sourceDiv;
+            }
+        }
+        
+        // Process incoming data from Firebase
+        function stream(data) {
+            var input = data.val();
+            if (!input) return;
+            
+            var keys = Object.keys(input);
+            
+            // Clear previous data
+            allData.dates = [];
+            allData.sc1 = [];
+            allData.sc2 = [];
+            allData.ec = [];
+            allData.temprature = [];
+            allData.waterFlow = [];
+            allData.waterDrain = [];
+            allData.voltage = [];
+            
+            // Process all data points
+            for (let i = 0; i < keys.length; i++) {
+                let k = keys[i];
+                
+                // Skip data points marked for deletion
+                if (k.startsWith('29042025')) continue;
+                
+                allData.dates.push(k);
+                allData.ec.push(input[k].ec);
+                allData.temprature.push(input[k].temp);
+                allData.sc1.push(input[k].scale1);
+                allData.sc2.push(input[k].scale2);
+                allData.voltage.push(input[k].voltage);
+                allData.waterFlow.push(input[k].waterIn/2*0.05);
+                allData.waterDrain.push(input[k].waterOut/2*0.05);
+            }
+            
+            let last = allData.sc1.length - 1;
+            updateDiv(1, allData.sc1[last], allData.sc2[last], allData.ec[last], allData.temprature[last], allData.voltage[last], allData.waterFlow[last], allData.waterDrain[last]);
+            
+            // Apply date filtering if enabled, otherwise show all data
+            if (dateFilterApplied) {
+                applyDateFilter();
+            } else {
+                showDataForLast24Hours();
+            }
+        }
+         
+        function error(err) {
+            console.log("Database error:", err);
+        }
+
+        // Convert date string to a format that can be compared
+        function formatDateKey(dateStr) {
+            if (dateStr.length >= 8) {
+                return dateStr.substring(4, 8) + dateStr.substring(2, 4) + dateStr.substring(0, 2);
+            }
+            return dateStr;
+        }
+        
+        // Filter data based on date range
+        function applyDateFilter() {
+            fromDate = document.getElementById('fromDate').value;
+            toDate = document.getElementById('toDate').value;
+
+            if (!fromDate || !toDate) {
+                alert("Please select both 'From' and 'To' dates");
+                return;
+            }
+            
+            var fromDateFormatted = fromDate.replace(/-/g, '');
+            var toDateFormatted = toDate.replace(/-/g, '');
+            
+            const filteredData = {
+                dates: [],
+                ec: [],
+                temprature: [],
+                sc1: [],
+                sc2: [],
+                waterFlow: [],
+                waterDrain: []
+            };
+            
+            for (let i = 0; i < allData.dates.length; i++) {
+                var dateKey = allData.dates[i];
+                const formattedDateKey = formatDateKey(dateKey);
+                
+                if (formattedDateKey >= fromDateFormatted && formattedDateKey <= toDateFormatted) {
+                    filteredData.dates.push(dateKey);
+                    filteredData.ec.push(allData.ec[i]/1000);
+                    filteredData.temprature.push(allData.temprature[i]);
+                    filteredData.sc1.push(allData.sc1[i]);
+                    filteredData.sc2.push(allData.sc2[i]);
+                    filteredData.waterFlow.push(allData.waterFlow[i]);
+                    filteredData.waterDrain.push(allData.waterDrain[i]);
+                }
+            }
+            
+            updateAllCharts(filteredData);
+            dateFilterApplied = true;
+            
+            console.log(`Filtered data: ${filteredData.dates.length} points from ${fromDate} to ${toDate}`);
+        }
+        
+        function showDataForLast24Hours() {
+            dateFilterApplied = false;
+            
+            if (allData.dates.length === 0) {
+                console.log("No data available to display");
+                return;
+            }
+            
+            const numPoints = Math.min(96, allData.dates.length);
+            const startIndex = Math.max(0, allData.dates.length - numPoints);
+            
+            const filteredData = {
+                dates: [],
+                ec: [],
+                temprature: [],
+                sc1: [],
+                sc2: [],
+                waterFlow: [],
+                waterDrain: []
+            };
+            
+            for (let i = startIndex; i < allData.dates.length; i++) {
+                filteredData.dates.push(allData.dates[i]);
+                filteredData.ec.push(allData.ec[i]/1000);
+                filteredData.temprature.push(allData.temprature[i]);
+                filteredData.sc1.push(allData.sc1[i]);
+                filteredData.sc2.push(allData.sc2[i]);
+                filteredData.waterFlow.push(allData.waterFlow[i]);
+                filteredData.waterDrain.push(allData.waterDrain[i]);
+            }
+            console.log( allData.waterFlow)
+            console.log(allData.waterDrain)
+            updateAllCharts(filteredData);
+            console.log(`Showing data for last 24 hours: ${filteredData.dates.length} points found`);
+        }
+        
+        function draw() {
+            background(255);
+        }
+
+      function updateDiv(sourceId, temp, hum, ec, temprature, voltage, waterOutput, waterInput) {
+    comb = (temp + hum) / 2;
+    
+    // Determine EC color based on value
+    let ecColor = 'black'; // default color
+    if (ec > 1.9) {
+        ecColor = 'orange';
+    } else if (ec < 1.2) {
+        ecColor = 'red';
+    }
+    
+    if (dataMap[sourceId]) {
+        dataMap[sourceId].innerHTML = `<strong>Station ID: ${sourceId}</strong>
+            Scale1: ${temp}<br>
+            Scale2: ${hum}<br>
+            avg      ${comb}<br>
+            Voltage: ${voltage}<br>
+            EC:   <span style="color: ${ecColor};">${ec}</span><br>
+            temprature: ${temprature}<br>
+            Input: ${waterInput.toFixed(3)}<br>
+            Drain: ${waterOutput.toFixed(3)}`;
+    }
+}
+        
+        function logData(sourceId) {
+            console.log(`Data Source ${sourceId} clicked`);
+        }
+
+        // Check Auth State
+        function checkAuthState() {
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    document.getElementById("login-container").style.display = "none";
+                    document.getElementById("charts-container").style.display = "grid";
+                    document.getElementById("logoutBtn").style.display = "block";
+                    document.getElementById("date-filter-container").style.display = "flex";
+                    document.getElementById("data-source-panel").style.display = "block";
+                    console.log("User authenticated, showing charts");
+                } else {
+                    document.getElementById("login-container").style.display = "block";
+                    document.getElementById("charts-container").style.display = "none";
+                    document.getElementById("logoutBtn").style.display = "none";
+                    document.getElementById("date-filter-container").style.display = "none";
+                    document.getElementById("data-source-panel").style.display = "none";
+                    console.log("User not authenticated, showing login");
+                }
+            });
+        }
+
+        // Login Function
+        function login() {
+            let email = document.getElementById("email").value;
+            let password = document.getElementById("password").value;
+
+            auth.signInWithEmailAndPassword(email, password)
+                .then(userCredential => {
+                    console.log("Logged in:", userCredential.user);
+                })
+                .catch(error => {
+                    document.getElementById("errorMsg").innerText = error.message;
+                });
+        }
+
+        // Logout Function
+        function logout() {
+            auth.signOut();
+        }
+
+        // Chart Creation Functions
+    function createChart(canvasId, label, color, yAxisLabel = '') {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: label,
+                data: [],
+                borderColor: color,
+                backgroundColor: color.replace('1)', '0.1)'),
+                borderWidth: 3,
+                pointRadius: 2,
+                pointHoverRadius: 6,
+                tension: 0.1,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 300
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    ticks: {
+                        color: "#666",
+                        maxRotation: 45,
+                        minRotation: 45,
+                        autoSkip: true,
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    ticks: {
+                        color: "#666"
+                    },
+                    title: {
+                        display: !!yAxisLabel,
+                        text: yAxisLabel,
+                        color: '#333'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: 'white',
+                    bodyColor: 'white',
+                    borderColor: color,
+                    borderWidth: 2,
+                    titleFont: {
+                        size: 14
+                    },
+                    bodyFont: {
+                        size: 14
+                    },
+                    padding: 12,
+                    cornerRadius: 8
+                }
+            }
+        }
+    });
+
+    // Add mouseenter event to show tooltip immediately
+    chart.canvas.addEventListener('mouseenter', function(e) {
+        if (chart.data.labels.length > 0) {
+            // Create a synthetic mousemove event to trigger tooltip
+            const rect = chart.canvas.getBoundingClientRect();
+            const mouseEvent = new MouseEvent('mousemove', {
+                clientX: e.clientX,
+                clientY: e.clientY,
+                bubbles: true
+            });
+                     
+            // Dispatch the event to trigger Chart.js's built-in tooltip logic
+            chart.canvas.dispatchEvent(mouseEvent);
+        }
+    });
+
+    return chart;
+}
+
+// New function to create combined chart with multiple datasets
+function createCombinedChart(canvasId, datasets, yAxisLabel = '') {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: datasets.map(dataset => ({
+                label: dataset.label,
+                data: [],
+                borderColor: dataset.color,
+                backgroundColor: dataset.color.replace('1)', '0.1)'),
+                borderWidth: 3,
+                pointRadius: 2,
+                pointHoverRadius: 6,
+                tension: 0.1,
+                fill: false // Set to false for better visibility with multiple lines
+            }))
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 300
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    ticks: {
+                        color: "#666",
+                        maxRotation: 45,
+                        minRotation: 45,
+                        autoSkip: true,
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    ticks: {
+                        color: "#666"
+                    },
+                    title: {
+                        display: !!yAxisLabel,
+                        text: yAxisLabel,
+                        color: '#333'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true, // Enable legend for multiple datasets
+                    position: 'top',
+                    labels: {
+                        color: '#333',
+                        usePointStyle: true,
+                        padding: 20
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: 'white',
+                    bodyColor: 'white',
+                    borderColor: 'rgba(255, 255, 255, 0.8)',
+                    borderWidth: 1,
+                    titleFont: {
+                        size: 14
+                    },
+                    bodyFont: {
+                        size: 14
+                    },
+                    padding: 12,
+                    cornerRadius: 8
+                }
+            }
+        }
+    });
+
+    // Add mouseenter event to show tooltip immediately
+    chart.canvas.addEventListener('mouseenter', function(e) {
+        if (chart.data.labels.length > 0) {
+            const rect = chart.canvas.getBoundingClientRect();
+            const mouseEvent = new MouseEvent('mousemove', {
+                clientX: e.clientX,
+                clientY: e.clientY,
+                bubbles: true
+            });
+                     
+            chart.canvas.dispatchEvent(mouseEvent);
+        }
+    });
+
+    return chart;
+}
+
+function initializeCharts() {
+    // Create individual charts
+    charts.temprature = createChart('TempChart', 'Temperature', 'rgba(25, 25, 185, 1)', 'Temperature');
+    charts.scale1 = createChart('scale1Chart', 'Scale 1', 'rgba(255, 99, 132, 1)', 'Weight');
+    charts.scale2 = createChart('scale2Chart', 'Scale 2', 'rgba(99, 32, 255, 1)', 'Weight');
+    
+    // Create combined chart for EC, Water Input, and Water Drain
+    charts.combined = createCombinedChart('combinedChart', [
+        { label: 'EC', color: 'rgba(5, 200, 200, 1)' },
+        { label: 'Water Input', color: 'rgba(255, 160, 25, 1)' },
+        { label: 'Water Drain', color: 'rgba(25, 180, 25, 1)' }
+    ], 'Mixed Values');
+}
+
+// Helper function to add single data point to combined chart
+function addDataToCombinedChart(chart, label, ecValue, waterInputValue, waterDrainValue) {
+    chart.data.labels.push(label);
+    chart.data.datasets[0].data.push(ecValue);      // EC dataset
+    chart.data.datasets[1].data.push(waterInputValue); // Water Input dataset
+    chart.data.datasets[2].data.push(waterDrainValue); // Water Drain dataset
+    console.log('Adding data - EC:', ecValue, 'Water Input:', waterInputValue, 'Water Drain:', waterDrainValue);
+    chart.update();
+}
+
+// Function for updating single dataset charts
+function updateChart(chart, labels, data) {
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = data;
+    chart.update('none');
+}
+
+// Function specifically for updating combined chart with multiple datasets
+function updateCombinedChart(chart, labels, ecData, waterInputData, waterDrainData) {
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = ecData;           // EC dataset
+    chart.data.datasets[1].data = waterInputData;   // Water Input dataset
+    chart.data.datasets[2].data = waterDrainData;   // Water Drain dataset
+    
+    // console.log('Updating combined chart:');
+    // console.log('EC data:', ecData);
+    // console.log('Water Input data:', waterInputData);
+    // console.log('Water Drain data:', waterDrainData);
+    
+    chart.update('none');
+}
+
+function updateAllCharts(data) {
+    // Debug: Check what properties are available
+    // console.log('Data object properties:', Object.keys(data));
+    // console.log('Full data object:', data);
+    
+    // Update individual charts
+    updateChart(charts.temprature, data.dates, data.temprature);
+    updateChart(charts.scale1, data.dates, data.sc1);
+    updateChart(charts.scale2, data.dates, data.sc2);
+    
+    // Update combined chart with three different datasets
+    updateCombinedChart(
+        charts.combined, 
+        data.dates, 
+        data.ec,                                    // EC data
+        allData.waterFlow.map(val => (val/100*0.0005).toFixed(3)),                             // Water Input data (changed from data.flow to data.waterFlow)
+        allData.waterDrain.map(val => (val/100*0.0005).toFixed(3))  // Water Drain data (with conversion)
+    );
+}
+
+        // Initialize when page loads
+        window.onload = function() {
+            console.log("Page loaded, initializing charts...");
+        };
+    </script>
+</body>
+</html>

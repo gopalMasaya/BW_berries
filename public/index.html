@@ -1,0 +1,1215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Stations Map Dashboard</title>
+
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <link  href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-database.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:#0f1a2e;
+      --panel2:#101f37;
+      --text:#e7eefc;
+      --muted:#a9b7d1;
+      --border:rgba(255,255,255,0.10);
+      --ok:#2bd576;
+      --warn:#ffb020;
+      --bad:#ff4d5e;
+      --accent:#4aa3ff;
+    }
+
+    html, body { height:100%; margin:0; }
+    body { font-family: Arial, sans-serif; background:var(--bg); color:var(--text); overflow:hidden; }
+
+    #app { position:relative; height:100%; width:100%; display:flex; }
+
+    #leftPanel{
+      width: 360px; max-width: 92vw; height:100%;
+      background: linear-gradient(180deg, var(--panel), var(--panel2));
+      border-right: 1px solid var(--border);
+      display:flex; flex-direction:column; z-index:3;
+    }
+    #leftHeader{ padding:16px 16px 10px 16px; border-bottom: 1px solid var(--border); }
+    #leftHeader h2{ margin:0 0 6px 0; font-size:16px; }
+    #leftHeader .sub{ color:var(--muted); font-size:14px; }
+
+    #controls{ padding:12px 16px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:10px; }
+    label{ font-size:16px; color:var(--muted); display:block; margin-bottom:6px; }
+    input{
+      width:100%;
+      padding:10px; border:1px solid var(--border); border-radius:10px;
+      background: rgba(255,255,255,0.04); color:var(--text); outline:none;
+    }
+
+    #status{
+      margin: 0 16px 12px 16px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.18);
+      color: var(--muted);
+      font-size:16px;
+      line-height:1.3;
+      min-height: 44px;
+      white-space: pre-line;
+    }
+
+    #alertBar{
+      margin: 0 16px 12px 16px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,77,94,0.55);
+      background: rgba(255,77,94,0.12);
+      color: rgba(231,238,252,0.95);
+      font-size: 16px;
+      display:none;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    #alertBar strong{ color: #fff; }
+    #alertBar button{
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      cursor:pointer;
+    }
+
+    #stationList{ padding: 0 10px 12px 10px; overflow:auto; flex:1; }
+
+    .stationItem{
+      display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+      padding: 10px 10px; margin: 8px 6px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      cursor:pointer;
+    }
+    .stationItem:hover{ background: rgba(255,255,255,0.06); }
+    .stationItem .title{ font-size:18px; font-weight:bold; margin:0; }
+    .stationItem .meta{ font-size:14px; color:var(--muted); margin-top:4px; }
+
+    .pill{
+      font-size: 14px; padding: 4px 8px; border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      flex:0 0 auto;
+      display:flex; align-items:center; gap:6px;
+      height: fit-content;
+    }
+    .dot{ width:8px; height:8px; border-radius:50%; background: var(--muted); }
+    .dot.ok{ background: var(--ok); }
+    .dot.warn{ background: var(--warn); }
+    .dot.bad{ background: var(--bad); }
+
+    /* View toggle buttons */
+    #viewToggle{
+      display:flex; gap:0; padding:12px 16px; border-bottom:1px solid var(--border);
+    }
+    .viewBtn{
+      flex:1; padding:10px 0; border:1px solid var(--border); background:rgba(255,255,255,0.04);
+      color:var(--muted); font-size:15px; font-weight:600; cursor:pointer; transition:all 0.15s;
+      text-align:center;
+    }
+    .viewBtn:first-child{ border-radius:10px 0 0 10px; }
+    .viewBtn:last-child{ border-radius:0 10px 10px 0; }
+    .viewBtn.active{
+      background:var(--accent); color:#fff; border-color:var(--accent);
+    }
+
+    #map{ position:relative; flex:1; height:100%; width:100%; z-index:1; }
+
+    /* Chart view */
+    #chartView{
+      flex:1; height:100%; display:none; overflow:hidden; background:var(--bg);
+    }
+    #chartView.active{ display:flex; }
+    #map.hidden{ display:none; }
+
+    #chartContainer{
+      flex:1; overflow:auto; padding:0;
+    }
+
+    #chartTable{
+      width:100%; border-collapse:collapse; font-size:13px; direction:rtl;
+      min-width:900px;
+    }
+    #chartTable thead{
+      position:sticky; top:0; z-index:2;
+    }
+    #chartTable th{
+      background:#1a5276; color:#fff; padding:8px 10px; border:1px solid #2980b9;
+      font-size:12px; font-weight:600; white-space:nowrap; text-align:center;
+    }
+    #chartTable td{
+      padding:6px 10px; border:1px solid var(--border); text-align:center;
+      background:var(--panel); color:var(--text); white-space:nowrap;
+    }
+    #chartTable tbody tr:hover td{
+      background:rgba(255,255,255,0.06);
+    }
+
+    /* Color-coded EC cells */
+    .cell-ok{ background:#2bd576 !important; color:#000; font-weight:bold; }
+    .cell-warn{ background:#00d4ff !important; color:#000; font-weight:bold; }
+    .cell-high{ background:#ffeb3b !important; color:#000; font-weight:bold; }
+    .cell-bad{ background:#ff4d5e !important; color:#fff; font-weight:bold; }
+
+    /* Chart right sidebar / filters */
+    #chartFilters{
+      width:260px; min-width:260px; height:100%;
+      background:linear-gradient(180deg, var(--panel), var(--panel2));
+      border-left:1px solid var(--border);
+      padding:14px; overflow:auto; direction:rtl;
+      display:flex; flex-direction:column; gap:14px;
+    }
+    #chartFilters h4{
+      margin:0 0 8px 0; font-size:14px; color:var(--text);
+    }
+    #chartFilters label{
+      font-size:13px; color:var(--text); display:flex; align-items:center; gap:6px; margin:0;
+    }
+    #chartFilters input[type="checkbox"]{
+      width:auto;
+    }
+    #chartFilters input[type="date"], #chartFilters input[type="number"]{
+      width:100%; padding:8px; border:1px solid var(--border); border-radius:8px;
+      background:rgba(255,255,255,0.04); color:var(--text); font-size:13px;
+    }
+    .filterSection{
+      border:1px solid var(--border); border-radius:12px; padding:10px;
+      background:rgba(0,0,0,0.15);
+    }
+    .filterBtn{
+      padding:8px 16px; border:1px solid var(--border); border-radius:8px;
+      background:rgba(255,255,255,0.06); color:var(--text); cursor:pointer;
+      font-size:13px; margin-top:6px;
+    }
+    .filterBtn:hover{ background:rgba(255,255,255,0.1); }
+    .checkboxList{
+      max-height:200px; overflow:auto; display:flex; flex-direction:column; gap:4px;
+      margin-top:6px;
+    }
+
+    #drawer{
+      position:absolute; top:12px; right:12px;
+      width: 420px; max-width: calc(100vw - 24px);
+      height: calc(100% - 24px);
+      background: rgba(15,26,46,0.92);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+      z-index:4;
+      transform: translateX(460px);
+      transition: transform 0.22s ease;
+      display:flex; flex-direction:column; overflow:hidden;
+    }
+    #drawer.open{ transform: translateX(0); }
+
+    #drawerHeader{
+      padding: 14px 14px 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+    }
+    #drawerTitle{ margin:0; font-size:14px; }
+    #drawerSubtitle{ color:var(--muted); font-size:14px; margin-top:4px; }
+    #drawerClose{ padding:8px 10px; border-radius:10px; cursor:pointer; }
+
+    #drawerBody{ padding:12px; overflow:auto; flex:1; }
+    .grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+    .card{
+      padding:12px; border-radius:14px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+    }
+    .card .k{ font-size:11px; color:var(--muted); margin-bottom:6px; }
+    .card .v{ font-size:20px; font-weight:bold; color: var(--accent); }
+    .card .u{ font-size:11px; color:var(--muted); margin-top:4px; }
+    .card .t{ font-size:11px; color:rgba(231,238,252,0.55); margin-top:8px; }
+    .drawerActions{ display:flex; gap:10px; margin-top:12px; }
+    .drawerActions button{
+      padding:10px 12px; border:1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      border-radius:10px; cursor:pointer;
+    }
+    .drawerActions button:hover{ background: rgba(255,255,255,0.09); }
+
+    .mapboxgl-popup-content{
+      background: rgba(15,26,46,0.95);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    }
+    .mapboxgl-popup-tip{
+      border-top-color: rgba(15,26,46,0.95) !important;
+      border-bottom-color: rgba(15,26,46,0.95) !important;
+    }
+    .mapboxgl-ctrl-group{
+      background: rgba(15,26,46,0.85) !important;
+      border: 1px solid var(--border) !important;
+    }
+
+
+    @media (max-width: 860px){
+      #leftPanel{ width: 320px; }
+      .grid{ grid-template-columns: 1fr; }
+      #drawer{ width: 92vw; }
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="app" style="display:none;">
+
+  <aside id="leftPanel">
+    <div id="leftHeader">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h2>Stations Map Dashboard</h2>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <a id="manageUsersBtn" href="settings.html" style="display:none;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:rgba(74,163,255,0.15);color:var(--text);cursor:pointer;font-size:12px;text-decoration:none;white-space:nowrap;">Settings</a>
+          <a id="galconBtn" href="galcon.html" style="display:none;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:rgba(43,213,118,0.15);color:var(--text);cursor:pointer;font-size:12px;text-decoration:none;white-space:nowrap;">Galcon</a>
+          <button id="logoutBtn" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:rgba(255,77,94,0.15);color:var(--text);cursor:pointer;font-size:12px;">Logout</button>
+        </div>
+      </div>
+      <div class="sub">Fetches latest reading every 10 min</div>
+    </div>
+
+    <div id="viewToggle">
+      <button class="viewBtn active" data-view="gis">GIS</button>
+      <button class="viewBtn" data-view="chart">Chart</button>
+    </div>
+
+    <div id="controls">
+      <div>
+        <label for="deviceId">Station filter (optional)</label>
+        <input id="deviceId" value="station1" placeholder="leave blank for all" />
+      </div>
+    </div>
+
+    <div id="status">Loading...</div>
+
+    <div id="alertBar">
+      <div id="alertText"></div>
+      <button id="alertDismiss">Dismiss</button>
+    </div>
+
+    <div id="stationList"></div>
+  </aside>
+
+  <main id="map"></main>
+
+  <div id="chartView">
+    <div id="chartContainer">
+      <table id="chartTable">
+        <thead id="chartHead"></thead>
+        <tbody id="chartBody"></tbody>
+      </table>
+    </div>
+    <aside id="chartFilters">
+      <div class="filterSection">
+        <h4>סינון תאריך לפי</h4>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+          <label style="flex:0 0 auto;font-size:13px;">ימים</label>
+          <input type="number" id="filterDays" value="0" min="0" max="30" style="width:60px;" />
+        </div>
+        <div style="display:flex;gap:6px;flex-direction:column;">
+          <input type="date" id="filterDateFrom" />
+          <input type="date" id="filterDateTo" />
+        </div>
+        <button class="filterBtn" id="btnFilterDate">סינון</button>
+      </div>
+
+      <div class="filterSection">
+        <h4>נקודת דגימה</h4>
+        <div class="checkboxList" id="stationCheckboxes"></div>
+        <button class="filterBtn" id="btnFilterStation">סינון</button>
+      </div>
+    </aside>
+  </div>
+
+  <section id="drawer" aria-hidden="true">
+    <div id="drawerHeader">
+      <div>
+        <h3 id="drawerTitle">Station</h3>
+        <div id="drawerSubtitle">-</div>
+      </div>
+      <button id="drawerClose">Close</button>
+    </div>
+
+    <div id="drawerBody">
+      <div id="drawerGrid" class="grid"></div>
+      <div class="drawerActions">
+        <button id="btnFly" style="flex:1">Fly to station</button>
+        <button id="btnRoute" style="flex:1">Route (from me)</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  // ===============================
+  // CONFIG
+  // ===============================
+  const firebaseConfig = {
+    apiKey: "AIzaSyDPARUw3kGIyg1piZwjsVZOktBJ79CgICM",
+    authDomain: "plantstracker-f1274.firebaseapp.com",
+    databaseURL: "https://plantstracker-f1274-default-rtdb.firebaseio.com/",
+    projectId: "plantstracker-f1274",
+    storageBucket: "plantstracker-f1274.firebasestorage.app",
+    messagingSenderId: "979362379595",
+    appId: "1:979362379595:web:6bdae62b701467f92c5ace",
+    measurementId: "G-GW43ZW0CQ4"
+  };
+
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const database = firebase.database();
+  const auth = firebase.auth();
+
+  const MAPBOX_TOKEN = "pk.eyJ1IjoiZ29wYWxtYXNheWEiLCJhIjoiY201MnVpMnl4MjkxNjJqc2Y1cnV0cTRyZCJ9.hTkz0YvubzEiZmtxQBRh-g";
+
+  const STATIONS = [
+    { deviceId:"station1", name:"Station 001", lng:35.028495716666775, lat:31.860256434638824 }
+  ];
+
+  const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+  // Offline thresholds (minutes)
+  const EXPECTED_PERIOD_MIN = 10;
+  const GRACE_MIN = 3;
+  const OFFLINE_MIN = EXPECTED_PERIOD_MIN + GRACE_MIN + 5; // 18
+  const WARN_MIN = EXPECTED_PERIOD_MIN + GRACE_MIN;        // 13
+
+  const ALERT_SOUND = true;
+  const ALERT_BROWSER_NOTIF = true;
+
+  // ===============================
+  // STATE
+  // ===============================
+  let map;
+  let userLocation = null;
+  let drawerDeviceId = null;
+  let pollTimer = null;
+
+  const latestByDevice = {};
+  const lastStatusByDevice = {};
+
+  // ===============================
+  // DOM
+  // ===============================
+  const statusEl = document.getElementById("status");
+  const stationListEl = document.getElementById("stationList");
+  const deviceIdEl = document.getElementById("deviceId");
+
+  const alertBar = document.getElementById("alertBar");
+  const alertText = document.getElementById("alertText");
+  const alertDismiss = document.getElementById("alertDismiss");
+
+  const drawer = document.getElementById("drawer");
+  const drawerTitle = document.getElementById("drawerTitle");
+  const drawerSubtitle = document.getElementById("drawerSubtitle");
+  const drawerGrid = document.getElementById("drawerGrid");
+  const drawerClose = document.getElementById("drawerClose");
+  const btnFly = document.getElementById("btnFly");
+  const btnRoute = document.getElementById("btnRoute");
+
+  // ===============================
+  // AUTH
+  // ===============================
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      document.getElementById("app").style.display = "flex";
+      // Check user role for manager features
+      database.ref("users/" + user.uid).once("value").then(snap => {
+        const profile = snap.val();
+        if (profile && profile.role === "manager") {
+          document.getElementById("manageUsersBtn").style.display = "";
+          document.getElementById("galconBtn").style.display = "";
+        }
+      });
+      boot();
+    } else {
+      // Redirect to phone login page
+      location.replace("login.html");
+    }
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", () => { auth.signOut(); });
+
+  // ===============================
+  // HELPERS
+  // ===============================
+  function setStatus(msg, ok=true){
+    statusEl.textContent = msg;
+    statusEl.style.borderColor = ok ? "rgba(43,213,118,0.45)" : "rgba(255,77,94,0.45)";
+    statusEl.style.background  = ok ? "rgba(43,213,118,0.08)" : "rgba(255,77,94,0.08)";
+    statusEl.style.color       = "rgba(231,238,252,0.9)";
+  }
+
+  function showAlert(message){
+    alertText.innerHTML = message;
+    alertBar.style.display = "flex";
+    if (ALERT_SOUND) beep();
+    if (ALERT_BROWSER_NOTIF) notify(message.replace(/<[^>]*>/g, ""));
+  }
+  function hideAlert(){ alertBar.style.display = "none"; }
+  alertDismiss.addEventListener("click", hideAlert);
+
+  function beep(){
+    try{
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine"; o.frequency.value = 880;
+      g.gain.value = 0.05;
+      o.connect(g); g.connect(ctx.destination);
+      o.start();
+      setTimeout(() => { o.stop(); ctx.close(); }, 180);
+    }catch(e){}
+  }
+
+  async function notify(text){
+    try{
+      if (!("Notification" in window)) return;
+      if (Notification.permission === "granted") {
+        new Notification("Station alert", { body: text });
+      } else if (Notification.permission !== "denied") {
+        const perm = await Notification.requestPermission();
+        if (perm === "granted") new Notification("Station alert", { body: text });
+      }
+    }catch(e){}
+  }
+
+  function fmtFieldName(fieldName){
+    return fieldName.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function unitFor(fieldName){
+    const lower = fieldName.toLowerCase();
+    if (lower.includes("temp")) return "\u00B0C";
+    if (lower.includes("humidity")) return "%";
+    if (lower.includes("ec")) return "\u00B5S/cm";
+    if (lower.includes("current")) return "mA";
+    if (lower.includes("voltage")) return "V";
+    if (lower.includes("power")) return "W";
+    if (lower.includes("weight") || lower.includes("scale")) return "kg";
+    if (lower.includes("ph")) return "pH";
+    if (lower.includes("water")) return "pulses";
+    return "";
+  }
+
+  function decimalsFor(fieldName){
+    const lower = fieldName.toLowerCase();
+    if (lower.includes("ec")) return 0;
+    if (lower.includes("voltage")) return 2;
+    if (lower.includes("power")) return 2;
+    if (lower.includes("weight") || lower.includes("scale")) return 3;
+    if (lower.includes("ph")) return 2;
+    return 1;
+  }
+
+  function ageMinutes(iso){
+    if (!iso) return Infinity;
+    const ms = Date.now() - new Date(iso).getTime();
+    return ms / 60000;
+  }
+
+  function statusFromAge(mins){
+    if (mins <= WARN_MIN) return {label:"OK", cls:"ok"};
+    if (mins <= OFFLINE_MIN) return {label:"Stale", cls:"warn"};
+    return {label:"Offline", cls:"bad"};
+  }
+
+  function getCurrentMonthKey(){
+    const now = new Date();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = String(now.getFullYear());
+    return mm + yyyy;
+  }
+
+  // ===============================
+  // MAP
+  // ===============================
+  function initMap(centerLngLat){
+    mapboxgl.accessToken = MAPBOX_TOKEN;
+    map = new mapboxgl.Map({
+      container: "map",
+      style: "mapbox://styles/mapbox/satellite-streets-v12",
+      center: centerLngLat,
+      zoom: 16,
+      pitch: 20,
+      bearing: 0,
+      antialias: true
+    });
+
+    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+
+    map.on("load", () => {
+      map.addSource("mapbox-dem", {
+        type: "raster-dem",
+        url: "mapbox://mapbox.mapbox-terrain-dem-v1",
+        tileSize: 512,
+        maxzoom: 14
+      });
+      map.setTerrain({ source: "mapbox-dem", exaggeration: 1.3 });
+
+      map.addLayer({
+        id: "3d-buildings",
+        source: "composite",
+        "source-layer": "building",
+        type: "fill-extrusion",
+        minzoom: 15,
+        paint: {
+          "fill-extrusion-color": "#9aa7c6",
+          "fill-extrusion-height": ["get", "height"],
+          "fill-extrusion-base": ["get", "min_height"],
+          "fill-extrusion-opacity": 0.55
+        }
+      });
+
+      map.addSource("stations", {
+        type: "geojson",
+        data: buildStationsGeoJSON(),
+        cluster: true,
+        clusterMaxZoom: 14,
+        clusterRadius: 50
+      });
+
+      map.addLayer({
+        id: "clusters",
+        type: "circle",
+        source: "stations",
+        filter: ["has", "point_count"],
+        paint: {
+          "circle-color": ["step", ["get", "point_count"], "#4aa3ff", 10, "#2bd576", 30, "#ffb020", 80, "#ff4d5e"],
+          "circle-radius": ["step", ["get", "point_count"], 16, 10, 20, 30, 24, 80, 30],
+          "circle-opacity": 0.85
+        }
+      });
+
+      map.addLayer({
+        id: "cluster-count",
+        type: "symbol",
+        source: "stations",
+        filter: ["has", "point_count"],
+        layout: { "text-field": "{point_count_abbreviated}", "text-size": 12 },
+        paint: { "text-color": "#0b1220" }
+      });
+
+      map.addLayer({
+        id: "unclustered-stations",
+        type: "circle",
+        source: "stations",
+        filter: ["!", ["has", "point_count"]],
+        paint: {
+          "circle-radius": 6,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "rgba(255,255,255,0.7)",
+          "circle-color": [
+            "match",
+            ["get", "status"],
+            "ok",  "#2bd576",
+            "warn","#ffb020",
+            "bad", "#ff4d5e",
+            "#4aa3ff"
+          ],
+          "circle-opacity": 0.95
+        }
+      });
+
+      map.addLayer({
+        id: "station-labels",
+        type: "symbol",
+        source: "stations",
+        filter: ["!", ["has", "point_count"]],
+        layout: {
+          "text-field": ["get", "name"],
+          "text-size": 12,
+          "text-offset": [0, 1.2],
+          "text-anchor": "top"
+        },
+        paint: {
+          "text-color": "rgba(231,238,252,0.9)",
+          "text-halo-color": "rgba(11,18,32,0.9)",
+          "text-halo-width": 1
+        }
+      });
+
+      map.on("click", "clusters", (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: ["clusters"] });
+        const clusterId = features[0].properties.cluster_id;
+        map.getSource("stations").getClusterExpansionZoom(clusterId, (err, zoom) => {
+          if (err) return;
+          map.easeTo({ center: features[0].geometry.coordinates, zoom });
+        });
+      });
+
+      map.on("click", "unclustered-stations", (e) => {
+        const f = e.features && e.features[0];
+        if (!f) return;
+        openDrawer(f.properties.deviceId);
+      });
+
+      map.on("mouseenter", "clusters", () => map.getCanvas().style.cursor = "pointer");
+      map.on("mouseleave", "clusters", () => map.getCanvas().style.cursor = "");
+      map.on("mouseenter", "unclustered-stations", () => map.getCanvas().style.cursor = "pointer");
+      map.on("mouseleave", "unclustered-stations", () => map.getCanvas().style.cursor = "");
+    });
+  }
+
+  function buildStationsGeoJSON(){
+    const features = STATIONS.map(st => {
+      const latest = latestByDevice[st.deviceId];
+      const mins = latest ? ageMinutes(latest.tsISO) : Infinity;
+      const s = statusFromAge(mins);
+      return {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [st.lng, st.lat] },
+        properties: {
+          deviceId: st.deviceId,
+          name: st.name,
+          status: s.cls,
+          lastSeen: latest ? latest.tsISO : null
+        }
+      };
+    });
+    return { type: "FeatureCollection", features };
+  }
+
+  function refreshStationsSource(){
+    if (!map) return;
+    const src = map.getSource("stations");
+    if (src) src.setData(buildStationsGeoJSON());
+  }
+
+  // ===============================
+  // FIREBASE DATA FETCH
+  // ===============================
+  function fetchLatestFromFirebase(deviceId){
+    return new Promise((resolve, reject) => {
+      const monthKey = getCurrentMonthKey();
+      const ref = database.ref("berries/" + deviceId + "/" + monthKey);
+
+      ref.orderByKey().limitToLast(1).once("value", function(snap){
+        const val = snap.val();
+        if (!val) {
+          resolve({ updated: false, tsISO: latestByDevice[deviceId]?.tsISO || null });
+          return;
+        }
+
+        const tsKey = Object.keys(val)[0];
+        const item = val[tsKey];
+
+        // Extract timestamp from serverTimestamp (ISO string) or build from tsKey
+        let tsISO = null;
+        if (item.serverTimestamp) {
+          tsISO = new Date(item.serverTimestamp).toISOString();
+        } else if (tsKey && tsKey.length >= 13) {
+          // tsKey format: DDMMYYYY_HHMM
+          const dd = tsKey.substring(0, 2);
+          const mm = tsKey.substring(2, 4);
+          const yyyy = tsKey.substring(4, 8);
+          const hh = tsKey.substring(9, 11) || "00";
+          const mi = tsKey.substring(11, 13) || "00";
+          tsISO = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mi}:00`).toISOString();
+        }
+
+        latestByDevice[deviceId] = { tsISO, item };
+        resolve({ updated: true, tsISO });
+      }, function(err){
+        reject(err);
+      });
+    });
+  }
+
+  function evaluateAndAlert(deviceId){
+    const latest = latestByDevice[deviceId];
+    const mins = latest ? ageMinutes(latest.tsISO) : Infinity;
+    const s = statusFromAge(mins);
+
+    const prev = lastStatusByDevice[deviceId];
+    lastStatusByDevice[deviceId] = s.cls;
+
+    if (s.cls === "bad" && (prev !== "bad" || prev == null)){
+      const st = STATIONS.find(x => x.deviceId === deviceId);
+      const name = st ? st.name : deviceId;
+      const lastSeen = latest ? new Date(latest.tsISO).toLocaleString() : "unknown";
+      showAlert(`<strong>${name}</strong> is <strong>OFFLINE</strong>. Last data: ${lastSeen}.`);
+    }
+  }
+
+  async function refreshAllStations(){
+    const filter = deviceIdEl.value.trim();
+    const targets = filter ? STATIONS.filter(s => s.deviceId === filter) : STATIONS;
+
+    if (targets.length === 0){
+      setStatus("No station matches \"" + filter + "\"", false);
+      return;
+    }
+
+    try{
+      const results = await Promise.all(targets.map(st => fetchLatestFromFirebase(st.deviceId)));
+
+      refreshStationsSource();
+      renderStationList();
+      targets.forEach(st => evaluateAndAlert(st.deviceId));
+
+      const updatedCount = results.filter(r => r.updated).length;
+      const now = new Date();
+      setStatus("Updated " + updatedCount + "/" + targets.length + " stations\n" + now.toLocaleString() + "\nNext refresh in 10 min", true);
+
+      if (drawerDeviceId) renderDrawer(drawerDeviceId);
+
+    } catch(err){
+      console.error(err);
+      targets.forEach(st => evaluateAndAlert(st.deviceId));
+      refreshStationsSource();
+      renderStationList();
+      if (drawerDeviceId) renderDrawer(drawerDeviceId);
+      setStatus("Fetch failed: " + err.message, false);
+    }
+  }
+
+  // ===============================
+  // LIST + DRAWER
+  // ===============================
+  function renderStationList(){
+    stationListEl.innerHTML = "";
+
+    const filter = deviceIdEl.value.trim();
+    const list = filter ? STATIONS.filter(s => s.deviceId === filter) : STATIONS;
+
+    if (list.length === 0){
+      stationListEl.innerHTML = '<div style="padding:12px;color:var(--muted);">No stations match this filter.</div>';
+      return;
+    }
+
+    list.forEach(st => {
+      const latest = latestByDevice[st.deviceId];
+      const mins = latest ? ageMinutes(latest.tsISO) : Infinity;
+      const s = statusFromAge(mins);
+
+      const item = document.createElement("div");
+      item.className = "stationItem";
+      item.innerHTML = `
+        <div>
+          <div class="title">${st.name}</div>
+          <div class="meta">
+            <div><span style="color:var(--muted)">stationId:</span> ${st.deviceId}</div>
+            <div><span style="color:var(--muted)">last seen:</span> ${latest ? new Date(latest.tsISO).toLocaleString() : "\u2014"}</div>
+          </div>
+        </div>
+        <div class="pill"><span class="dot ${s.cls}"></span>${s.label}</div>
+      `;
+
+      item.addEventListener("click", () => {
+        map.flyTo({ center: [st.lng, st.lat], zoom: 14, speed: 0.9 });
+        openDrawer(st.deviceId);
+      });
+
+      stationListEl.appendChild(item);
+    });
+  }
+
+  function openDrawer(deviceId){
+    drawerDeviceId = deviceId;
+    drawer.classList.add("open");
+    drawer.setAttribute("aria-hidden", "false");
+    renderDrawer(deviceId);
+  }
+
+  function closeDrawer(){
+    drawerDeviceId = null;
+    drawer.classList.remove("open");
+    drawer.setAttribute("aria-hidden", "true");
+  }
+
+  function renderDrawer(deviceId){
+    const st = STATIONS.find(s => s.deviceId === deviceId);
+    const latest = latestByDevice[deviceId];
+
+    drawerTitle.textContent = st ? st.name : deviceId;
+
+    const mins = latest ? ageMinutes(latest.tsISO) : Infinity;
+    const s = statusFromAge(mins);
+    const lastSeen = latest ? new Date(latest.tsISO).toLocaleString() : "\u2014";
+    drawerSubtitle.textContent = "stationId: " + deviceId + " \u2022 " + s.label + " \u2022 last seen: " + lastSeen;
+
+    drawerGrid.innerHTML = "";
+
+    if (!latest || !latest.item){
+      drawerGrid.innerHTML = '<div style="grid-column:1 / -1; padding:10px; color:var(--muted); border:1px solid var(--border); border-radius:14px; background:rgba(255,255,255,0.03);">No telemetry loaded yet.</div>';
+      return;
+    }
+
+    const item = latest.item;
+
+    // Fields to skip in the drawer cards
+    const skipFields = ["stationId", "serverTimestamp", "time", "deviceId", "sortKey"];
+
+    const keys = Object.keys(item)
+      .filter(k => !skipFields.includes(k) && !k.toLowerCase().includes("timestamp"))
+      .filter(k => typeof item[k] === "number" || typeof item[k] === "boolean" || (!isNaN(parseFloat(item[k])) && item[k] !== null && item[k] !== ""))
+      .sort();
+
+    if (keys.length === 0){
+      drawerGrid.innerHTML = '<div style="grid-column:1 / -1; padding:10px; color:var(--muted); border:1px solid var(--border); border-radius:14px; background:rgba(255,255,255,0.03);">No sensor fields found.</div>';
+      return;
+    }
+
+    keys.forEach(k => {
+      const raw = item[k];
+      const card = document.createElement("div");
+      card.className = "card";
+
+      if (typeof raw === "boolean") {
+        card.innerHTML = `
+          <div class="k">${fmtFieldName(k)}</div>
+          <div class="v" style="color:${raw ? 'var(--ok)' : 'var(--muted)'}">${raw ? "Yes" : "No"}</div>
+          <div class="t">${new Date(latest.tsISO).toLocaleTimeString()}</div>
+        `;
+      } else {
+        const v = parseFloat(raw);
+        card.innerHTML = `
+          <div class="k">${fmtFieldName(k)}</div>
+          <div class="v">${Number.isFinite(v) ? v.toFixed(decimalsFor(k)) : "\u2014"}</div>
+          <div class="u">${unitFor(k)}</div>
+          <div class="t">${new Date(latest.tsISO).toLocaleTimeString()}</div>
+        `;
+      }
+      drawerGrid.appendChild(card);
+    });
+
+    btnFly.onclick = () => {
+      if (!st) return;
+      map.flyTo({ center: [st.lng, st.lat], zoom: 15, speed: 0.9 });
+    };
+
+    btnRoute.onclick = () => {
+      if (!st) return;
+      if (!userLocation){
+        alert("User location not available (browser denied).");
+        return;
+      }
+      const [flng, flat] = userLocation;
+      const url = "https://www.google.com/maps/dir/?api=1&origin=" + flat + "," + flng + "&destination=" + st.lat + "," + st.lng + "&travelmode=driving";
+      window.open(url, "_blank");
+    };
+  }
+
+  drawerClose.addEventListener("click", closeDrawer);
+
+  // ===============================
+  // BOOT
+  // ===============================
+  let booted = false;
+  let currentView = "gis"; // "gis" or "chart"
+  let chartData = []; // All fetched readings for chart view
+  let filteredChartData = []; // After applying filters
+
+  // ===============================
+  // VIEW TOGGLE
+  // ===============================
+  document.querySelectorAll(".viewBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const view = btn.dataset.view;
+      if (view === currentView) return;
+      currentView = view;
+
+      document.querySelectorAll(".viewBtn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+
+      const mapEl = document.getElementById("map");
+      const chartEl = document.getElementById("chartView");
+      const drawerEl = document.getElementById("drawer");
+
+      if (view === "gis") {
+        mapEl.classList.remove("hidden");
+        chartEl.classList.remove("active");
+        drawerEl.style.display = "";
+        if (map) map.resize();
+      } else {
+        mapEl.classList.add("hidden");
+        chartEl.classList.add("active");
+        drawerEl.style.display = "none";
+        closeDrawer();
+        loadChartData();
+      }
+    });
+  });
+
+  // ===============================
+  // CHART VIEW
+  // ===============================
+  function getMonthKeys(fromDate, toDate) {
+    const keys = [];
+    const d = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+    while (d <= toDate) {
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const yyyy = String(d.getFullYear());
+      keys.push(mm + yyyy);
+      d.setMonth(d.getMonth() + 1);
+    }
+    return keys;
+  }
+
+  async function fetchChartDataForStation(deviceId, fromDate, toDate) {
+    const monthKeys = getMonthKeys(fromDate, toDate);
+    const rows = [];
+
+    for (const mk of monthKeys) {
+      const ref = database.ref("berries/" + deviceId + "/" + mk);
+      const snap = await ref.once("value");
+      const val = snap.val();
+      if (!val) continue;
+
+      Object.keys(val).forEach(tsKey => {
+        if (tsKey === "control") return;
+        const item = val[tsKey];
+
+        let tsISO = null;
+        if (item.serverTimestamp) {
+          tsISO = new Date(item.serverTimestamp).toISOString();
+        } else if (tsKey && tsKey.length >= 13) {
+          const dd = tsKey.substring(0, 2);
+          const mm = tsKey.substring(2, 4);
+          const yyyy = tsKey.substring(4, 8);
+          const hh = tsKey.substring(9, 11) || "00";
+          const mi = tsKey.substring(11, 13) || "00";
+          tsISO = new Date(yyyy + "-" + mm + "-" + dd + "T" + hh + ":" + mi + ":00").toISOString();
+        }
+
+        if (tsISO) {
+          const ts = new Date(tsISO);
+          if (ts >= fromDate && ts <= toDate) {
+            rows.push({ deviceId, tsISO, tsKey, ...item });
+          }
+        }
+      });
+    }
+
+    return rows;
+  }
+
+  async function loadChartData() {
+    const fromEl = document.getElementById("filterDateFrom");
+    const toEl = document.getElementById("filterDateTo");
+    const daysEl = document.getElementById("filterDays");
+
+    // Default: today
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+
+    if (!toEl.value) toEl.value = todayStr;
+    if (!fromEl.value) {
+      const days = parseInt(daysEl.value) || 0;
+      const from = new Date(today);
+      from.setDate(from.getDate() - days);
+      fromEl.value = from.toISOString().split("T")[0];
+    }
+
+    const fromDate = new Date(fromEl.value + "T00:00:00");
+    const toDate = new Date(toEl.value + "T23:59:59");
+
+    const filter = deviceIdEl.value.trim();
+    const targets = filter ? STATIONS.filter(s => s.deviceId === filter) : STATIONS;
+
+    const chartBody = document.getElementById("chartBody");
+    chartBody.innerHTML = '<tr><td colspan="20" style="padding:20px;color:var(--muted);">טוען נתונים...</td></tr>';
+
+    try {
+      const allRows = [];
+      for (const st of targets) {
+        const rows = await fetchChartDataForStation(st.deviceId, fromDate, toDate);
+        allRows.push(...rows);
+      }
+
+      // Sort by timestamp descending
+      allRows.sort((a, b) => new Date(b.tsISO) - new Date(a.tsISO));
+      chartData = allRows;
+
+      // Build station checkboxes
+      buildStationCheckboxes();
+
+      // Apply filters
+      applyChartFilters();
+    } catch (err) {
+      console.error(err);
+      chartBody.innerHTML = '<tr><td colspan="20" style="padding:20px;color:var(--bad);">Error loading data: ' + err.message + '</td></tr>';
+    }
+  }
+
+  function buildStationCheckboxes() {
+    const container = document.getElementById("stationCheckboxes");
+    const uniqueIds = [...new Set(chartData.map(r => r.stationId || r.deviceId))];
+    container.innerHTML = "";
+    uniqueIds.forEach(id => {
+      const lbl = document.createElement("label");
+      lbl.innerHTML = '<input type="checkbox" value="' + id + '" checked /> ' + id;
+      container.appendChild(lbl);
+    });
+  }
+
+  function applyChartFilters() {
+    // Get checked stations
+    const checked = [...document.querySelectorAll("#stationCheckboxes input:checked")].map(cb => cb.value);
+
+    if (checked.length === 0) {
+      filteredChartData = chartData;
+    } else {
+      filteredChartData = chartData.filter(r => checked.includes(r.stationId || r.deviceId));
+    }
+
+    renderChartTable();
+  }
+
+  function getEcCellClass(val) {
+    if (val === 0 || val === null || val === undefined) return "";
+    if (val < 3) return "cell-warn";   // cyan - low
+    if (val < 8) return "cell-ok";     // green - good
+    if (val < 20) return "cell-high";  // yellow - elevated
+    return "cell-bad";                  // red - high
+  }
+
+  function renderChartTable() {
+    const head = document.getElementById("chartHead");
+    const body = document.getElementById("chartBody");
+
+    if (filteredChartData.length === 0) {
+      head.innerHTML = "";
+      body.innerHTML = '<tr><td style="padding:20px;color:var(--muted);">אין נתונים להצגה</td></tr>';
+      return;
+    }
+
+    // Collect all numeric/boolean field names across all rows
+    const skipFields = ["stationId", "serverTimestamp", "time", "deviceId", "sortKey", "tsISO", "tsKey"];
+    const fieldSet = new Set();
+    filteredChartData.forEach(row => {
+      Object.keys(row).forEach(k => {
+        if (skipFields.includes(k)) return;
+        if (k.toLowerCase().includes("timestamp")) return;
+        const v = row[k];
+        if (typeof v === "number" || typeof v === "boolean" || (!isNaN(parseFloat(v)) && v !== null && v !== "")) {
+          fieldSet.add(k);
+        }
+      });
+    });
+
+    const fields = [...fieldSet].sort();
+
+    // Build header - RTL so rightmost column is first
+    let headerHtml = "<tr>";
+    headerHtml += "<th>תאריך</th>";
+    headerHtml += "<th>נקודת דגימה</th>";
+    headerHtml += "<th>שעה</th>";
+    fields.forEach(f => {
+      headerHtml += "<th>" + fmtFieldName(f) + (unitFor(f) ? "<br>(" + unitFor(f) + ")" : "") + "</th>";
+    });
+    headerHtml += "</tr>";
+    head.innerHTML = headerHtml;
+
+    // Build rows
+    let bodyHtml = "";
+    filteredChartData.forEach(row => {
+      bodyHtml += "<tr>";
+
+      const ts = new Date(row.tsISO);
+      const dateStr = ts.toLocaleDateString("he-IL");
+      const timeStr = ts.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+      const stationId = row.stationId || row.deviceId;
+
+      bodyHtml += "<td>" + dateStr + "</td>";
+      bodyHtml += "<td>" + stationId + "</td>";
+      bodyHtml += "<td>" + timeStr + "</td>";
+
+      fields.forEach(f => {
+        const raw = row[f];
+        let val = "";
+        let cls = "";
+
+        if (raw === undefined || raw === null) {
+          val = "0";
+        } else if (typeof raw === "boolean") {
+          val = raw ? "Yes" : "No";
+        } else {
+          const num = parseFloat(raw);
+          if (Number.isFinite(num)) {
+            val = num.toFixed(decimalsFor(f));
+            // Color-code EC fields
+            if (f.toLowerCase().includes("ec")) {
+              cls = getEcCellClass(num);
+            }
+          } else {
+            val = String(raw);
+          }
+        }
+
+        bodyHtml += '<td class="' + cls + '">' + val + "</td>";
+      });
+
+      bodyHtml += "</tr>";
+    });
+
+    body.innerHTML = bodyHtml;
+  }
+
+  // Filter button handlers
+  document.getElementById("btnFilterDate").addEventListener("click", () => {
+    const daysEl = document.getElementById("filterDays");
+    const days = parseInt(daysEl.value) || 0;
+    if (days > 0) {
+      const today = new Date();
+      const from = new Date(today);
+      from.setDate(from.getDate() - days);
+      document.getElementById("filterDateFrom").value = from.toISOString().split("T")[0];
+      document.getElementById("filterDateTo").value = today.toISOString().split("T")[0];
+    }
+    loadChartData();
+  });
+
+  document.getElementById("btnFilterStation").addEventListener("click", () => {
+    applyChartFilters();
+  });
+
+  // ===============================
+  // BOOT
+  // ===============================
+  async function boot(){
+    if (booted) return;
+    booted = true;
+
+    if (navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { userLocation = [pos.coords.longitude, pos.coords.latitude]; },
+        () => {},
+        { enableHighAccuracy: true, timeout: 4000 }
+      );
+    }
+
+    const center = [STATIONS[0].lng, STATIONS[0].lat];
+    initMap(center);
+    renderStationList();
+
+    // Initial fetch
+    await refreshAllStations();
+
+    // Poll every 10 minutes
+    pollTimer = setInterval(refreshAllStations, POLL_INTERVAL_MS);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="he">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ניהול משתמשים — Plants Tracker</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <div class="app-layout">
+    <nav class="sidebar" id="sidebar"></nav>
+    <main class="main-content">
+      <button class="hamburger-btn" id="hamburgerBtn"><span></span><span></span><span></span></button>
+      <div class="container">
+
+        <div class="page-header">
+          <h1 class="page-title">ניהול משתמשים</h1>
+          <div id="addArea"></div>
+        </div>
+
+        <div class="card">
+          <div id="tableWrap"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Add / Edit Modal -->
+  <div class="modal-overlay" id="modal" style="display:none;">
+    <div class="modal-card">
+      <h3 id="modalTitle" style="margin:0 0 16px;color:var(--text);font-weight:800;"></h3>
+      <div class="form-grid" style="grid-template-columns:1fr;">
+        <div class="field">
+          <label>שם</label>
+          <input id="fName" placeholder="שם מלא" />
+        </div>
+        <div class="field">
+          <label>טלפון</label>
+          <input id="fPhone" type="tel" placeholder="050-1234567" dir="ltr" />
+        </div>
+        <div class="field">
+          <label>מספר סידורי</label>
+          <input id="fSerial" placeholder="לדוגמה: 9555" dir="ltr" />
+        </div>
+        <div class="field">
+          <label>תפקיד</label>
+          <select id="fRole">
+            <option value="worker">עובד</option>
+            <option value="contractor">קבלן</option>
+            <option value="manager">מנהל</option>
+          </select>
+        </div>
+      </div>
+      <div style="color:var(--bad);font-size:14px;min-height:20px;margin-top:8px;" id="modalError"></div>
+      <div class="row" style="justify-content:flex-start;margin-top:14px;">
+        <button class="btn-primary" id="modalSave">שמור</button>
+        <button class="btn" id="modalCancel">ביטול</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireAuth } from "./guard.mjs";
+    import { initSidebar } from "./sidebar.mjs";
+    import { getAllPhones, registerPhone, updatePhone, deletePhone, phoneKey, normalizePhone } from "./auth.mjs";
+
+    const { user, profile } = await requireAuth(["manager"]);
+    initSidebar(profile);
+
+    const isManager = profile.role === "manager";
+    const roleLabels = { manager: "מנהל", worker: "עובד", contractor: "קבלן" };
+
+    // Show "add" button for managers
+    if (isManager) {
+      document.getElementById("addArea").innerHTML =
+        `<button class="btn-primary" id="addBtn">+ הוסף משתמש</button>`;
+      document.getElementById("addBtn").addEventListener("click", () => openModal("add"));
+    }
+
+    // ── Data ────────────────────────────────────
+
+    let workers = [];
+
+    async function loadWorkers() {
+      workers = await getAllPhones();
+      render();
+    }
+
+    function render() {
+      const wrap = document.getElementById("tableWrap");
+
+      if (!workers.length) {
+        wrap.innerHTML = `<div class="empty-state">אין משתמשים רשומים</div>`;
+        return;
+      }
+
+      let html = `
+        <table class="crm">
+          <thead>
+            <tr>
+              <th>שם</th>
+              <th>מס׳ סידורי</th>
+              <th>טלפון</th>
+              <th>תפקיד</th>
+              ${isManager ? "<th>פעולות</th>" : ""}
+            </tr>
+          </thead>
+          <tbody>`;
+
+      for (const w of workers) {
+        html += `<tr>
+          <td>${esc(w.name)}</td>
+          <td dir="ltr" style="text-align:right;">${esc(w.serialNumber || "")}</td>
+          <td dir="ltr" style="text-align:right;">${esc(w.phone || "")}</td>
+          <td>${roleLabels[w.role] || w.role}</td>`;
+
+        if (isManager) {
+          html += `<td style="white-space:nowrap;">
+            <button class="action-btn" data-key="${w.key}" data-action="edit">עריכה</button>
+            <button class="action-btn" data-key="${w.key}" data-action="delete" style="color:var(--bad);">מחיקה</button>
+          </td>`;
+        }
+        html += `</tr>`;
+      }
+
+      html += `</tbody></table>`;
+      wrap.innerHTML = html;
+
+      // Wire action buttons
+      wrap.querySelectorAll("[data-action]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const key = btn.dataset.key;
+          if (btn.dataset.action === "edit") openModal("edit", key);
+          else if (btn.dataset.action === "delete") handleDelete(key);
+        });
+      });
+    }
+
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    // ── Modal ───────────────────────────────────
+
+    const modal      = document.getElementById("modal");
+    const modalTitle  = document.getElementById("modalTitle");
+    const modalError  = document.getElementById("modalError");
+    const fName       = document.getElementById("fName");
+    const fPhone      = document.getElementById("fPhone");
+    const fSerial     = document.getElementById("fSerial");
+    const fRole       = document.getElementById("fRole");
+
+    let editingKey = null;
+
+    function openModal(mode, key) {
+      editingKey = key || null;
+      modalError.textContent = "";
+
+      if (mode === "add") {
+        modalTitle.textContent = "הוספת משתמש";
+        fName.value = "";
+        fPhone.value = "";
+        fSerial.value = "";
+        fPhone.readOnly = false;
+        fRole.value = "worker";
+      } else {
+        const w = workers.find(x => x.key === key);
+        if (!w) return;
+        modalTitle.textContent = "עריכת משתמש";
+        fName.value = w.name || "";
+        fPhone.value = w.phone || "";
+        fSerial.value = w.serialNumber || "";
+        fPhone.readOnly = true;
+        fRole.value = w.role || "worker";
+      }
+
+      modal.style.display = "flex";
+    }
+
+    function closeModal() {
+      modal.style.display = "none";
+      editingKey = null;
+    }
+
+    document.getElementById("modalCancel").addEventListener("click", closeModal);
+
+    document.getElementById("modalSave").addEventListener("click", async () => {
+      modalError.textContent = "";
+      const name  = fName.value.trim();
+      const phone = fPhone.value.trim();
+      const serialNumber = fSerial.value.trim();
+      const role  = fRole.value;
+
+      if (!name) { modalError.textContent = "נא למלא שם"; return; }
+      if (!phone) { modalError.textContent = "נא למלא מספר טלפון"; return; }
+
+      // Validate phone format
+      const normalized = normalizePhone(phone);
+      if (!/^\+\d{10,15}$/.test(normalized)) {
+        modalError.textContent = "מספר טלפון לא תקין";
+        return;
+      }
+
+      const saveBtn = document.getElementById("modalSave");
+      saveBtn.disabled = true;
+      saveBtn.textContent = "שומר...";
+
+      try {
+        if (editingKey) {
+          await updatePhone(editingKey, { name, role, serialNumber });
+        } else {
+          // Check if phone already registered
+          const key = phoneKey(phone);
+          const existing = workers.find(w => w.key === key);
+          if (existing) {
+            modalError.textContent = "מספר טלפון כבר רשום במערכת";
+            return;
+          }
+          await registerPhone(phone, { name, role, serialNumber });
+        }
+        closeModal();
+        await loadWorkers();
+      } catch (e) {
+        modalError.textContent = "שגיאה: " + (e.message || e);
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "שמור";
+      }
+    });
+
+    // ── Delete ──────────────────────────────────
+
+    async function handleDelete(key) {
+      const w = workers.find(x => x.key === key);
+      if (!w) return;
+
+      // Prevent deleting own phone
+      const currentPhone = profile.phone;
+      if (currentPhone && phoneKey(currentPhone) === key) {
+        alert("לא ניתן למחוק את עצמך");
+        return;
+      }
+
+      if (!confirm(`למחוק את ${w.name || w.phone}?`)) return;
+
+      try {
+        await deletePhone(key);
+        await loadWorkers();
+      } catch (e) {
+        alert("שגיאה במחיקה: " + (e.message || e));
+      }
+    }
+
+    // ── Init ────────────────────────────────────
+    await loadWorkers();
+  </script>
+</body>
+</html>
