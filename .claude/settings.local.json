@@ -3,7 +3,10 @@
     "allow": [
       "Bash(npm install:*)",
       "Bash(node -c index.js)",
-      "Bash(node -e \"require\\(''mssql''\\)\")"
+      "Bash(node -e \"require\\(''mssql''\\)\")",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI:/c/Program Files \\(x86\\)/GitHub CLI\")",
+      "Bash(gh repo:*)",
+      "Skill(update-config)"
     ]
   }
 }
