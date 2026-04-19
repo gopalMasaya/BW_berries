@@ -367,12 +367,13 @@ galconApp.get("/irrigations", async (req, res) => {
         waterOutL: waterOutMl / 1000,
         drainPct: waterInMl > 0 ? (waterOutMl / waterInMl) * 100 : null,
       };
-    }).reverse();
+    }).filter((e) => e.durationMin >= minDurationMin).reverse();
 
     return res.json({
       ok: true,
       mlPerPulse: ML_PER_PULSE,
       tailMin,
+      minDurationMin,
       events: eventsOut,
     });
   } catch (err) {
