@@ -76,62 +76,12 @@
           <div id="statsRow" class="stats-row"></div>
 
           <div class="tabs">
-            <button class="tab-btn active" data-tab="irrigations">Irrigations</button>
-            <button class="tab-btn" data-tab="valves">Valve Events</button>
+            <button class="tab-btn active" data-tab="valves">Valve Events</button>
             <button class="tab-btn" data-tab="sensors">Sensor Data</button>
           </div>
 
-          <!-- IRRIGATIONS TAB -->
-          <div class="tab-panel active" id="tab-irrigations">
-            <div class="card">
-              <div class="filters">
-                <div class="field">
-                  <label>Zone</label>
-                  <select id="iGroup"></select>
-                </div>
-                <div class="field">
-                  <label>From</label>
-                  <input type="date" id="iFrom" />
-                </div>
-                <div class="field">
-                  <label>To</label>
-                  <input type="date" id="iTo" />
-                </div>
-                <div class="field" style="min-width:110px;">
-                  <label>Tail (min)</label>
-                  <input type="number" id="iTail" min="1" step="1" value="30" />
-                </div>
-                <div class="field" style="min-width:110px;">
-                  <label>Min dur (min)</label>
-                  <input type="number" id="iMinDur" min="0" step="1" value="5" />
-                </div>
-                <button class="btn-primary" id="iLoadBtn" style="height:38px;align-self:flex-end;">Load</button>
-              </div>
-              <div id="irrigSummary" style="font-size:13px;color:var(--muted);margin-bottom:8px;"></div>
-              <div class="valve-table-wrap">
-                <table class="crm" id="irrigTable">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Start</th>
-                      <th>End</th>
-                      <th>Duration (min)</th>
-                      <th>Pulses In</th>
-                      <th>Pulses Out</th>
-                      <th>Water In (L)</th>
-                      <th>Water Out (L)</th>
-                      <th>Drain %</th>
-                    </tr>
-                  </thead>
-                  <tbody id="irrigBody"></tbody>
-                </table>
-              </div>
-              <div id="irrigEmpty" class="no-data" style="display:none;">No irrigations detected for this period</div>
-            </div>
-          </div>
-
           <!-- VALVE EVENTS TAB -->
-          <div class="tab-panel" id="tab-valves">
+          <div class="tab-panel active" id="tab-valves">
             <div class="card">
               <div class="filters">
                 <div class="field">
