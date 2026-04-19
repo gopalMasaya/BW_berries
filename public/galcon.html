@@ -270,20 +270,22 @@
           vCtrl.appendChild(opt);
         });
 
-        // Populate zone dropdown
+        // Populate zone dropdowns
         const sGroup = document.getElementById("sGroup");
+        const iGroup = document.getElementById("iGroup");
         sensorGroups.forEach(g => {
-          const opt = document.createElement("option");
-          opt.value = g;
-          opt.textContent = g;
-          sGroup.appendChild(opt);
+          const optS = document.createElement("option");
+          optS.value = g; optS.textContent = g;
+          sGroup.appendChild(optS);
+          const optI = document.createElement("option");
+          optI.value = g; optI.textContent = g;
+          iGroup.appendChild(optI);
         });
 
         document.getElementById("loadingMsg").style.display = "none";
         document.getElementById("mainContent").style.display = "";
 
-        // Auto-load valves
-        loadValves();
+        if (sensorGroups.length) loadIrrigations();
       } catch (err) {
         document.getElementById("loadingMsg").textContent = "Error loading: " + err.message;
         console.error(err);
