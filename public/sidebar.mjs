@@ -3,10 +3,11 @@
 import { logout } from "./auth.mjs";
 
 const NAV_ITEMS = [
-  { label: "מפת תחנות",    icon: "🗺️", href: "index.html",    roles: ["manager","worker","contractor"] },
-  { label: "גלקון",         icon: "💧", href: "galcon.html",   roles: ["manager"] },
-  { label: "ניהול משתמשים", icon: "👥", href: "workers.html",  roles: ["manager"] },
-  { label: "הגדרות השקיה",  icon: "⚙️", href: "settings.html", roles: ["manager"] },
+  { label: "מפת תחנות",    icon: "🗺️", href: "index.html",        roles: ["manager","worker","contractor"] },
+  { label: "השקיות",         icon: "🚿", href: "irrigations.html", roles: ["manager"] },
+  { label: "גלקון",         icon: "💧", href: "galcon.html",       roles: ["manager"] },
+  { label: "ניהול משתמשים", icon: "👥", href: "workers.html",      roles: ["manager"] },
+  { label: "הגדרות השקיה",  icon: "⚙️", href: "settings.html",     roles: ["manager"] },
 ];
 
 const ROLE_LABELS = { manager: "מנהל", worker: "עובד", contractor: "קבלן" };
