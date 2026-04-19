@@ -282,6 +282,7 @@ galconApp.get("/irrigations", async (req, res) => {
     // pulse are attributed to that event. The controller naturally shuts off
     // ~25–30 min after irrigation ends, so 30 covers both roles.
     const tailMin = Math.max(1, parseInt(req.query.tailMin, 10) || 30);
+    const minDurationMin = Math.max(0, parseFloat(req.query.minDurationMin) || 5);
 
     if (!group) {
       return res.status(400).json({ok: false, error: "group parameter required"});
