@@ -497,6 +497,8 @@
     document.getElementById("sLoadBtn").addEventListener("click", loadSensors);
 
     // ── Init ──
+    document.getElementById("iFrom").value = daysAgo(7);
+    document.getElementById("iTo").value = todayStr();
     document.getElementById("vFrom").value = daysAgo(7);
     document.getElementById("vTo").value = todayStr();
     document.getElementById("sFrom").value = daysAgo(2);
