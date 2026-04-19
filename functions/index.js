@@ -342,8 +342,14 @@ galconApp.get("/irrigations", async (req, res) => {
     const eventsOut = events.map((e) => {
       const windowEnd = new Date(e.endTime.getTime() + gapMs);
       let pulsesOut = 0;
+      let firstDrain = null;
+      let lastDrain = null;
       for (const d of drainReadings) {
-        if (d.time >= e.startTime && d.time <= windowEnd) pulsesOut += d.pulses;
+        if (d.time >= e.startTime && d.time <= windowEnd) {
+          pulsesOut += d.pulses;
+          if (!firstDrain) firstDrain = d.time;
+          lastDrain = d.time;
+        }
       }
       const waterInMl = e.pulsesIn * ML_PER_PULSE;
       const waterOutMl = pulsesOut * ML_PER_PULSE;
@@ -351,6 +357,8 @@ galconApp.get("/irrigations", async (req, res) => {
       return {
         startTime: e.startTime,
         endTime: e.endTime,
+        firstDrainTime: firstDrain,
+        lastDrainTime: lastDrain,
         durationMin,
         pulsesIn: e.pulsesIn,
         pulsesOut,
