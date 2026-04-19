@@ -268,4 +268,106 @@ galconApp.get("/sensors", async (req, res) => {
   }
 });
 
+// Each flow-sensor pulse corresponds to 15 ml of water.
+const ML_PER_PULSE = 15;
+
+galconApp.get("/irrigations", async (req, res) => {
+  try {
+    const pool = await getGalconPool();
+    const group = req.query.group || "";
+    const from = req.query.from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const to = req.query.to || new Date().toISOString().slice(0, 10);
+    // Gap between irrigation pulses that marks the end of an event. Also the
+    // drainage tail: drain pulses within this window after the last irrigation
+    // pulse are attributed to that event. The controller naturally shuts off
+    // ~25–30 min after irrigation ends, so 30 covers both roles.
+    const tailMin = Math.max(1, parseInt(req.query.tailMin, 10) || 30);
+
+    if (!group) {
+      return res.status(400).json({ok: false, error: "group parameter required"});
+    }
+
+    const request = pool.request();
+    request.input("group", sql.NVarChar, group);
+    request.input("from", sql.DateTime, new Date(from));
+    request.input("to", sql.DateTime, new Date(to + "T23:59:59"));
+
+    const irrigResult = await request.query(`
+      SELECT v.Time, v.Value
+      FROM dbo.PCS_Value v
+      JOIN dbo.PCS_ID p ON v.PcsId = p.PcsId
+      WHERE p.Sensor_Group_Name = @group
+        AND p.Sensor_Label = 'Irrigation'
+        AND v.Time >= @from AND v.Time <= @to
+        AND v.Value > 0
+      ORDER BY v.Time
+    `);
+
+    const drainResult = await request.query(`
+      SELECT v.Time, v.Value
+      FROM dbo.PCS_Value_Drain_Percent v
+      JOIN dbo.PCS_ID p ON v.Drain_PcsId = p.PcsId
+      WHERE p.Sensor_Group_Name = @group
+        AND p.Sensor_Label = 'Drain'
+        AND v.Time >= @from AND v.Time <= @to
+        AND v.Value > 0
+      ORDER BY v.Time
+    `);
+
+    const gapMs = tailMin * 60 * 1000;
+
+    const events = [];
+    let current = null;
+    for (const row of irrigResult.recordset) {
+      const t = new Date(row.Time);
+      const pulses = Number(row.Value) || 0;
+      if (!current || (t.getTime() - current.endTime.getTime()) > gapMs) {
+        if (current) events.push(current);
+        current = {startTime: t, endTime: t, pulsesIn: pulses};
+      } else {
+        current.endTime = t;
+        current.pulsesIn += pulses;
+      }
+    }
+    if (current) events.push(current);
+
+    // Walk drain readings once; for each event sum pulses in [startTime, endTime + tailMin].
+    const drainReadings = drainResult.recordset.map((r) => ({
+      time: new Date(r.Time),
+      pulses: Number(r.Value) || 0,
+    }));
+
+    const eventsOut = events.map((e) => {
+      const windowEnd = new Date(e.endTime.getTime() + gapMs);
+      let pulsesOut = 0;
+      for (const d of drainReadings) {
+        if (d.time >= e.startTime && d.time <= windowEnd) pulsesOut += d.pulses;
+      }
+      const waterInMl = e.pulsesIn * ML_PER_PULSE;
+      const waterOutMl = pulsesOut * ML_PER_PULSE;
+      const durationMin = (e.endTime.getTime() - e.startTime.getTime()) / 60000;
+      return {
+        startTime: e.startTime,
+        endTime: e.endTime,
+        durationMin,
+        pulsesIn: e.pulsesIn,
+        pulsesOut,
+        waterInL: waterInMl / 1000,
+        waterOutL: waterOutMl / 1000,
+        drainPct: waterInMl > 0 ? (waterOutMl / waterInMl) * 100 : null,
+      };
+    }).reverse();
+
+    return res.json({
+      ok: true,
+      mlPerPulse: ML_PER_PULSE,
+      tailMin,
+      events: eventsOut,
+    });
+  } catch (err) {
+    logger.error("galcon irrigations failed", err);
+    return res.status(500).json({ok: false, error: "server error"});
+  }
+});
+
 exports.galcon = onRequest({cors: true, timeoutSeconds: 60}, galconApp);
