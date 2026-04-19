@@ -300,65 +300,6 @@
 
     document.getElementById("vLoadBtn").addEventListener("click", loadValves);
 
-    // ── Irrigations (aggregated per event) ──
-    async function loadIrrigations() {
-      const group = document.getElementById("iGroup").value;
-      const from = document.getElementById("iFrom").value;
-      const to = document.getElementById("iTo").value;
-      const tailMin = document.getElementById("iTail").value || 30;
-      const minDurationMin = document.getElementById("iMinDur").value || 5;
-
-      if (!group) return;
-
-      const btn = document.getElementById("iLoadBtn");
-      btn.disabled = true; btn.textContent = "Loading...";
-
-      try {
-        const data = await galconFetch("/irrigations", { group, from, to, tailMin, minDurationMin });
-        console.log("irrigations response:", data);
-        if (data.events && data.events[0]) console.log("first event:", data.events[0]);
-        const events = data.events || [];
-        const tbody = document.getElementById("irrigBody");
-        const empty = document.getElementById("irrigEmpty");
-        const summary = document.getElementById("irrigSummary");
-
-        if (events.length === 0) {
-          tbody.innerHTML = "";
-          empty.style.display = "";
-          summary.textContent = "0 irrigations";
-          return;
-        }
-        empty.style.display = "none";
-
-        let totalIn = 0, totalOut = 0;
-        for (const e of events) { totalIn += e.waterInL; totalOut += e.waterOutL; }
-        const avgDrain = totalIn > 0 ? (totalOut / totalIn) * 100 : 0;
-        summary.textContent =
-          `${events.length} irrigations · in ${totalIn.toFixed(1)} L · out ${totalOut.toFixed(1)} L · drain ${avgDrain.toFixed(1)}%`;
-
-        tbody.innerHTML = events.map(e => `
-          <tr>
-            <td>${fmtDate(e.startTime)}</td>
-            <td>${fmtTime(e.startTime)}</td>
-            <td>${fmtTime(e.endTime)}</td>
-            <td>${fmtNum(e.durationMin)}</td>
-            <td>${fmtNum(e.pulsesIn, 2)}</td>
-            <td>${fmtNum(e.pulsesOut, 2)}</td>
-            <td>${fmtNum(e.waterInL, 3)}</td>
-            <td>${fmtNum(e.waterOutL, 3)}</td>
-            <td>${e.drainPct == null ? "—" : fmtNum(e.drainPct)}</td>
-          </tr>
-        `).join("");
-      } catch (err) {
-        console.error("irrigations load error", err);
-        document.getElementById("irrigSummary").textContent = "Error: " + err.message;
-      } finally {
-        btn.disabled = false; btn.textContent = "Load";
-      }
-    }
-
-    document.getElementById("iLoadBtn").addEventListener("click", loadIrrigations);
-
     // ── Sensor data ──
     async function loadSensors() {
       const group = document.getElementById("sGroup").value;
