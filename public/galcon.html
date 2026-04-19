@@ -365,6 +365,8 @@
 
       try {
         const data = await galconFetch("/irrigations", { group, from, to, tailMin, minDurationMin });
+        console.log("irrigations response:", data);
+        if (data.events && data.events[0]) console.log("first event:", data.events[0]);
         const events = data.events || [];
         const tbody = document.getElementById("irrigBody");
         const empty = document.getElementById("irrigEmpty");
