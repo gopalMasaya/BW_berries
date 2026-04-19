@@ -356,6 +356,7 @@
       const from = document.getElementById("iFrom").value;
       const to = document.getElementById("iTo").value;
       const tailMin = document.getElementById("iTail").value || 30;
+      const minDurationMin = document.getElementById("iMinDur").value || 5;
 
       if (!group) return;
 
@@ -363,7 +364,7 @@
       btn.disabled = true; btn.textContent = "Loading...";
 
       try {
-        const data = await galconFetch("/irrigations", { group, from, to, tailMin });
+        const data = await galconFetch("/irrigations", { group, from, to, tailMin, minDurationMin });
         const events = data.events || [];
         const tbody = document.getElementById("irrigBody");
         const empty = document.getElementById("irrigEmpty");
