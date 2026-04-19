@@ -7,7 +7,8 @@
       "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI:/c/Program Files \\(x86\\)/GitHub CLI\")",
       "Bash(gh repo:*)",
       "Skill(update-config)",
-      "Bash(jq:*)"
+      "Bash(jq:*)",
+      "Bash(firebase deploy *)"
     ]
   },
   "hooks": {

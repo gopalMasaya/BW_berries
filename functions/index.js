@@ -303,10 +303,12 @@ galconApp.get("/irrigations", async (req, res) => {
       ORDER BY v.Time
     `);
 
+    // Drain pulses live in PCS_Value under Sensor_Label='Drain'.
+    // PCS_Value_Drain_Percent stores a derived drain percentage, not raw pulses.
     const drainResult = await request.query(`
       SELECT v.Time, v.Value
-      FROM dbo.PCS_Value_Drain_Percent v
-      JOIN dbo.PCS_ID p ON v.Drain_PcsId = p.PcsId
+      FROM dbo.PCS_Value v
+      JOIN dbo.PCS_ID p ON v.PcsId = p.PcsId
       WHERE p.Sensor_Group_Name = @group
         AND p.Sensor_Label = 'Drain'
         AND v.Time >= @from AND v.Time <= @to
