@@ -394,8 +394,10 @@
             <td>${fmtTime(e.startTime)}</td>
             <td>${fmtTime(e.endTime)}</td>
             <td>${fmtNum(e.durationMin)}</td>
-            <td>${fmtNum(e.waterInL, 2)}</td>
-            <td>${fmtNum(e.waterOutL, 2)}</td>
+            <td>${fmtNum(e.pulsesIn, 2)}</td>
+            <td>${fmtNum(e.pulsesOut, 2)}</td>
+            <td>${fmtNum(e.waterInL, 3)}</td>
+            <td>${fmtNum(e.waterOutL, 3)}</td>
             <td>${e.drainPct == null ? "—" : fmtNum(e.drainPct)}</td>
           </tr>
         `).join("");
