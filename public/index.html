@@ -1498,6 +1498,16 @@
 
   document.getElementById("graphPrev").addEventListener("click", prevGraph);
   document.getElementById("graphNext").addEventListener("click", nextGraph);
+
+  document.querySelectorAll(".graphTypeBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const type = btn.dataset.type;
+      if (type === graphChartType) return;
+      graphChartType = type;
+      document.querySelectorAll(".graphTypeBtn").forEach(b => b.classList.toggle("active", b.dataset.type === type));
+      renderGraph();
+    });
+  });
   document.getElementById("graphReload").addEventListener("click", () => {
     const daysEl = document.getElementById("graphDays");
     const days = parseInt(daysEl.value) || 0;
