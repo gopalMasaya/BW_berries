@@ -1027,19 +1027,27 @@
 
       const mapEl = document.getElementById("map");
       const chartEl = document.getElementById("chartView");
+      const graphEl = document.getElementById("graphView");
       const drawerEl = document.getElementById("drawer");
+
+      mapEl.classList.add("hidden");
+      chartEl.classList.remove("active");
+      graphEl.classList.remove("active");
 
       if (view === "gis") {
         mapEl.classList.remove("hidden");
-        chartEl.classList.remove("active");
         drawerEl.style.display = "";
         if (map) map.resize();
-      } else {
-        mapEl.classList.add("hidden");
+      } else if (view === "chart") {
         chartEl.classList.add("active");
         drawerEl.style.display = "none";
         closeDrawer();
         loadChartData();
+      } else if (view === "graphs") {
+        graphEl.classList.add("active");
+        drawerEl.style.display = "none";
+        closeDrawer();
+        loadGraphData();
       }
     });
   });
