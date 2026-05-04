@@ -1241,7 +1241,8 @@
     headerHtml += "<th>נקודת דגימה</th>";
     headerHtml += "<th>שעה</th>";
     fields.forEach(f => {
-      headerHtml += "<th>" + fmtFieldName(f) + (unitFor(f) ? "<br>(" + unitFor(f) + ")" : "") + "</th>";
+      const unit = (FIELD_CALIBRATION[f] && FIELD_CALIBRATION[f].unit) || unitFor(f);
+      headerHtml += "<th>" + fmtFieldName(f) + (unit ? "<br>(" + unit + ")" : "") + "</th>";
     });
     headerHtml += "</tr>";
     head.innerHTML = headerHtml;
