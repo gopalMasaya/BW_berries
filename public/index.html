@@ -1567,7 +1567,7 @@
       const key = resolveField(f.candidates);
       let data;
       if (isBar && key) {
-        const out = bucketize(graphData, key, NUM_BARS, aggType);
+        const out = bucketize(graphData, key, NUM_BARS, aggType, f.transform);
         labels = out.labels;
         data = out.values;
       } else {
@@ -1583,8 +1583,10 @@
           if (!key) return null;
           const v = r[key];
           if (v === undefined || v === null || v === "") return null;
-          const num = parseFloat(v);
-          return Number.isFinite(num) ? num : null;
+          let num = parseFloat(v);
+          if (!Number.isFinite(num)) return null;
+          if (f.transform) num = f.transform(num);
+          return num;
         });
       }
       const labelText = key && key !== f.label ? f.label + " (" + key + ")" : f.label;
