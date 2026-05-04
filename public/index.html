@@ -1437,6 +1437,105 @@
     return { labels, values };
   }
 
+  function renderCumulativeGraph(cfg) {
+    const toDateStr = document.getElementById("graphDateTo").value
+                   || new Date().toISOString().split("T")[0];
+    const dayStart = new Date(toDateStr + "T00:00:00");
+    const dayEnd   = new Date(toDateStr + "T23:59:59");
+
+    const dayRows = graphData
+      .filter(r => {
+        const t = new Date(r.tsISO);
+        return t >= dayStart && t <= dayEnd;
+      })
+      .sort((a, b) => new Date(a.tsISO) - new Date(b.tsISO));
+
+    const hourOf = (d) => d.getHours() + d.getMinutes()/60 + d.getSeconds()/3600;
+
+    const datasets = cfg.fields.map(f => {
+      const key = resolveField(f.candidates);
+      const points = [{ x: 0, y: 0 }];
+      let cum = 0;
+      if (key) {
+        dayRows.forEach(r => {
+          const v = parseFloat(r[key]);
+          if (Number.isFinite(v)) cum += v;
+          points.push({ x: hourOf(new Date(r.tsISO)), y: cum });
+        });
+      }
+      const labelText = key && key !== f.label ? f.label + " (" + key + ")" : f.label;
+      return {
+        label: labelText,
+        data: points,
+        borderColor: f.color,
+        backgroundColor: f.bg,
+        fill: true,
+        tension: 0,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+        borderWidth: 2,
+        spanGaps: false
+      };
+    });
+
+    const hasAnyData = datasets.some(ds => ds.data.length > 1);
+    const emptyEl = document.getElementById("graphEmpty");
+    if (!hasAnyData) {
+      emptyEl.innerHTML = "No data for <b>" + cfg.title + "</b> on " + toDateStr;
+    }
+    emptyEl.classList.toggle("show", !hasAnyData);
+
+    document.getElementById("graphTitle").textContent =
+      cfg.title + (cfg.unit ? " (" + cfg.unit + ")" : "")
+      + " — " + new Date(toDateStr).toLocaleDateString("he-IL");
+
+    const canvas = document.getElementById("graphCanvas");
+    if (graphChartInstance) { graphChartInstance.destroy(); graphChartInstance = null; }
+    if (!hasAnyData) return;
+
+    graphChartInstance = new Chart(canvas.getContext("2d"), {
+      type: "line",
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 250 },
+        plugins: {
+          legend: { position: "top", labels: { color: "#e7eefc", font: { size: 14 }, padding: 14 } },
+          tooltip: {
+            mode: "index", intersect: false,
+            backgroundColor: "rgba(15,26,46,0.95)", borderColor: "rgba(255,255,255,0.1)", borderWidth: 1,
+            titleColor: "#e7eefc", bodyColor: "#e7eefc",
+            callbacks: {
+              title: (items) => {
+                const x = items[0].parsed.x;
+                const h = Math.floor(x);
+                const m = Math.round((x - h) * 60);
+                return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: "linear", min: 0, max: 24,
+            ticks: {
+              stepSize: 1, color: "#a9b7d1",
+              callback: (v) => String(Math.floor(v)).padStart(2, "0") + ":00"
+            },
+            grid: { color: "rgba(255,255,255,0.05)" }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { color: "#a9b7d1" },
+            grid: { color: "rgba(255,255,255,0.05)" }
+          }
+        },
+        interaction: { mode: "nearest", axis: "x", intersect: false }
+      }
+    });
+  }
+
   function renderGraph() {
     const cfg = GRAPH_CONFIGS[currentGraphIndex];
     document.getElementById("graphTitle").textContent =
@@ -1447,6 +1546,14 @@
     document.querySelectorAll(".graphDot").forEach((dot, i) => {
       dot.classList.toggle("active", i === currentGraphIndex);
     });
+
+    // Hide line/bar toggle for cumulative graphs (always rendered as filled line)
+    const typeToggleEl = document.getElementById("graphTypeToggle");
+    typeToggleEl.style.display = cfg.type === "cumulative" ? "none" : "";
+
+    if (cfg.type === "cumulative") {
+      return renderCumulativeGraph(cfg);
+    }
 
     const isBar = graphChartType === "bar";
     const aggType = cfg.agg || "avg";
