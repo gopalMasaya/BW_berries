@@ -1398,6 +1398,36 @@
     }
   }
 
+  function bucketize(rows, fieldKey, numBuckets, aggType) {
+    if (rows.length === 0) return { labels: [], values: [] };
+    const t0 = new Date(rows[0].tsISO).getTime();
+    const tN = new Date(rows[rows.length - 1].tsISO).getTime();
+    const span = Math.max(tN - t0, 1);
+    const step = span / numBuckets;
+    const buckets = Array.from({ length: numBuckets }, () => ({ sum: 0, count: 0, t: 0 }));
+    rows.forEach(r => {
+      const t = new Date(r.tsISO).getTime();
+      const v = parseFloat(r[fieldKey]);
+      if (!Number.isFinite(v)) return;
+      let idx = Math.floor((t - t0) / step);
+      if (idx >= numBuckets) idx = numBuckets - 1;
+      const b = buckets[idx];
+      b.sum += v; b.count += 1;
+      if (!b.t) b.t = t0 + idx * step + step / 2;
+    });
+    const labels = buckets.map((b, i) => {
+      const t = b.t || (t0 + i * step + step / 2);
+      return new Date(t).toLocaleString("he-IL", {
+        month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"
+      });
+    });
+    const values = buckets.map(b => {
+      if (b.count === 0) return null;
+      return aggType === "sum" ? b.sum : b.sum / b.count;
+    });
+    return { labels, values };
+  }
+
   function renderGraph() {
     const cfg = GRAPH_CONFIGS[currentGraphIndex];
     document.getElementById("graphTitle").textContent =
@@ -1409,43 +1439,56 @@
       dot.classList.toggle("active", i === currentGraphIndex);
     });
 
-    const labels = graphData.map(r => {
-      const d = new Date(r.tsISO);
-      return d.toLocaleString("he-IL", {
-        month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"
-      });
-    });
+    const isBar = graphChartType === "bar";
+    const aggType = cfg.agg || "avg";
+    const NUM_BARS = 50;
 
+    let labels;
     const datasets = cfg.fields.map(f => {
       const key = resolveField(f.candidates);
-      const data = graphData.map(r => {
-        if (!key) return null;
-        const v = r[key];
-        if (v === undefined || v === null || v === "") return null;
-        const num = parseFloat(v);
-        return Number.isFinite(num) ? num : null;
-      });
+      let data;
+      if (isBar && key) {
+        const out = bucketize(graphData, key, NUM_BARS, aggType);
+        labels = out.labels;
+        data = out.values;
+      } else {
+        if (!labels) {
+          labels = graphData.map(r => {
+            const d = new Date(r.tsISO);
+            return d.toLocaleString("he-IL", {
+              month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"
+            });
+          });
+        }
+        data = graphData.map(r => {
+          if (!key) return null;
+          const v = r[key];
+          if (v === undefined || v === null || v === "") return null;
+          const num = parseFloat(v);
+          return Number.isFinite(num) ? num : null;
+        });
+      }
       const labelText = key && key !== f.label ? f.label + " (" + key + ")" : f.label;
       const base = {
         label: labelText,
         data,
         borderColor: f.color,
-        backgroundColor: graphChartType === "bar" ? f.color : f.bg,
-        borderWidth: graphChartType === "bar" ? 0 : 2,
+        backgroundColor: isBar ? f.color : f.bg,
+        borderWidth: isBar ? 0 : 2,
         spanGaps: true,
         fill: false
       };
-      if (graphChartType === "line") {
+      if (isBar) {
+        base.barPercentage = 1.0;
+        base.categoryPercentage = 0.95;
+      } else {
         base.pointRadius = 2;
         base.pointHoverRadius = 5;
         base.tension = 0.2;
-      } else {
-        // Make bars fill the available width
-        base.barPercentage = 1.0;
-        base.categoryPercentage = 1.0;
       }
       return base;
     });
+    if (!labels) labels = [];
 
     const hasAnyData = datasets.some(ds => ds.data.some(v => v !== null));
     const emptyEl = document.getElementById("graphEmpty");
