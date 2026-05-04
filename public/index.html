@@ -205,6 +205,70 @@
       margin-top:6px;
     }
 
+    /* Graphs view */
+    #graphView{
+      flex:1; height:100%; display:none; flex-direction:column;
+      background:var(--bg); position:relative; min-width:0;
+    }
+    #graphView.active{ display:flex; }
+
+    #graphHeader{
+      padding:12px 20px; display:flex; justify-content:space-between; align-items:center;
+      gap:12px; flex-wrap:wrap;
+      border-bottom:1px solid var(--border);
+      background:linear-gradient(180deg, var(--panel), var(--panel2));
+    }
+    #graphTitle{ font-size:20px; font-weight:bold; color:var(--text); }
+    #graphCounter{ font-size:13px; color:var(--muted); margin-left:10px; }
+    #graphControls{ display:flex; gap:8px; align-items:center; }
+    #graphControls input{
+      width:auto; padding:6px 10px; font-size:13px;
+      background:rgba(255,255,255,0.04); color:var(--text);
+      border:1px solid var(--border); border-radius:8px;
+    }
+    #graphControls button{
+      padding:7px 16px; border:1px solid var(--accent); border-radius:8px;
+      background:var(--accent); color:#fff; cursor:pointer; font-size:13px;
+    }
+    #graphControls button:hover{ filter:brightness(1.1); }
+
+    #graphCanvasWrap{
+      flex:1; position:relative; min-height:0;
+    }
+    #graphCanvasInner{
+      position:absolute; top:20px; bottom:20px; left:90px; right:90px;
+    }
+    #graphEmpty{
+      position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);
+      color:var(--muted); font-size:16px; text-align:center; display:none;
+    }
+    #graphEmpty.show{ display:block; }
+
+    .graphArrow{
+      position:absolute; top:50%; transform:translateY(-50%);
+      width:60px; height:60px; border-radius:50%;
+      border:1px solid var(--border);
+      background:rgba(15,26,46,0.85);
+      color:var(--text); font-size:32px; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      transition:all 0.15s; z-index:5; user-select:none;
+    }
+    .graphArrow:hover{ background:var(--accent); border-color:var(--accent); color:#fff; }
+    .graphArrow:active{ transform:translateY(-50%) scale(0.95); }
+    #graphPrev{ left:14px; }
+    #graphNext{ right:14px; }
+
+    #graphDots{
+      display:flex; justify-content:center; gap:10px; padding:10px 0 16px 0;
+    }
+    .graphDot{
+      width:10px; height:10px; border-radius:50%;
+      background:rgba(255,255,255,0.2); cursor:pointer;
+      transition:all 0.15s;
+    }
+    .graphDot.active{ background:var(--accent); width:30px; border-radius:8px; }
+    .graphDot:hover{ background:rgba(255,255,255,0.4); }
+
     #drawer{
       position:absolute; top:12px; right:12px;
       width: 420px; max-width: calc(100vw - 24px);
