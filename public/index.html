@@ -1427,7 +1427,7 @@
         data,
         borderColor: f.color,
         backgroundColor: graphChartType === "bar" ? f.color : f.bg,
-        borderWidth: 2,
+        borderWidth: graphChartType === "bar" ? 0 : 2,
         spanGaps: true,
         fill: false
       };
@@ -1435,6 +1435,10 @@
         base.pointRadius = 2;
         base.pointHoverRadius = 5;
         base.tension = 0.2;
+      } else {
+        // Make bars fill the available width
+        base.barPercentage = 1.0;
+        base.categoryPercentage = 1.0;
       }
       return base;
     });
