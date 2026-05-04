@@ -1396,23 +1396,32 @@
       });
     });
 
-    const datasets = cfg.fields.map(f => ({
-      label: f.name,
-      data: graphData.map(r => {
-        const v = r[f.name];
+    const datasets = cfg.fields.map(f => {
+      const key = resolveField(f.candidates);
+      const data = graphData.map(r => {
+        if (!key) return null;
+        const v = r[key];
         if (v === undefined || v === null || v === "") return null;
         const num = parseFloat(v);
         return Number.isFinite(num) ? num : null;
-      }),
-      borderColor: f.color,
-      backgroundColor: f.bg,
-      borderWidth: 2,
-      pointRadius: 2,
-      pointHoverRadius: 5,
-      tension: 0.2,
-      spanGaps: true,
-      fill: false
-    }));
+      });
+      const labelText = key && key !== f.label ? f.label + " (" + key + ")" : f.label;
+      const base = {
+        label: labelText,
+        data,
+        borderColor: f.color,
+        backgroundColor: graphChartType === "bar" ? f.color : f.bg,
+        borderWidth: 2,
+        spanGaps: true,
+        fill: false
+      };
+      if (graphChartType === "line") {
+        base.pointRadius = 2;
+        base.pointHoverRadius = 5;
+        base.tension = 0.2;
+      }
+      return base;
+    });
 
     const hasAnyData = datasets.some(ds => ds.data.some(v => v !== null));
     document.getElementById("graphEmpty").classList.toggle("show", !hasAnyData);
@@ -1426,7 +1435,7 @@
     if (!hasAnyData) return;
 
     graphChartInstance = new Chart(canvas.getContext("2d"), {
-      type: "line",
+      type: graphChartType,
       data: { labels, datasets },
       options: {
         responsive: true,
