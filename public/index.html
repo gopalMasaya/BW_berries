@@ -1409,7 +1409,7 @@
     }
   }
 
-  function bucketize(rows, fieldKey, numBuckets, aggType) {
+  function bucketize(rows, fieldKey, numBuckets, aggType, transform) {
     if (rows.length === 0) return { labels: [], values: [] };
     const t0 = new Date(rows[0].tsISO).getTime();
     const tN = new Date(rows[rows.length - 1].tsISO).getTime();
@@ -1418,8 +1418,9 @@
     const buckets = Array.from({ length: numBuckets }, () => ({ sum: 0, count: 0, t: 0 }));
     rows.forEach(r => {
       const t = new Date(r.tsISO).getTime();
-      const v = parseFloat(r[fieldKey]);
+      let v = parseFloat(r[fieldKey]);
       if (!Number.isFinite(v)) return;
+      if (transform) v = transform(v);
       let idx = Math.floor((t - t0) / step);
       if (idx >= numBuckets) idx = numBuckets - 1;
       const b = buckets[idx];
