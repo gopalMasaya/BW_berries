@@ -1440,7 +1440,12 @@
     });
 
     const hasAnyData = datasets.some(ds => ds.data.some(v => v !== null));
-    document.getElementById("graphEmpty").classList.toggle("show", !hasAnyData);
+    const emptyEl = document.getElementById("graphEmpty");
+    if (!hasAnyData) {
+      const tried = cfg.fields.map(f => f.candidates.join(" / ")).join(", ");
+      emptyEl.innerHTML = "No data for <b>" + cfg.title + "</b> in this range.<br><span style='font-size:13px;color:var(--muted);'>Tried fields: " + tried + "</span>";
+    }
+    emptyEl.classList.toggle("show", !hasAnyData);
 
     const canvas = document.getElementById("graphCanvas");
     if (graphChartInstance) {
