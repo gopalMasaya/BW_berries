@@ -410,6 +410,30 @@
     </aside>
   </div>
 
+  <div id="graphView">
+    <div id="graphHeader">
+      <div>
+        <span id="graphTitle">EC</span>
+        <span id="graphCounter">1 / 4</span>
+      </div>
+      <div id="graphControls">
+        <input type="number" id="graphDays" value="7" min="1" max="60" title="Days" style="width:70px;" />
+        <input type="date" id="graphDateFrom" />
+        <input type="date" id="graphDateTo" />
+        <button id="graphReload">Refresh</button>
+      </div>
+    </div>
+    <div id="graphCanvasWrap">
+      <button id="graphPrev" class="graphArrow" title="Previous (←)">&#8249;</button>
+      <div id="graphCanvasInner">
+        <canvas id="graphCanvas"></canvas>
+      </div>
+      <button id="graphNext" class="graphArrow" title="Next (→)">&#8250;</button>
+      <div id="graphEmpty">No data for selected fields and date range</div>
+    </div>
+    <div id="graphDots"></div>
+  </div>
+
   <section id="drawer" aria-hidden="true">
     <div id="drawerHeader">
       <div>
