@@ -1201,6 +1201,14 @@
     return "cell-bad";                  // red - high
   }
 
+  // Per-field calibration overrides for the Chart table view.
+  // EC sensor reads ~half of true value (firmware K-factor mismatch);
+  // ×2 then µS/cm → dS/m. Soil EC sensors are different and not adjusted.
+  const FIELD_CALIBRATION = {
+    ec:  { transform: v => v * 2 / 1000, unit: "dS/m", decimals: 2 },
+    ec2: { transform: v => v * 2 / 1000, unit: "dS/m", decimals: 2 }
+  };
+
   function renderChartTable() {
     const head = document.getElementById("chartHead");
     const body = document.getElementById("chartBody");
