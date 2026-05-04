@@ -1271,11 +1271,14 @@
         } else if (typeof raw === "boolean") {
           val = raw ? "Yes" : "No";
         } else {
-          const num = parseFloat(raw);
+          let num = parseFloat(raw);
           if (Number.isFinite(num)) {
-            val = num.toFixed(decimalsFor(f));
-            // Color-code EC fields
-            if (f.toLowerCase().includes("ec")) {
+            const cal = FIELD_CALIBRATION[f];
+            if (cal && cal.transform) num = cal.transform(num);
+            const decimals = cal && cal.decimals != null ? cal.decimals : decimalsFor(f);
+            val = num.toFixed(decimals);
+            // Color-code EC fields (only the calibrated ec/ec2, not soil_ec)
+            if (f === "ec" || f === "ec2") {
               cls = getEcCellClass(num);
             }
           } else {
