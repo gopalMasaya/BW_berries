@@ -1308,12 +1308,14 @@
   // present in the data wins (handles capitalization / typos in DB schema).
   const GRAPH_CONFIGS = [
     {
+      // EC sensor reports µS/cm but reads ~half of reality (firmware K-factor mismatch).
+      // ×2 (calibration) ÷1000 (µS/cm → dS/m).
       title: "EC",
-      unit: "µS/cm",
+      unit: "dS/m",
       agg: "avg",
       fields: [
-        { label: "ec1", candidates: ["ec","ec1","EC1","ec_1"], color: "rgba(74,163,255,1)", bg: "rgba(74,163,255,0.10)" },
-        { label: "ec2", candidates: ["ec2","EC2","ec_2"],       color: "rgba(43,213,118,1)", bg: "rgba(43,213,118,0.10)" }
+        { label: "ec1", candidates: ["ec","ec1","EC1","ec_1"], transform: v => v * 2 / 1000, color: "rgba(74,163,255,1)", bg: "rgba(74,163,255,0.10)" },
+        { label: "ec2", candidates: ["ec2","EC2","ec_2"],       transform: v => v * 2 / 1000, color: "rgba(43,213,118,1)", bg: "rgba(43,213,118,0.10)" }
       ]
     },
     {
