@@ -232,6 +232,18 @@
     }
     #graphControls button:hover{ filter:brightness(1.1); }
 
+    #graphTypeToggle{ display:flex; gap:0; }
+    .graphTypeBtn{
+      padding:7px 14px !important; border:1px solid var(--border) !important;
+      background:rgba(255,255,255,0.04) !important; color:var(--muted) !important;
+      cursor:pointer; font-size:13px; border-radius:0 !important;
+    }
+    .graphTypeBtn:first-child{ border-radius:8px 0 0 8px !important; }
+    .graphTypeBtn:last-child{ border-radius:0 8px 8px 0 !important; border-left:0 !important; }
+    .graphTypeBtn.active{
+      background:var(--accent) !important; color:#fff !important; border-color:var(--accent) !important;
+    }
+
     #graphCanvasWrap{
       flex:1; position:relative; min-height:0;
     }
