@@ -1286,6 +1286,217 @@
   });
 
   // ===============================
+  // GRAPHS VIEW (full-page, prev/next)
+  // ===============================
+  const GRAPH_CONFIGS = [
+    {
+      title: "EC",
+      unit: "µS/cm",
+      fields: [
+        { name: "ec1", color: "rgba(74,163,255,1)",  bg: "rgba(74,163,255,0.10)" },
+        { name: "ec2", color: "rgba(43,213,118,1)",  bg: "rgba(43,213,118,0.10)" }
+      ]
+    },
+    {
+      title: "Water In / Out",
+      unit: "pulses",
+      fields: [
+        { name: "waterIn",  color: "rgba(74,163,255,1)",  bg: "rgba(74,163,255,0.10)" },
+        { name: "waterOut", color: "rgba(255,176,32,1)",  bg: "rgba(255,176,32,0.10)" }
+      ]
+    },
+    {
+      title: "Scale",
+      unit: "kg",
+      fields: [
+        { name: "scale", color: "rgba(43,213,118,1)", bg: "rgba(43,213,118,0.10)" }
+      ]
+    },
+    {
+      title: "Humidity",
+      unit: "%",
+      fields: [
+        { name: "humidity1", color: "rgba(74,163,255,1)", bg: "rgba(74,163,255,0.10)" },
+        { name: "humidity2", color: "rgba(255,77,94,1)",  bg: "rgba(255,77,94,0.10)" }
+      ]
+    }
+  ];
+
+  let currentGraphIndex = 0;
+  let graphChartInstance = null;
+  let graphData = [];
+
+  async function loadGraphData() {
+    const fromEl = document.getElementById("graphDateFrom");
+    const toEl = document.getElementById("graphDateTo");
+    const daysEl = document.getElementById("graphDays");
+
+    const today = new Date();
+    if (!toEl.value) toEl.value = today.toISOString().split("T")[0];
+    if (!fromEl.value) {
+      const days = parseInt(daysEl.value) || 7;
+      const from = new Date(today);
+      from.setDate(from.getDate() - days);
+      fromEl.value = from.toISOString().split("T")[0];
+    }
+
+    const fromDate = new Date(fromEl.value + "T00:00:00");
+    const toDate = new Date(toEl.value + "T23:59:59");
+
+    const filter = deviceIdEl.value.trim();
+    const targets = filter ? STATIONS.filter(s => s.deviceId === filter) : STATIONS;
+
+    const titleEl = document.getElementById("graphTitle");
+    titleEl.textContent = "Loading...";
+
+    try {
+      const allRows = [];
+      for (const st of targets) {
+        const rows = await fetchChartDataForStation(st.deviceId, fromDate, toDate);
+        allRows.push(...rows);
+      }
+      allRows.sort((a, b) => new Date(a.tsISO) - new Date(b.tsISO));
+      graphData = allRows;
+      renderGraph();
+    } catch (err) {
+      console.error(err);
+      titleEl.textContent = "Error: " + err.message;
+    }
+  }
+
+  function renderGraph() {
+    const cfg = GRAPH_CONFIGS[currentGraphIndex];
+    document.getElementById("graphTitle").textContent =
+      cfg.title + (cfg.unit ? " (" + cfg.unit + ")" : "");
+    document.getElementById("graphCounter").textContent =
+      (currentGraphIndex + 1) + " / " + GRAPH_CONFIGS.length;
+
+    document.querySelectorAll(".graphDot").forEach((dot, i) => {
+      dot.classList.toggle("active", i === currentGraphIndex);
+    });
+
+    const labels = graphData.map(r => {
+      const d = new Date(r.tsISO);
+      return d.toLocaleString("he-IL", {
+        month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"
+      });
+    });
+
+    const datasets = cfg.fields.map(f => ({
+      label: f.name,
+      data: graphData.map(r => {
+        const v = r[f.name];
+        if (v === undefined || v === null || v === "") return null;
+        const num = parseFloat(v);
+        return Number.isFinite(num) ? num : null;
+      }),
+      borderColor: f.color,
+      backgroundColor: f.bg,
+      borderWidth: 2,
+      pointRadius: 2,
+      pointHoverRadius: 5,
+      tension: 0.2,
+      spanGaps: true,
+      fill: false
+    }));
+
+    const hasAnyData = datasets.some(ds => ds.data.some(v => v !== null));
+    document.getElementById("graphEmpty").classList.toggle("show", !hasAnyData);
+
+    const canvas = document.getElementById("graphCanvas");
+    if (graphChartInstance) {
+      graphChartInstance.destroy();
+      graphChartInstance = null;
+    }
+
+    if (!hasAnyData) return;
+
+    graphChartInstance = new Chart(canvas.getContext("2d"), {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 250 },
+        plugins: {
+          legend: {
+            position: "top",
+            labels: { color: "#e7eefc", font: { size: 14 }, padding: 14 }
+          },
+          tooltip: {
+            mode: "index",
+            intersect: false,
+            backgroundColor: "rgba(15,26,46,0.95)",
+            borderColor: "rgba(255,255,255,0.1)",
+            borderWidth: 1,
+            titleColor: "#e7eefc",
+            bodyColor: "#e7eefc"
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: "#a9b7d1", maxRotation: 45, autoSkip: true, maxTicksLimit: 14 },
+            grid:  { color: "rgba(255,255,255,0.05)" }
+          },
+          y: {
+            ticks: { color: "#a9b7d1" },
+            grid:  { color: "rgba(255,255,255,0.05)" }
+          }
+        },
+        interaction: { mode: "nearest", axis: "x", intersect: false }
+      }
+    });
+  }
+
+  function nextGraph() {
+    currentGraphIndex = (currentGraphIndex + 1) % GRAPH_CONFIGS.length;
+    renderGraph();
+  }
+  function prevGraph() {
+    currentGraphIndex = (currentGraphIndex - 1 + GRAPH_CONFIGS.length) % GRAPH_CONFIGS.length;
+    renderGraph();
+  }
+
+  document.getElementById("graphPrev").addEventListener("click", prevGraph);
+  document.getElementById("graphNext").addEventListener("click", nextGraph);
+  document.getElementById("graphReload").addEventListener("click", () => {
+    const daysEl = document.getElementById("graphDays");
+    const days = parseInt(daysEl.value) || 0;
+    if (days > 0) {
+      const today = new Date();
+      const from = new Date(today);
+      from.setDate(from.getDate() - days);
+      document.getElementById("graphDateFrom").value = from.toISOString().split("T")[0];
+      document.getElementById("graphDateTo").value   = today.toISOString().split("T")[0];
+    }
+    loadGraphData();
+  });
+
+  // Build navigation dots
+  (function buildGraphDots(){
+    const dotsEl = document.getElementById("graphDots");
+    GRAPH_CONFIGS.forEach((cfg, i) => {
+      const dot = document.createElement("div");
+      dot.className = "graphDot" + (i === 0 ? " active" : "");
+      dot.title = cfg.title;
+      dot.addEventListener("click", () => {
+        currentGraphIndex = i;
+        renderGraph();
+      });
+      dotsEl.appendChild(dot);
+    });
+  })();
+
+  // Keyboard navigation when on graphs view
+  document.addEventListener("keydown", (e) => {
+    if (currentView !== "graphs") return;
+    const tag = (e.target && e.target.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (e.key === "ArrowLeft")  prevGraph();
+    if (e.key === "ArrowRight") nextGraph();
+  });
+
+  // ===============================
   // BOOT
   // ===============================
   async function boot(){
