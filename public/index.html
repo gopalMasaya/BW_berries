@@ -767,6 +767,22 @@
         }
       });
 
+      map.addSource("sentinel", {
+        type: "raster",
+        tiles: [buildSentinelUrl("TRUE_COLOR", 14, 20)],
+        tileSize: 512,
+        attribution: "© Copernicus Sentinel data / Sentinel Hub"
+      });
+      map.addLayer({
+        id: "sentinel-overlay",
+        type: "raster",
+        source: "sentinel",
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.85 }
+      }, "3d-buildings");
+
+      setupSentinelPanel(map);
+
       map.addSource("stations", {
         type: "geojson",
         data: buildStationsGeoJSON(),
