@@ -107,7 +107,7 @@ export async function verifyOTP(confirmationResult, code) {
 /** Register a phone number with a role (manager only) */
 export async function registerPhone(phone, profile) {
   const key = phoneKey(phone);
-  await set(ref(db, `allowedPhones/${key}`), {
+  await set(ref(db, `/allowedPhones${key}`), {
     name: profile.name || "",
     role: profile.role || "worker",
     phone: normalizePhone(phone),
