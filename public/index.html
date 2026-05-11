@@ -568,6 +568,32 @@
     return `${SENTINEL_WMS_BASE}?${params}`;
   }
 
+  function setupSentinelPanel(mapInstance){
+    const panel    = document.getElementById("sentinelPanel");
+    const toggle   = document.getElementById("sentinelToggle");
+    const layerSel = document.getElementById("sentinelLayer");
+    const daysIn   = document.getElementById("sentinelDays");
+    const maxccIn  = document.getElementById("sentinelMaxCC");
+    const opacIn   = document.getElementById("sentinelOpacity");
+
+    function refreshTiles(){
+      const url = buildSentinelUrl(layerSel.value, Math.max(1, +daysIn.value || 14), Math.max(0, Math.min(100, +maxccIn.value)));
+      const src = mapInstance.getSource("sentinel");
+      if (src && src.setTiles) src.setTiles([url]);
+    }
+
+    toggle.addEventListener("change", () => {
+      panel.classList.toggle("open", toggle.checked);
+      mapInstance.setLayoutProperty("sentinel-overlay", "visibility", toggle.checked ? "visible" : "none");
+    });
+    layerSel.addEventListener("change", refreshTiles);
+    daysIn.addEventListener("change", refreshTiles);
+    maxccIn.addEventListener("change", refreshTiles);
+    opacIn.addEventListener("input", () => {
+      mapInstance.setPaintProperty("sentinel-overlay", "raster-opacity", (+opacIn.value) / 100);
+    });
+  }
+
   const STATIONS = [
     { deviceId:"station1", name:"Station 001", lng:35.028495716666775, lat:31.860256434638824 }
   ];
