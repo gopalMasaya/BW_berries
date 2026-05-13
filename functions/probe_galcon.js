@@ -18,67 +18,38 @@ const config = {
   try {
     const pool = await sql.connect(config);
 
-    // Check AllIrrigation
-    try {
-      const cols = await pool.request().query(`
-        SELECT COLUMN_NAME, DATA_TYPE
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_NAME = 'AllIrrigation'
-        ORDER BY ORDINAL_POSITION
-      `);
-      console.log("=== AllIrrigation columns ===");
-      console.table(cols.recordset);
-
-      // Try to find a date column
-      const dateCol = cols.recordset.find(c =>
-        /date|time/i.test(c.COLUMN_NAME) && /date|time/i.test(c.DATA_TYPE)
-      );
-      if (dateCol) {
-        const range = await pool.request().query(`
-          SELECT MIN([${dateCol.COLUMN_NAME}]) AS minDate,
-                 MAX([${dateCol.COLUMN_NAME}]) AS maxDate,
-                 COUNT(*) AS totalRows
-          FROM dbo.AllIrrigation
-        `);
-        console.log(`AllIrrigation range (by ${dateCol.COLUMN_NAME}):`);
-        console.table(range.recordset);
-      }
-    } catch (e) { console.log("AllIrrigation error:", e.message); }
-
-    // Check vIrrigation (probably a view)
-    try {
-      const cols = await pool.request().query(`
-        SELECT COLUMN_NAME, DATA_TYPE
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_NAME = 'vIrrigation'
-        ORDER BY ORDINAL_POSITION
-      `);
-      console.log("\n=== vIrrigation columns ===");
-      console.table(cols.recordset);
-
-      const dateCol = cols.recordset.find(c =>
-        /date|time/i.test(c.COLUMN_NAME) && /date|time/i.test(c.DATA_TYPE)
-      );
-      if (dateCol) {
-        const range = await pool.request().query(`
-          SELECT MIN([${dateCol.COLUMN_NAME}]) AS minDate,
-                 MAX([${dateCol.COLUMN_NAME}]) AS maxDate,
-                 COUNT(*) AS totalRows
-          FROM dbo.vIrrigation
-        `);
-        console.log(`vIrrigation range (by ${dateCol.COLUMN_NAME}):`);
-        console.table(range.recordset);
-      }
-    } catch (e) { console.log("vIrrigation error:", e.message); }
-
-    // List ALL tables in case something else is collecting valve data
-    const allTables = await pool.request().query(`
-      SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
-      FROM INFORMATION_SCHEMA.TABLES
-      ORDER BY TABLE_NAME
+    const range = await pool.request().query(`
+      SELECT
+        MIN(DateTimeStartValve) AS minDate,
+        MAX(DateTimeStartValve) AS maxDate,
+        COUNT(*) AS totalRows
+      FROM dbo.ValveData
     `);
-    console.log("\n=== All tables/views in database ===");
-    console.table(allTables.recordset);
+    console.log("=== dbo.ValveData range ===");
+    console.table(range.recordset);
+
+    const recent = await pool.request().query(`
+      SELECT TOP 15
+        CAST(DateTimeStartValve AS DATE) AS day,
+        COUNT(*) AS rows
+      FROM dbo.ValveData
+      GROUP BY CAST(DateTimeStartValve AS DATE)
+      ORDER BY day DESC
+    `);
+    console.log("\n=== Most recent 15 days of valve events ===");
+    console.table(recent.recordset);
+
+    const perController = await pool.request().query(`
+      SELECT c.ID, c.SerialNumber,
+             MAX(v.DateTimeStartValve) AS lastValveEvent,
+             COUNT(v.ID) AS totalEvents
+      FROM dbo.Controllers c
+      LEFT JOIN dbo.ValveData v ON v.ControllerID = c.ID
+      GROUP BY c.ID, c.SerialNumber
+      ORDER BY c.ID
+    `);
+    console.log("\n=== Last valve event per controller ===");
+    console.table(perController.recordset);
 
     await pool.close();
     process.exit(0);

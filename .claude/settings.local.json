@@ -8,7 +8,8 @@
       "Bash(gh repo:*)",
       "Skill(update-config)",
       "Bash(jq:*)",
-      "Bash(firebase deploy *)"
+      "Bash(firebase deploy *)",
+      "Bash(curl -sS -i -X GET \"https://api.galcon-smart.com\" --max-time 15)"
     ]
   },
   "hooks": {
