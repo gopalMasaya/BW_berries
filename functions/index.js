@@ -228,32 +228,44 @@ galconApp.get("/overview", async (req, res) => {
   try {
     const pool = await getGalconPool();
 
-    const [controllers, groups, valveStats] = await Promise.all([
-      pool.request().query("SELECT ID, SerialNumber, CreatedDate FROM dbo.Controllers ORDER BY ID"),
+    const to = new Date();
+    const from = new Date(to.getTime() - 30 * 86400000);
+
+    const [galData, groups] = await Promise.all([
+      galileoGet("/external-api/get-valve-finish-irrigation-info", from, to),
       pool.request().query(`
         SELECT DISTINCT Sensor_Group_Name as name
         FROM dbo.PCS_ID
         WHERE Sensor_Group_Name != ''
         ORDER BY Sensor_Group_Name
       `),
-      pool.request().query(`
-        SELECT ControllerID,
-               COUNT(*) as totalEvents,
-               MAX(DateTimeStopValve) as lastEvent
-        FROM dbo.ValveData
-        GROUP BY ControllerID
-      `),
     ]);
+
+    const galControllers = galData && galData.body && galData.body.controllers || [];
+    const controllers = galControllers.map((c) => ({SerialNumber: c.serialNumber}));
+    const valveStats = galControllers.map((c) => {
+      const events = c.valves || [];
+      let lastEvent = null;
+      for (const v of events) {
+        const t = v.dateTimeStopValve || v.dateTimeStartValve;
+        if (t && (!lastEvent || t > lastEvent)) lastEvent = t;
+      }
+      return {
+        SerialNumber: c.serialNumber,
+        totalEvents: events.length,
+        lastEvent: normalizeGalileoDate(lastEvent),
+      };
+    });
 
     return res.json({
       ok: true,
-      controllers: controllers.recordset,
+      controllers,
       sensorGroups: groups.recordset.map((r) => r.name),
-      valveStats: valveStats.recordset,
+      valveStats,
     });
   } catch (err) {
     logger.error("galcon overview failed", err);
-    return res.status(500).json({ok: false, error: "server error"});
+    return res.status(500).json({ok: false, error: err.message || "server error"});
   }
 });
 

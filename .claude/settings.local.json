@@ -18,7 +18,8 @@
       "Bash(node probe_galcon.js)",
       "Bash(rm probe_galcon.js)",
       "Bash(curl -sS -X GET https://galileo_api.galcon-smart.com/external-api/get-valve-daily-info?ExternalRequestValveDailyLogView -H 'content-type: application/json' -H 'accept: application/json' --data-raw '{\"externalUserInfo\":{\"userName\":\"Liatefi@gmail.com\",\"password\":\"123456\"},\"from\":\"2026-04-13 00:00:00.000\",\"to\":\"2026-05-13 23:59:59.000\",\"key\":\"GCX6KN4KSU10KC78\"}' -o /tmp/vdi.json -w 'HTTP %{http_code}  size=%{size_download}b\\\\n' --max-time 30)",
-      "Bash(curl -sS -X GET https://galileo_api.galcon-smart.com/external-api/get-valve-finish-irrigation-info -H 'content-type: application/json' -H 'accept: application/json' --data-raw '{\"externalUserInfo\":{\"userName\":\"Liatefi@gmail.com\",\"password\":\"123456\"},\"from\":\"2026-04-13 00:00:00.000\",\"to\":\"2026-05-13 23:59:59.000\",\"key\":\"GCX6KN4KSU10KC78\"}' -o /tmp/vfi.json -w 'HTTP %{http_code}  size=%{size_download}b\\\\n' --max-time 60)"
+      "Bash(curl -sS -X GET https://galileo_api.galcon-smart.com/external-api/get-valve-finish-irrigation-info -H 'content-type: application/json' -H 'accept: application/json' --data-raw '{\"externalUserInfo\":{\"userName\":\"Liatefi@gmail.com\",\"password\":\"123456\"},\"from\":\"2026-04-13 00:00:00.000\",\"to\":\"2026-05-13 23:59:59.000\",\"key\":\"GCX6KN4KSU10KC78\"}' -o /tmp/vfi.json -w 'HTTP %{http_code}  size=%{size_download}b\\\\n' --max-time 60)",
+      "Bash(curl -sS https://galileo_api.galcon-smart.com/swagger/docs/v1 -o 'C:/Users/Admin/Documents/js coding/plantsTracker/functions/swag.json' --max-time 30)"
     ]
   },
   "hooks": {
