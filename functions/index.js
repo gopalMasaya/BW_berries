@@ -273,19 +273,10 @@ galconApp.get("/valves", async (req, res) => {
   try {
     const fromStr = req.query.from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
     const toStr = req.query.to || new Date().toISOString().slice(0, 10);
-    const controllerId = req.query.controllerId ? parseInt(req.query.controllerId) : null;
+    const filterSerial = req.query.controllerSerial || null;
 
     const fromDate = new Date(fromStr + "T00:00:00");
     const toDate = new Date(toStr + "T23:59:59");
-
-    let filterSerial = null;
-    if (controllerId) {
-      const pool = await getGalconPool();
-      const r = await pool.request()
-          .input("cid", sql.Int, controllerId)
-          .query("SELECT SerialNumber FROM dbo.Controllers WHERE ID = @cid");
-      filterSerial = r.recordset[0] && r.recordset[0].SerialNumber || null;
-    }
 
     const data = await galileoGet(
         "/external-api/get-valve-finish-irrigation-info",
