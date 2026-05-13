@@ -221,8 +221,8 @@
         const vCtrl = document.getElementById("vController");
         controllers.forEach(c => {
           const opt = document.createElement("option");
-          opt.value = c.ID;
-          opt.textContent = `#${c.ID} — ${c.SerialNumber.slice(-6)}`;
+          opt.value = c.SerialNumber;
+          opt.textContent = c.SerialNumber.slice(-6);
           vCtrl.appendChild(opt);
         });
 
