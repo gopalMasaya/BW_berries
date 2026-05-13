@@ -213,7 +213,7 @@
         document.getElementById("statsRow").innerHTML = `
           <div class="stat-card"><div class="label">Controllers</div><div class="value">${controllers.length}</div></div>
           <div class="stat-card"><div class="label">Zones</div><div class="value">${sensorGroups.length}</div></div>
-          <div class="stat-card"><div class="label">Total Valve Events</div><div class="value">${totalEvents.toLocaleString()}</div></div>
+          <div class="stat-card"><div class="label">Valve Events (30d)</div><div class="value">${totalEvents.toLocaleString()}</div></div>
           <div class="stat-card"><div class="label">Last Event</div><div class="value" style="font-size:16px;">${lastEvent ? fmtDate(lastEvent) + " " + fmtTime(lastEvent) : "—"}</div></div>
         `;
 
