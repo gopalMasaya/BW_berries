@@ -259,37 +259,56 @@ galconApp.get("/overview", async (req, res) => {
 
 galconApp.get("/valves", async (req, res) => {
   try {
-    const pool = await getGalconPool();
-    const from = req.query.from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-    const to = req.query.to || new Date().toISOString().slice(0, 10);
+    const fromStr = req.query.from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const toStr = req.query.to || new Date().toISOString().slice(0, 10);
     const controllerId = req.query.controllerId ? parseInt(req.query.controllerId) : null;
 
-    const request = pool.request();
-    request.input("from", sql.DateTime, new Date(from));
-    request.input("to", sql.DateTime, new Date(to + "T23:59:59"));
+    const fromDate = new Date(fromStr + "T00:00:00");
+    const toDate = new Date(toStr + "T23:59:59");
 
-    let where = "v.DateTimeStartValve >= @from AND v.DateTimeStartValve <= @to";
+    let filterSerial = null;
     if (controllerId) {
-      request.input("cid", sql.Int, controllerId);
-      where += " AND v.ControllerID = @cid";
+      const pool = await getGalconPool();
+      const r = await pool.request()
+          .input("cid", sql.Int, controllerId)
+          .query("SELECT SerialNumber FROM dbo.Controllers WHERE ID = @cid");
+      filterSerial = r.recordset[0] && r.recordset[0].SerialNumber || null;
     }
 
-    const result = await request.query(`
-      SELECT v.ID, c.SerialNumber, v.ControllerID, v.ValveNo, v.ProgNum,
-             v.DateTimeStartValve, v.DateTimeStopValve, v.DurationValve,
-             v.FlowRateM3h, v.VolumeM3Valve,
-             v.PhMin, v.PhMed, v.PhMax,
-             v.EcMin, v.EcMed, v.EcMax
-      FROM dbo.ValveData v
-      JOIN dbo.Controllers c ON v.ControllerID = c.ID
-      WHERE ${where}
-      ORDER BY v.DateTimeStartValve DESC
-    `);
+    const data = await galileoGet(
+        "/external-api/get-valve-finish-irrigation-info",
+        fromDate, toDate,
+    );
 
-    return res.json({ok: true, valves: result.recordset});
+    const valves = [];
+    const controllers = data && data.body && data.body.controllers || [];
+    for (const c of controllers) {
+      if (filterSerial && c.serialNumber !== filterSerial) continue;
+      for (const v of (c.valves || [])) {
+        valves.push({
+          SerialNumber: c.serialNumber,
+          DateTimeStartValve: normalizeGalileoDate(v.dateTimeStartValve),
+          DateTimeStopValve: normalizeGalileoDate(v.dateTimeStopValve),
+          ValveNo: v.valveNo,
+          ProgNum: v.progNum,
+          DurationValve: v.durationValve,
+          FlowRateM3h: v.flowRateM3h,
+          VolumeM3Valve: v.volumeM3Valve,
+          PhMin: v.phMin,
+          PhMed: v.phMed,
+          PhMax: v.phMax,
+          EcMin: v.ecMin,
+          EcMed: v.ecMed,
+          EcMax: v.ecMax,
+        });
+      }
+    }
+    valves.sort((a, b) => (b.DateTimeStartValve || "").localeCompare(a.DateTimeStartValve || ""));
+
+    return res.json({ok: true, valves});
   } catch (err) {
     logger.error("galcon valves failed", err);
-    return res.status(500).json({ok: false, error: "server error"});
+    return res.status(500).json({ok: false, error: err.message || "server error"});
   }
 });
 
