@@ -3,6 +3,7 @@ const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const express = require("express");
 const sql = require("mssql");
+const https = require("https");
 
 admin.initializeApp();
 
