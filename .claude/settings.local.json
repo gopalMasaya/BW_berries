@@ -9,7 +9,12 @@
       "Skill(update-config)",
       "Bash(jq:*)",
       "Bash(firebase deploy *)",
-      "Bash(curl -sS -i -X GET \"https://api.galcon-smart.com\" --max-time 15)"
+      "Bash(curl -sS -i -X GET \"https://api.galcon-smart.com\" --max-time 15)",
+      "Bash(curl -sS -G https://galileo_api.galcon-smart.com/external-api/get-valve-daily-info --data-urlencode request.externalUserInfo.userName=Liatefi@gmail.com --data-urlencode request.externalUserInfo.password=123456 --data-urlencode request.from=2026-04-13 --data-urlencode request.to=2026-05-13 --data-urlencode request.key=GCX6KN4KSU10KC78 -o /tmp/vdi.json -w 'HTTP %{http_code}  size=%{size_download}b\\\\n' --max-time 60)",
+      "Read(//tmp/**)",
+      "Bash(curl -sS -G https://galileo_api.galcon-smart.com/external-api/get-valve-finish-irrigation-info --data-urlencode request.externalUserInfo.userName=Liatefi@gmail.com --data-urlencode request.externalUserInfo.password=123456 --data-urlencode request.from=2026-04-13 --data-urlencode request.to=2026-05-13 --data-urlencode request.key=GCX6KN4KSU10KC78 -o /tmp/vfi.json -w 'HTTP %{http_code}  size=%{size_download}b\\\\n' --max-time 60)",
+      "Bash(node -e ' *)",
+      "Bash(curl -sS -i -X POST https://galileo_api.galcon-smart.com/auth/login -H 'content-type: application/json' -H 'accept: application/json' -H 'origin: https://galileo.galcon-smart.com' --data-raw '{\"userName\":\"Liatefi@gmail.com\",\"password\":\"123456\",\"isMobile\":false}' --max-time 20)"
     ]
   },
   "hooks": {
