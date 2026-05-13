@@ -250,10 +250,10 @@
     async function loadValves() {
       const from = document.getElementById("vFrom").value;
       const to = document.getElementById("vTo").value;
-      const cid = document.getElementById("vController").value;
+      const serial = document.getElementById("vController").value;
 
       const params = { from, to };
-      if (cid) params.controllerId = cid;
+      if (serial) params.controllerSerial = serial;
 
       document.getElementById("vLoadBtn").disabled = true;
       document.getElementById("vLoadBtn").textContent = "Loading...";
