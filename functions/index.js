@@ -112,7 +112,10 @@ app.get("/watering", async (req, res) => {
 
 exports.api = onRequest({cors: true}, app);
 
-// ===================== GALCON MSSQL PROXY =====================
+// ===================== GALCON PROXY =====================
+// Sensors + controllers/zones come from the on-premise MSSQL (still flowing).
+// Valve events come from Galcon's Galileo Cloud API (the SQL ValveData feed
+// stopped on 2026-04-13 when Galcon switched to cloud-only valve reporting).
 
 const GALCON_SQL_CONFIG = {
   server: "45.83.43.235",
@@ -128,12 +131,79 @@ const GALCON_SQL_CONFIG = {
   },
 };
 
+const GALILEO_CONFIG = {
+  host: "galileo_api.galcon-smart.com",
+  userName: "Liatefi@gmail.com",
+  password: "123456",
+  key: "GCX6KN4KSU10KC78",
+};
+
 let galconPool = null;
 
 async function getGalconPool() {
   if (galconPool && galconPool.connected) return galconPool;
   galconPool = await sql.connect(GALCON_SQL_CONFIG);
   return galconPool;
+}
+
+function fmtGalileoDate(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+         `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.000`;
+}
+
+// Galileo's external-api requires GET + JSON body (per their docs),
+// which Node's fetch refuses — use raw https.request.
+function galileoGet(path, fromDate, toDate) {
+  const body = JSON.stringify({
+    externalUserInfo: {
+      userName: GALILEO_CONFIG.userName,
+      password: GALILEO_CONFIG.password,
+    },
+    from: fmtGalileoDate(fromDate),
+    to: fmtGalileoDate(toDate),
+    key: GALILEO_CONFIG.key,
+  });
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: GALILEO_CONFIG.host,
+      path,
+      method: "GET",
+      headers: {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body),
+        "accept": "application/json",
+      },
+      timeout: 55000,
+    }, (res) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => {
+        const text = Buffer.concat(chunks).toString("utf8");
+        if (res.statusCode === 200) {
+          try { resolve(JSON.parse(text)); } catch (e) {
+            reject(new Error("galileo bad json: " + e.message));
+          }
+        } else {
+          reject(new Error(`galileo HTTP ${res.statusCode}: ${text.slice(0, 200)}`));
+        }
+      });
+    });
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("galileo timeout")));
+    req.write(body);
+    req.end();
+  });
+}
+
+// "2026-05-13 08:00" / "2026-05-13 08:00:00.000" → "2026-05-13T08:00:00" so
+// `new Date(...)` parses it as local time on the client (same as old SQL behavior).
+function normalizeGalileoDate(s) {
+  if (!s) return null;
+  const parts = s.split(" ");
+  if (parts.length !== 2) return s;
+  const [d, t] = parts;
+  return t.split(":").length === 2 ? `${d}T${t}:00` : `${d}T${t}`;
 }
 
 const galconApp = express();
