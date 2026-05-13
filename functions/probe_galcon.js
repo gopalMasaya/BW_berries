@@ -16,67 +16,47 @@ const config = {
 
 (async () => {
   try {
-    console.log("Connecting...");
     const pool = await sql.connect(config);
-    console.log("Connected.\n");
 
-    const valveRange = await pool.request().query(`
-      SELECT
-        MIN(DateTimeStartValve) AS minDate,
-        MAX(DateTimeStartValve) AS maxDate,
-        COUNT(*) AS totalRows
-      FROM dbo.ValveData
-    `);
-    console.log("=== dbo.ValveData ===");
-    console.table(valveRange.recordset);
-
-    const sensorRange = await pool.request().query(`
-      SELECT
-        MIN([Time]) AS minDate,
-        MAX([Time]) AS maxDate,
-        COUNT(*) AS totalRows
-      FROM dbo.PCS_Value
-    `);
-    console.log("\n=== dbo.PCS_Value ===");
-    console.table(sensorRange.recordset);
-
-    const drainRange = await pool.request().query(`
-      SELECT
-        MIN([Time]) AS minDate,
-        MAX([Time]) AS maxDate,
-        COUNT(*) AS totalRows
-      FROM dbo.PCS_Value_Drain_Percent
-    `);
-    console.log("\n=== dbo.PCS_Value_Drain_Percent ===");
-    console.table(drainRange.recordset);
-
-    const valveByDay = await pool.request().query(`
+    // Last 35 days of valve events to see the cliff
+    const valveTail = await pool.request().query(`
       SELECT TOP 35
         CAST(DateTimeStartValve AS DATE) AS day,
         COUNT(*) AS rows
       FROM dbo.ValveData
       GROUP BY CAST(DateTimeStartValve AS DATE)
-      ORDER BY day ASC
+      ORDER BY day DESC
     `);
-    console.log("\n=== Valve rows per day (oldest 35) ===");
-    console.table(valveByDay.recordset);
+    console.log("=== Valve rows per day (most recent 35) ===");
+    console.table(valveTail.recordset);
 
-    const sensorByDay = await pool.request().query(`
-      SELECT TOP 35
-        CAST([Time] AS DATE) AS day,
-        COUNT(*) AS rows
-      FROM dbo.PCS_Value
-      GROUP BY CAST([Time] AS DATE)
-      ORDER BY day ASC
+    // Per controller — did they all stop, or just some?
+    const perController = await pool.request().query(`
+      SELECT c.ID, c.SerialNumber,
+             MAX(v.DateTimeStartValve) AS lastValveEvent,
+             COUNT(v.ID) AS totalEvents
+      FROM dbo.Controllers c
+      LEFT JOIN dbo.ValveData v ON v.ControllerID = c.ID
+      GROUP BY c.ID, c.SerialNumber
+      ORDER BY c.ID
     `);
-    console.log("\n=== Sensor rows per day (oldest 35) ===");
-    console.table(sensorByDay.recordset);
+    console.log("\n=== Last valve event per controller ===");
+    console.table(perController.recordset);
+
+    // List all tables containing 'valve' to see if data went elsewhere
+    const tables = await pool.request().query(`
+      SELECT TABLE_SCHEMA, TABLE_NAME
+      FROM INFORMATION_SCHEMA.TABLES
+      WHERE TABLE_NAME LIKE '%alve%' OR TABLE_NAME LIKE '%rrig%'
+      ORDER BY TABLE_NAME
+    `);
+    console.log("\n=== Tables related to valves/irrigation ===");
+    console.table(tables.recordset);
 
     await pool.close();
     process.exit(0);
   } catch (err) {
     console.error("ERROR:", err.message);
-    if (err.originalError) console.error("Inner:", err.originalError.message);
     process.exit(1);
   }
 })();
