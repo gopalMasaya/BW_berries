@@ -1776,9 +1776,9 @@
       dot.classList.toggle("active", i === currentGraphIndex);
     });
 
-    // Hide line/bar toggle for cumulative graphs (always rendered as filled line)
+    // Hide line/bar toggle for graphs with a fixed render type
     const typeToggleEl = document.getElementById("graphTypeToggle");
-    typeToggleEl.style.display = cfg.type === "cumulative" ? "none" : "";
+    typeToggleEl.style.display = (cfg.type === "cumulative" || cfg.type === "dailyLiters") ? "none" : "";
 
     if (cfg.type === "cumulative") {
       return renderCumulativeGraph(cfg);
