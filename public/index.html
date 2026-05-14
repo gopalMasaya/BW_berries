@@ -1694,6 +1694,77 @@
     });
   }
 
+  function renderDailyLitersGraph(cfg) {
+    const byDay = new Map();
+    const fieldKeys = cfg.fields.map(f => resolveField(f.candidates));
+
+    graphData.forEach(r => {
+      const d = new Date(r.tsISO);
+      if (isNaN(d.getTime())) return;
+      const dayKey = d.toISOString().slice(0, 10);
+      let entry = byDay.get(dayKey);
+      if (!entry) { entry = { date: dayKey, sums: cfg.fields.map(() => 0) }; byDay.set(dayKey, entry); }
+      cfg.fields.forEach((f, i) => {
+        const key = fieldKeys[i];
+        if (!key) return;
+        const v = parseFloat(r[key]);
+        if (Number.isFinite(v)) entry.sums[i] += v;
+      });
+    });
+
+    const days = [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
+    const labels = days.map(d => new Date(d.date + "T00:00:00").toLocaleDateString("he-IL", {month:"2-digit", day:"2-digit"}));
+    const datasets = cfg.fields.map((f, i) => ({
+      label: f.label,
+      data: days.map(d => (d.sums[i] * ML_PER_PULSE) / 1000),
+      backgroundColor: f.color,
+      borderColor: f.color,
+      borderWidth: 0,
+      barPercentage: 0.9,
+      categoryPercentage: 0.85,
+    }));
+
+    const hasAnyData = datasets.some(ds => ds.data.some(v => v > 0));
+    const emptyEl = document.getElementById("graphEmpty");
+    if (!hasAnyData) {
+      emptyEl.innerHTML = "No water flow in this range";
+    }
+    emptyEl.classList.toggle("show", !hasAnyData);
+
+    document.getElementById("graphTitle").textContent =
+      cfg.title + (cfg.unit ? " (" + cfg.unit + ")" : "");
+
+    const canvas = document.getElementById("graphCanvas");
+    if (graphChartInstance) { graphChartInstance.destroy(); graphChartInstance = null; }
+    if (!hasAnyData) return;
+
+    graphChartInstance = new Chart(canvas.getContext("2d"), {
+      type: "bar",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 250 },
+        plugins: {
+          legend: { position: "top", labels: { color: "#e7eefc", font: { size: 14 }, padding: 14 } },
+          tooltip: {
+            mode: "index", intersect: false,
+            backgroundColor: "rgba(15,26,46,0.95)", borderColor: "rgba(255,255,255,0.1)", borderWidth: 1,
+            titleColor: "#e7eefc", bodyColor: "#e7eefc",
+            callbacks: {
+              label: (ctx) => ctx.dataset.label + ": " + ctx.parsed.y.toFixed(2) + " L"
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: "#a9b7d1" }, grid: { color: "rgba(255,255,255,0.05)" } },
+          y: { beginAtZero: true, ticks: { color: "#a9b7d1" }, grid: { color: "rgba(255,255,255,0.05)" } }
+        },
+        interaction: { mode: "index", intersect: false }
+      }
+    });
+  }
+
   function renderGraph() {
     const cfg = GRAPH_CONFIGS[currentGraphIndex];
     document.getElementById("graphTitle").textContent =
