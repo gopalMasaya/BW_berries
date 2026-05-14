@@ -242,7 +242,9 @@ galconApp.get("/overview", async (req, res) => {
     ]);
 
     const galControllers = galData && galData.body && galData.body.controllers || [];
-    const controllers = galControllers.map((c) => ({SerialNumber: c.serialNumber}));
+    const controllers = galControllers.map((c) => ({
+      SerialNumber: c.serialNumber == null ? "" : String(c.serialNumber).trim(),
+    }));
     const valveStats = galControllers.map((c) => {
       const events = c.valves || [];
       let lastEvent = null;
@@ -251,7 +253,7 @@ galconApp.get("/overview", async (req, res) => {
         if (t && (!lastEvent || t > lastEvent)) lastEvent = t;
       }
       return {
-        SerialNumber: c.serialNumber,
+        SerialNumber: c.serialNumber == null ? "" : String(c.serialNumber).trim(),
         totalEvents: events.length,
         lastEvent: normalizeGalileoDate(lastEvent),
       };
