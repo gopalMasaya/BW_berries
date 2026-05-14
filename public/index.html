@@ -940,7 +940,7 @@
         }
 
         const tsKey = Object.keys(val)[0];
-        const item = val[tsKey];
+        const item = swapWaterFields(val[tsKey]);
 
         // Extract timestamp from serverTimestamp (ISO string) or build from tsKey
         let tsISO = null;
