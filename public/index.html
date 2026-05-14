@@ -1701,7 +1701,8 @@
     graphData.forEach(r => {
       const d = new Date(r.tsISO);
       if (isNaN(d.getTime())) return;
-      const dayKey = d.toISOString().slice(0, 10);
+      // Use LOCAL date so a 02:00 local reading isn't bucketed to UTC's "yesterday"
+      const dayKey = d.toLocaleDateString("en-CA");
       let entry = byDay.get(dayKey);
       if (!entry) { entry = { date: dayKey, sums: cfg.fields.map(() => 0) }; byDay.set(dayKey, entry); }
       cfg.fields.forEach((f, i) => {
@@ -1731,8 +1732,17 @@
     }
     emptyEl.classList.toggle("show", !hasAnyData);
 
+    // Today's totals (in local-date terms)
+    const todayKey = new Date().toLocaleDateString("en-CA");
+    const todayEntry = byDay.get(todayKey);
+    let titleSuffix = "";
+    if (todayEntry) {
+      const parts = cfg.fields.map((f, i) =>
+        f.label + " " + ((todayEntry.sums[i] * ML_PER_PULSE) / 1000).toFixed(2) + " L");
+      titleSuffix = "  —  Today: " + parts.join(" · ");
+    }
     document.getElementById("graphTitle").textContent =
-      cfg.title + (cfg.unit ? " (" + cfg.unit + ")" : "");
+      cfg.title + (cfg.unit ? " (" + cfg.unit + ")" : "") + titleSuffix;
 
     const canvas = document.getElementById("graphCanvas");
     if (graphChartInstance) { graphChartInstance.destroy(); graphChartInstance = null; }
