@@ -233,8 +233,13 @@
         const empty = document.getElementById("evtEmpty");
         const summary = document.getElementById("summary");
 
+        const dailyWrap = document.getElementById("dailyTotalsWrap");
+        const dailyBody = document.getElementById("dailyTotalsBody");
+
         if (events.length === 0) {
           tbody.innerHTML = "";
+          dailyBody.innerHTML = "";
+          dailyWrap.style.display = "none";
           empty.style.display = "";
           summary.textContent = `${readings.length} readings · 0 irrigations`;
           return;
@@ -246,6 +251,28 @@
         const avgDrain = totalIn > 0 ? (totalOut / totalIn) * 100 : 0;
         summary.textContent =
           `${readings.length} readings · ${events.length} irrigations · in ${totalIn.toFixed(2)} L · out ${totalOut.toFixed(2)} L · drain ${avgDrain.toFixed(1)}%`;
+
+        const byDay = new Map();
+        for (const e of events) {
+          const dayKey = new Date(e.startTime).toLocaleDateString("en-CA"); // YYYY-MM-DD, locale-safe
+          let d = byDay.get(dayKey);
+          if (!d) { d = { date: e.startTime, count: 0, inL: 0, outL: 0 }; byDay.set(dayKey, d); }
+          d.count += 1;
+          d.inL += e.waterInL;
+          d.outL += e.waterOutL;
+        }
+        const dailyRows = [...byDay.values()].sort((a, b) => b.date - a.date);
+        dailyWrap.style.display = "";
+        dailyBody.innerHTML = dailyRows.map(d => {
+          const drain = d.inL > 0 ? (d.outL / d.inL) * 100 : null;
+          return `<tr>
+            <td>${fmtDate(d.date)}</td>
+            <td>${d.count}</td>
+            <td>${fmtNum(d.inL, 2)}</td>
+            <td>${fmtNum(d.outL, 2)}</td>
+            <td>${drain == null ? "—" : fmtNum(drain)}</td>
+          </tr>`;
+        }).join("");
 
         tbody.innerHTML = events.map(e => `
           <tr>
