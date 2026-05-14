@@ -1610,17 +1610,20 @@
 
     const hourOf = (d) => d.getHours() + d.getMinutes()/60 + d.getSeconds()/3600;
 
+    const dayTotals = [];
     const datasets = cfg.fields.map(f => {
       const key = resolveField(f.candidates);
       const points = [{ x: 0, y: 0 }];
-      let cum = 0;
+      let cumRaw = 0;
       if (key) {
         dayRows.forEach(r => {
           const v = parseFloat(r[key]);
-          if (Number.isFinite(v)) cum += v;
-          points.push({ x: hourOf(new Date(r.tsISO)), y: cum });
+          if (Number.isFinite(v)) cumRaw += v;
+          const y = f.transform ? f.transform(cumRaw) : cumRaw;
+          points.push({ x: hourOf(new Date(r.tsISO)), y });
         });
       }
+      dayTotals.push({ label: f.label, total: f.transform ? f.transform(cumRaw) : cumRaw });
       const labelText = key && key !== f.label ? f.label + " (" + key + ")" : f.label;
       return {
         label: labelText,
@@ -1643,9 +1646,14 @@
     }
     emptyEl.classList.toggle("show", !hasAnyData);
 
+    const unitTxt = cfg.unit || "";
+    const totalsTxt = dayTotals
+      .map(t => t.label + " " + t.total.toFixed(2) + (unitTxt ? " " + unitTxt : ""))
+      .join(" · ");
     document.getElementById("graphTitle").textContent =
-      cfg.title + (cfg.unit ? " (" + cfg.unit + ")" : "")
-      + " — " + new Date(toDateStr).toLocaleDateString("he-IL");
+      cfg.title + (unitTxt ? " (" + unitTxt + ")" : "")
+      + " — " + new Date(toDateStr).toLocaleDateString("he-IL")
+      + (totalsTxt ? "  —  Total: " + totalsTxt : "");
 
     const canvas = document.getElementById("graphCanvas");
     if (graphChartInstance) { graphChartInstance.destroy(); graphChartInstance = null; }
