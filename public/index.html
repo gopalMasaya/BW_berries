@@ -1215,7 +1215,7 @@
 
       Object.keys(val).forEach(tsKey => {
         if (tsKey === "control") return;
-        const item = val[tsKey];
+        const item = swapWaterFields(val[tsKey]);
 
         let tsISO = null;
         if (item.serverTimestamp) {
