@@ -734,6 +734,18 @@
     return 1;
   }
 
+  // sensor channels are physically swapped — DB `waterOut` is actual input, `waterIn` is actual drain.
+  // Normalize once at every Firebase read so downstream code uses correct semantics.
+  function swapWaterFields(item){
+    if (!item || typeof item !== "object") return item;
+    const out = { ...item };
+    const inVal = item.waterIn ?? item.water_in ?? item.WaterIn;
+    const outVal = item.waterOut ?? item.water_out ?? item.WaterOut;
+    if (inVal !== undefined) out.waterOut = inVal;
+    if (outVal !== undefined) out.waterIn = outVal;
+    return out;
+  }
+
   function ageMinutes(iso){
     if (!iso) return Infinity;
     const ms = Date.now() - new Date(iso).getTime();
