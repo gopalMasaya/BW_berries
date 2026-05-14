@@ -144,8 +144,9 @@
           if (t < fromDate || t > toDate) continue;
           readings.push({
             time: t,
-            waterIn: Number(item.waterIn) || 0,
-            waterOut: Number(item.waterOut) || 0,
+            // sensor channels are physically swapped: DB `waterOut` is actual input, `waterIn` is actual drain
+            waterIn: Number(item.waterOut) || 0,
+            waterOut: Number(item.waterIn) || 0,
           });
         }
       }
