@@ -1496,8 +1496,19 @@
         { label: "waterIn",  candidates: ["waterIn","water_in","WaterIn"],   color: "rgba(74,163,255,1)",  bg: "rgba(74,163,255,0.30)" },
         { label: "waterOut", candidates: ["waterOut","water_out","WaterOut"],color: "rgba(255,176,32,1)",  bg: "rgba(255,176,32,0.20)" }
       ]
+    },
+    {
+      title: "Water Liters / Day",
+      unit: "L",
+      type: "dailyLiters",
+      fields: [
+        { label: "waterIn",  candidates: ["waterIn","water_in","WaterIn"],   color: "rgba(74,163,255,1)" },
+        { label: "waterOut", candidates: ["waterOut","water_out","WaterOut"],color: "rgba(255,176,32,1)" }
+      ]
     }
   ];
+
+  const ML_PER_PULSE = 2.794;
 
   let currentGraphIndex = 0;
   let graphChartInstance = null;
