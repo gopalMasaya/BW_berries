@@ -273,7 +273,8 @@ galconApp.get("/valves", async (req, res) => {
   try {
     const fromStr = req.query.from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
     const toStr = req.query.to || new Date().toISOString().slice(0, 10);
-    const filterSerial = req.query.controllerSerial || null;
+    const filterSerial = req.query.controllerSerial ?
+      String(req.query.controllerSerial).trim() : null;
 
     const fromDate = new Date(fromStr + "T00:00:00");
     const toDate = new Date(toStr + "T23:59:59");
@@ -285,8 +286,13 @@ galconApp.get("/valves", async (req, res) => {
 
     const valves = [];
     const controllers = data && data.body && data.body.controllers || [];
+    logger.info("valves filter", {
+      filterSerial,
+      controllerSerials: controllers.map((c) => String(c.serialNumber)),
+    });
     for (const c of controllers) {
-      if (filterSerial && c.serialNumber !== filterSerial) continue;
+      const cSerial = c.serialNumber == null ? "" : String(c.serialNumber).trim();
+      if (filterSerial && cSerial !== filterSerial) continue;
       for (const v of (c.valves || [])) {
         valves.push({
           SerialNumber: c.serialNumber,
