@@ -1713,6 +1713,10 @@
       return renderCumulativeGraph(cfg);
     }
 
+    if (cfg.type === "dailyLiters") {
+      return renderDailyLitersGraph(cfg);
+    }
+
     const isBar = graphChartType === "bar";
     const aggType = cfg.agg || "avg";
     const NUM_BARS = 50;
