@@ -216,7 +216,7 @@
           dailyBody.innerHTML = "";
           dailyWrap.style.display = "none";
           empty.style.display = "";
-          summary.textContent = `${readings.length} readings · 0 irrigations`;
+          summary.textContent = `${readings.length} readings · 0 flow readings`;
           return;
         }
         empty.style.display = "none";
@@ -225,7 +225,7 @@
         for (const e of events) { totalIn += e.waterInL; totalOut += e.waterOutL; }
         const avgDrain = totalIn > 0 ? (totalOut / totalIn) * 100 : 0;
         summary.textContent =
-          `${readings.length} readings · ${events.length} irrigations · in ${totalIn.toFixed(2)} L · out ${totalOut.toFixed(2)} L · drain ${avgDrain.toFixed(1)}%`;
+          `${readings.length} readings · ${events.length} flow readings · in ${totalIn.toFixed(2)} L · out ${totalOut.toFixed(2)} L · drain ${avgDrain.toFixed(1)}%`;
 
         const byDay = new Map();
         for (const e of events) {
