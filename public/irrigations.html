@@ -165,37 +165,10 @@
       return readings;
     }
 
-    // Group readings into events. An event is a run of readings with waterIn+waterOut > 0,
-    // split when the gap between flow readings exceeds gapMin. Drain pulses in the tail
-    // (after waterIn goes back to 0) are attributed to the event they follow.
-    function detectEvents(readings, gapMin) {
-      const gapMs = gapMin * 60_000;
-      const events = [];
-      let cur = null;
-      for (const r of readings) {
-        const hasFlow = r.waterIn > 0 || r.waterOut > 0;
-        if (!hasFlow) continue;
-        if (!cur) {
-          cur = { startTime: r.time, endTime: r.time, pulsesIn: r.waterIn, pulsesOut: r.waterOut };
-        } else if ((r.time - cur.endTime) > gapMs) {
-          events.push(cur);
-          cur = { startTime: r.time, endTime: r.time, pulsesIn: r.waterIn, pulsesOut: r.waterOut };
-        } else {
-          cur.endTime = r.time;
-          cur.pulsesIn += r.waterIn;
-          cur.pulsesOut += r.waterOut;
-        }
-      }
-      if (cur) events.push(cur);
-      return events;
-    }
-
     async function load() {
       const stationId = document.getElementById("fStation").value.trim();
       const fromStr = document.getElementById("fFrom").value;
       const toStr = document.getElementById("fTo").value;
-      const gapMin = Math.max(1, parseInt(document.getElementById("fGap").value, 10) || 30);
-      const minDurationMin = Math.max(0, parseFloat(document.getElementById("fMinDur").value) || 0);
       const mlPerPulse = Math.max(0.1, parseFloat(document.getElementById("fMl").value) || 15);
 
       if (!stationId || !fromStr || !toStr) return;
@@ -208,15 +181,25 @@
 
       try {
         const readings = await fetchReadings(stationId, fromDate, toDate);
-        const rawEvents = detectEvents(readings, gapMin);
 
-        const events = rawEvents.map(e => {
-          const durationMin = (e.endTime - e.startTime) / 60000;
-          const waterInL = (e.pulsesIn * mlPerPulse) / 1000;
-          const waterOutL = (e.pulsesOut * mlPerPulse) / 1000;
-          const drainPct = e.pulsesIn > 0 ? (e.pulsesOut / e.pulsesIn) * 100 : null;
-          return { ...e, durationMin, waterInL, waterOutL, drainPct };
-        }).filter(e => e.durationMin >= minDurationMin).reverse();
+        const events = readings
+          .filter(r => r.waterIn > 0 || r.waterOut > 0)
+          .map(r => {
+            const waterInL = (r.waterIn * mlPerPulse) / 1000;
+            const waterOutL = (r.waterOut * mlPerPulse) / 1000;
+            const drainPct = r.waterIn > 0 ? (r.waterOut / r.waterIn) * 100 : null;
+            return {
+              startTime: r.time,
+              endTime: r.time,
+              durationMin: 0,
+              pulsesIn: r.waterIn,
+              pulsesOut: r.waterOut,
+              waterInL,
+              waterOutL,
+              drainPct,
+            };
+          })
+          .reverse();
 
         console.log("readings:", readings.length, "events:", events.length);
         if (events[0]) console.log("first event:", events[0]);
