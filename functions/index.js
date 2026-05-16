@@ -12,7 +12,7 @@ app.use(express.json());
 
 const DEVICE_SECRETS = {
   station1: "s0001mh0001",
-  station2: "PUT_OTHER_SECRET_HERE",
+  station2: "s0002mh0002",
 };
 
 function isAuthorizedQuery(req) {
