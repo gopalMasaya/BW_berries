@@ -85,11 +85,10 @@
     import { requireAuth } from "./guard.mjs";
     import { initSidebar } from "./sidebar.mjs";
     import { db, ref, get, set } from "./auth.mjs";
+    import { STATIONS } from "./stations.mjs";
 
     const { user, profile } = await requireAuth(["manager"]);
     initSidebar(profile);
-
-    const STATIONS = ["station1", "station2"];
 
     const DEFAULTS = {
       monitorOnly: false,
