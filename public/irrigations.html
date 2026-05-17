@@ -104,6 +104,23 @@
     const { profile } = await requireAuth(["manager"]);
     initSidebar(profile);
 
+    const STATIONS = ["station1", "station2"];
+    const STATION_STORAGE_KEY = "irrigations.station";
+
+    const stationSel = document.getElementById("fStation");
+    const savedStation = localStorage.getItem(STATION_STORAGE_KEY);
+    for (const s of STATIONS) {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      stationSel.appendChild(opt);
+    }
+    stationSel.value = STATIONS.includes(savedStation) ? savedStation : STATIONS[0];
+    stationSel.addEventListener("change", () => {
+      localStorage.setItem(STATION_STORAGE_KEY, stationSel.value);
+      load();
+    });
+
     function todayStr() { return new Date().toISOString().slice(0, 10); }
     function daysAgo(n) { return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10); }
     function fmtDate(d) { if (!d) return "—"; return new Date(d).toLocaleDateString("en-GB"); }
