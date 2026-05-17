@@ -100,11 +100,10 @@
     import { initSidebar } from "./sidebar.mjs";
     import { db } from "./auth.mjs";
     import { ref, get } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
+    import { STATIONS } from "./stations.mjs";
 
     const { profile } = await requireAuth(["manager"]);
     initSidebar(profile);
-
-    const STATIONS = ["station1", "station2"];
     const STATION_STORAGE_KEY = "irrigations.station";
 
     const stationSel = document.getElementById("fStation");
