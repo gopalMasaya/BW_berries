@@ -1327,6 +1327,17 @@
     });
   }
 
+  // Populate the single-station dropdown shown in the chart filters panel.
+  // Preserves the user's current selection across reloads.
+  function buildChartStationSelect() {
+    const sel = document.getElementById("chartStationSelect");
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '<option value="__all__">כל התחנות</option>' +
+      STATIONS.map(s => '<option value="' + s.deviceId + '">' + (s.name || s.deviceId) + '</option>').join("");
+    if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  }
+
   function applyChartFilters() {
     // Get checked stations
     const checked = [...document.querySelectorAll("#stationCheckboxes input:checked")].map(cb => cb.value);
