@@ -135,73 +135,76 @@
 
     /* Chart view */
     #chartView{
-      flex:1; height:100%; display:none; overflow:hidden; background:var(--bg);
+      flex:1; height:100%; display:none; overflow:hidden; background:#ffffff;
     }
     #chartView.active{ display:flex; }
     #map.hidden{ display:none; }
 
     #chartContainer{
-      flex:1; overflow:auto; padding:0;
+      flex:1; overflow:auto; padding:0; background:#ffffff;
     }
 
     #chartTable{
-      width:100%; border-collapse:collapse; font-size:13px; direction:rtl;
+      width:100%; border-collapse:collapse; font-size:16px; direction:rtl;
       min-width:900px;
     }
     #chartTable thead{
       position:sticky; top:0; z-index:2;
     }
     #chartTable th{
-      background:#1a5276; color:#fff; padding:8px 10px; border:1px solid #2980b9;
-      font-size:12px; font-weight:600; white-space:nowrap; text-align:center;
+      background:#1565c0; color:#fff; padding:12px 12px; border:1px solid #0d47a1;
+      font-size:15px; font-weight:700; white-space:nowrap; text-align:center;
     }
     #chartTable td{
-      padding:6px 10px; border:1px solid var(--border); text-align:center;
-      background:var(--panel); color:var(--text); white-space:nowrap;
+      padding:10px 12px; border:1px solid #c5cee0; text-align:center;
+      background:#ffffff; color:#1a2233; white-space:nowrap; font-size:16px; font-weight:500;
+    }
+    #chartTable tbody tr:nth-child(even) td{
+      background:#f4f7fb;
     }
     #chartTable tbody tr:hover td{
-      background:rgba(255,255,255,0.06);
+      background:#e3edf9;
     }
 
     /* Color-coded EC cells */
-    .cell-ok{ background:#2bd576 !important; color:#000; font-weight:bold; }
-    .cell-warn{ background:#00d4ff !important; color:#000; font-weight:bold; }
-    .cell-high{ background:#ffeb3b !important; color:#000; font-weight:bold; }
-    .cell-bad{ background:#ff4d5e !important; color:#fff; font-weight:bold; }
+    .cell-ok{ background:#2bd576 !important; color:#000 !important; font-weight:bold; }
+    .cell-warn{ background:#00d4ff !important; color:#000 !important; font-weight:bold; }
+    .cell-high{ background:#ffeb3b !important; color:#000 !important; font-weight:bold; }
+    .cell-bad{ background:#ff4d5e !important; color:#fff !important; font-weight:bold; }
 
     /* Chart right sidebar / filters */
     #chartFilters{
-      width:260px; min-width:260px; height:100%;
-      background:linear-gradient(180deg, var(--panel), var(--panel2));
-      border-left:1px solid var(--border);
-      padding:14px; overflow:auto; direction:rtl;
+      width:280px; min-width:280px; height:100%;
+      background:#f4f7fb;
+      border-left:1px solid #c5cee0;
+      padding:16px; overflow:auto; direction:rtl;
       display:flex; flex-direction:column; gap:14px;
     }
     #chartFilters h4{
-      margin:0 0 8px 0; font-size:14px; color:var(--text);
+      margin:0 0 10px 0; font-size:16px; font-weight:700; color:#1a2233;
     }
     #chartFilters label{
-      font-size:13px; color:var(--text); display:flex; align-items:center; gap:6px; margin:0;
+      font-size:15px; color:#1a2233; display:flex; align-items:center; gap:6px; margin:0;
     }
     #chartFilters input[type="checkbox"]{
-      width:auto;
+      width:auto; transform:scale(1.2);
     }
-    #chartFilters input[type="date"], #chartFilters input[type="number"]{
-      width:100%; padding:8px; border:1px solid var(--border); border-radius:8px;
-      background:rgba(255,255,255,0.04); color:var(--text); font-size:13px;
+    #chartFilters input[type="date"], #chartFilters input[type="number"], #chartFilters select{
+      width:100%; padding:9px 10px; border:1px solid #b9c4d6; border-radius:8px;
+      background:#ffffff; color:#1a2233; font-size:15px; font-weight:500;
     }
     .filterSection{
-      border:1px solid var(--border); border-radius:12px; padding:10px;
-      background:rgba(0,0,0,0.15);
+      border:1px solid #c5cee0; border-radius:12px; padding:12px;
+      background:#ffffff;
     }
     .filterBtn{
-      padding:8px 16px; border:1px solid var(--border); border-radius:8px;
-      background:rgba(255,255,255,0.06); color:var(--text); cursor:pointer;
-      font-size:13px; margin-top:6px;
+      padding:9px 18px; border:1px solid #1565c0; border-radius:8px;
+      background:#1976d2; color:#fff; cursor:pointer;
+      font-size:15px; font-weight:600; margin-top:8px;
     }
-    .filterBtn:hover{ background:rgba(255,255,255,0.1); }
+    .filterBtn:hover{ filter:brightness(1.1); }
     .checkboxList{
-      max-height:200px; overflow:auto; display:flex; flex-direction:column; gap:4px;
+      max-height:220px; overflow:auto; display:flex; flex-direction:column; gap:6px;
       margin-top:6px;
     }
 
