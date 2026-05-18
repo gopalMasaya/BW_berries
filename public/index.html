@@ -1486,6 +1486,17 @@
   // ===============================
   // Each series can list multiple candidate field names; the first one
   // present in the data wins (handles capitalization / typos in DB schema).
+  // Color palette tuned for visibility on a white background:
+  // saturated blue / green / orange / red, plus 25% alpha fills.
+  const C_BLUE   = "rgba(21,101,192,1)";    // Material Blue 800
+  const C_GREEN  = "rgba(46,125,50,1)";     // Material Green 800
+  const C_ORANGE = "rgba(230,81,0,1)";      // Material Orange 900
+  const C_RED    = "rgba(198,40,40,1)";     // Material Red 800
+  const F_BLUE   = "rgba(21,101,192,0.18)";
+  const F_GREEN  = "rgba(46,125,50,0.18)";
+  const F_ORANGE = "rgba(230,81,0,0.20)";
+  const F_RED    = "rgba(198,40,40,0.18)";
+
   const GRAPH_CONFIGS = [
     {
       // EC sensor reports µS/cm but reads ~half of reality (firmware K-factor mismatch).
@@ -1494,8 +1505,8 @@
       unit: "dS/m",
       agg: "avg",
       fields: [
-        { label: "ec1", candidates: ["ec","ec1","EC1","ec_1"], transform: v => v * 2 / 1000, color: "rgba(74,163,255,1)", bg: "rgba(74,163,255,0.10)" },
-        { label: "ec2", candidates: ["ec2","EC2","ec_2"],       transform: v => v * 2 / 1000, color: "rgba(43,213,118,1)", bg: "rgba(43,213,118,0.10)" }
+        { label: "ec1", candidates: ["ec","ec1","EC1","ec_1"], transform: v => v * 2 / 1000, color: C_BLUE,  bg: F_BLUE },
+        { label: "ec2", candidates: ["ec2","EC2","ec_2"],       transform: v => v * 2 / 1000, color: C_GREEN, bg: F_GREEN }
       ]
     },
     {
@@ -1503,8 +1514,8 @@
       unit: "pulses",
       agg: "sum",
       fields: [
-        { label: "waterIn",  candidates: ["waterIn","water_in","WaterIn"],   color: "rgba(74,163,255,1)",  bg: "rgba(74,163,255,0.10)" },
-        { label: "waterOut", candidates: ["waterOut","water_out","WaterOut"],color: "rgba(255,176,32,1)",  bg: "rgba(255,176,32,0.10)" }
+        { label: "waterIn",  candidates: ["waterIn","water_in","WaterIn"],   color: C_BLUE,   bg: F_BLUE },
+        { label: "waterOut", candidates: ["waterOut","water_out","WaterOut"],color: C_ORANGE, bg: F_ORANGE }
       ]
     },
     {
@@ -1512,7 +1523,7 @@
       unit: "kg",
       agg: "avg",
       fields: [
-        { label: "scale", candidates: ["scale1","scale","Scale","weight","Weight"], color: "rgba(43,213,118,1)", bg: "rgba(43,213,118,0.10)" }
+        { label: "scale", candidates: ["scale1","scale","Scale","weight","Weight"], color: C_GREEN, bg: F_GREEN }
       ]
     },
     {
@@ -1520,8 +1531,8 @@
       unit: "%",
       agg: "avg",
       fields: [
-        { label: "soil1", candidates: ["soil1_humidity","soil1Humidity","humidity1"], color: "rgba(74,163,255,1)", bg: "rgba(74,163,255,0.10)" },
-        { label: "soil2", candidates: ["soil2_humidity","soil2Humidity","humidity2"], color: "rgba(255,77,94,1)",  bg: "rgba(255,77,94,0.10)" }
+        { label: "soil1", candidates: ["soil1_humidity","soil1Humidity","humidity1"], color: C_BLUE, bg: F_BLUE },
+        { label: "soil2", candidates: ["soil2_humidity","soil2Humidity","humidity2"], color: C_RED,  bg: F_RED }
       ]
     },
     {
@@ -1529,8 +1540,8 @@
       unit: "L",
       type: "cumulative",
       fields: [
-        { label: "waterIn",  candidates: ["waterIn","water_in","WaterIn"],   transform: v => (v * ML_PER_PULSE) / 1000, color: "rgba(74,163,255,1)",  bg: "rgba(74,163,255,0.30)" },
-        { label: "waterOut", candidates: ["waterOut","water_out","WaterOut"],transform: v => (v * ML_PER_PULSE) / 1000, color: "rgba(255,176,32,1)",  bg: "rgba(255,176,32,0.20)" }
+        { label: "waterIn",  candidates: ["waterIn","water_in","WaterIn"],   transform: v => (v * ML_PER_PULSE) / 1000, color: C_BLUE,   bg: F_BLUE },
+        { label: "waterOut", candidates: ["waterOut","water_out","WaterOut"],transform: v => (v * ML_PER_PULSE) / 1000, color: C_ORANGE, bg: F_ORANGE }
       ]
     },
     {
@@ -1538,8 +1549,8 @@
       unit: "L",
       type: "dailyLiters",
       fields: [
-        { label: "waterIn",  candidates: ["waterIn","water_in","WaterIn"],   color: "rgba(74,163,255,1)" },
-        { label: "waterOut", candidates: ["waterOut","water_out","WaterOut"],color: "rgba(255,176,32,1)" }
+        { label: "waterIn",  candidates: ["waterIn","water_in","WaterIn"],   color: C_BLUE },
+        { label: "waterOut", candidates: ["waterOut","water_out","WaterOut"],color: C_ORANGE }
       ]
     }
   ];
