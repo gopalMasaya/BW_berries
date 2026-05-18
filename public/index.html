@@ -1808,19 +1808,21 @@
         maintainAspectRatio: false,
         animation: { duration: 250 },
         plugins: {
-          legend: { position: "top", labels: { color: "#e7eefc", font: { size: 14 }, padding: 14 } },
+          legend: { position: "top", labels: { color: "#1a2233", font: { size: 16, weight: "600" }, padding: 16 } },
           tooltip: {
             mode: "index", intersect: false,
-            backgroundColor: "rgba(15,26,46,0.95)", borderColor: "rgba(255,255,255,0.1)", borderWidth: 1,
-            titleColor: "#e7eefc", bodyColor: "#e7eefc",
+            backgroundColor: "#1a2233", borderColor: "#1a2233", borderWidth: 1,
+            titleColor: "#ffffff", bodyColor: "#ffffff",
+            titleFont: { size: 14, weight: "600" }, bodyFont: { size: 14 },
+            padding: 10,
             callbacks: {
               label: (ctx) => ctx.dataset.label + ": " + ctx.parsed.y.toFixed(2) + " L"
             }
           }
         },
         scales: {
-          x: { ticks: { color: "#a9b7d1" }, grid: { color: "rgba(255,255,255,0.05)" } },
-          y: { beginAtZero: true, ticks: { color: "#a9b7d1" }, grid: { color: "rgba(255,255,255,0.05)" } }
+          x: { ticks: { color: "#1a2233", font: { size: 14, weight: "600" } }, grid: { color: "rgba(0,0,0,0.08)" }, border: { color: "#1a2233" } },
+          y: { beginAtZero: true, ticks: { color: "#1a2233", font: { size: 14, weight: "600" } }, grid: { color: "rgba(0,0,0,0.08)" }, border: { color: "#1a2233" } }
         },
         interaction: { mode: "index", intersect: false }
       }
