@@ -1900,7 +1900,7 @@
         data,
         borderColor: f.color,
         backgroundColor: isBar ? f.color : f.bg,
-        borderWidth: isBar ? 0 : 2,
+        borderWidth: isBar ? 0 : 3,
         spanGaps: true,
         fill: false
       };
@@ -1908,8 +1908,9 @@
         base.barPercentage = 1.0;
         base.categoryPercentage = 0.95;
       } else {
-        base.pointRadius = 2;
-        base.pointHoverRadius = 5;
+        base.pointRadius = 3;
+        base.pointHoverRadius = 6;
+        base.pointBackgroundColor = f.color;
         base.tension = 0.2;
       }
       return base;
