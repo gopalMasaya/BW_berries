@@ -1579,7 +1579,11 @@
     const fromDate = new Date(fromEl.value + "T00:00:00");
     const toDate = new Date(toEl.value + "T23:59:59");
 
-    const filter = deviceIdEl.value.trim();
+    // Graph station selector overrides the sidebar deviceId filter when set.
+    const graphStationEl = document.getElementById("graphStation");
+    const graphStation = graphStationEl ? graphStationEl.value : "";
+    const sidebarFilter = deviceIdEl.value.trim();
+    const filter = graphStation && graphStation !== "__all__" ? graphStation : sidebarFilter;
     const targets = filter ? STATIONS.filter(s => s.deviceId === filter) : STATIONS;
 
     const titleEl = document.getElementById("graphTitle");
