@@ -1611,6 +1611,7 @@
       }
       allRows.sort((a, b) => new Date(a.tsISO) - new Date(b.tsISO));
       graphData = allRows;
+      computeGraphWaterDeltas(graphData);
       renderGraph();
     } catch (err) {
       console.error(err);
