@@ -1565,6 +1565,42 @@
   let graphData = [];
   let graphChartType = "line"; // "line" or "bar"
 
+  // Pulse counters waterIn/waterOut are cumulative on the device, so summing
+  // raw rows double-counts every transmission after an irrigation. Convert
+  // each row's waterIn/waterOut to the delta vs. the previous reading from
+  // the SAME station; first per-station row = 0 (baseline); a current value
+  // below the previous is treated as a counter reset (current is the new total
+  // since the reset). Only waterIn/waterOut are touched — EC, scale, soil,
+  // etc. are absolute measurements and remain untouched.
+  function computeGraphWaterDeltas(rows) {
+    const FIELDS = [
+      { name: "waterIn",  candidates: ["waterIn",  "water_in",  "WaterIn"]  },
+      { name: "waterOut", candidates: ["waterOut", "water_out", "WaterOut"] },
+    ];
+    const byStation = new Map();
+    for (const r of rows) {
+      const sid = r.stationId || r.deviceId || "__unknown__";
+      const prev = byStation.get(sid) || { waterIn: null, waterOut: null };
+      const updated = { ...prev };
+      for (const f of FIELDS) {
+        let key = null, val = null;
+        for (const c of f.candidates) {
+          const raw = r[c];
+          if (raw === undefined || raw === null || raw === "") continue;
+          const n = parseFloat(raw);
+          if (!Number.isFinite(n)) continue;
+          key = c; val = n; break;
+        }
+        if (key === null) continue;
+        const prevVal = prev[f.name];
+        const delta = prevVal === null ? 0 : (val >= prevVal ? val - prevVal : val);
+        r[key] = delta;
+        updated[f.name] = val;
+      }
+      byStation.set(sid, updated);
+    }
+  }
+
   function resolveField(candidates) {
     for (const c of candidates) {
       if (graphData.some(r => {
