@@ -1282,7 +1282,12 @@
     const fromDate = new Date(fromEl.value + "T00:00:00");
     const toDate = new Date(toEl.value + "T23:59:59");
 
-    const filter = deviceIdEl.value.trim();
+    // The active-station selector (in the chart filters panel) takes precedence
+    // over the sidebar deviceId filter when the user picks a single station.
+    const stationSelectEl = document.getElementById("chartStationSelect");
+    const stationSelected = stationSelectEl ? stationSelectEl.value : "";
+    const sidebarFilter = deviceIdEl.value.trim();
+    const filter = stationSelected && stationSelected !== "__all__" ? stationSelected : sidebarFilter;
     const targets = filter ? STATIONS.filter(s => s.deviceId === filter) : STATIONS;
 
     const chartBody = document.getElementById("chartBody");
