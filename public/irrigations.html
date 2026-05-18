@@ -198,24 +198,37 @@
       try {
         const readings = await fetchReadings(stationId, fromDate, toDate);
 
-        const events = readings
-          .filter(r => r.waterIn > 0 || r.waterOut > 0)
-          .map(r => {
-            const waterInL = (r.waterIn * mlPerPulse) / 1000;
-            const waterOutL = (r.waterOut * mlPerPulse) / 1000;
-            const drainPct = r.waterIn > 0 ? (r.waterOut / r.waterIn) * 100 : null;
-            return {
-              startTime: r.time,
-              endTime: r.time,
-              durationMin: 0,
-              pulsesIn: r.waterIn,
-              pulsesOut: r.waterOut,
-              waterInL,
-              waterOutL,
-              drainPct,
-            };
-          })
-          .reverse();
+        // Pulse counters on the device are cumulative and never reset, so
+        // consecutive readings repeat the same value when no new flow occurs.
+        // Convert each reading to the delta vs. the previous one: first reading
+        // is the baseline (no event emitted); a current value below the previous
+        // is treated as a counter reset where current is the post-reset total.
+        let prevIn = null, prevOut = null;
+        const events = [];
+        for (const r of readings) {
+          let deltaIn = 0, deltaOut = 0;
+          if (prevIn !== null) {
+            deltaIn  = r.waterIn  >= prevIn  ? r.waterIn  - prevIn  : r.waterIn;
+            deltaOut = r.waterOut >= prevOut ? r.waterOut - prevOut : r.waterOut;
+          }
+          prevIn  = r.waterIn;
+          prevOut = r.waterOut;
+          if (deltaIn <= 0 && deltaOut <= 0) continue;
+          const waterInL  = (deltaIn  * mlPerPulse) / 1000;
+          const waterOutL = (deltaOut * mlPerPulse) / 1000;
+          const drainPct  = deltaIn > 0 ? (deltaOut / deltaIn) * 100 : null;
+          events.push({
+            startTime: r.time,
+            endTime: r.time,
+            durationMin: 0,
+            pulsesIn: deltaIn,
+            pulsesOut: deltaOut,
+            waterInL,
+            waterOutL,
+            drainPct,
+          });
+        }
+        events.reverse();
 
         console.log("readings:", readings.length, "events:", events.length);
         if (events[0]) console.log("first event:", events[0]);
