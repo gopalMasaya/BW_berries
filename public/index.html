@@ -456,6 +456,11 @@
     </div>
     <aside id="chartFilters">
       <div class="filterSection">
+        <h4>תחנה פעילה</h4>
+        <select id="chartStationSelect" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.04);color:var(--text);font-size:14px;"></select>
+      </div>
+
+      <div class="filterSection">
         <h4>סינון תאריך לפי</h4>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
           <label style="flex:0 0 auto;font-size:13px;">ימים</label>
@@ -469,7 +474,7 @@
       </div>
 
       <div class="filterSection">
-        <h4>נקודת דגימה</h4>
+        <h4>נקודות דגימה (סינון רב)</h4>
         <div class="checkboxList" id="stationCheckboxes"></div>
         <button class="filterBtn" id="btnFilterStation">סינון</button>
       </div>
