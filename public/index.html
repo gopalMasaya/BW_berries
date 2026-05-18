@@ -1471,6 +1471,16 @@
     applyChartFilters();
   });
 
+  // Populate the chart-view station dropdown once at boot so it is usable
+  // even before the first data fetch completes.
+  (function initChartStationSelect(){
+    const sel = document.getElementById("chartStationSelect");
+    if (!sel) return;
+    sel.innerHTML = '<option value="__all__">כל התחנות</option>' +
+      STATIONS.map(s => '<option value="' + s.deviceId + '">' + (s.name || s.deviceId) + '</option>').join("");
+    sel.addEventListener("change", () => { loadChartData(); });
+  })();
+
   // ===============================
   // GRAPHS VIEW (full-page, prev/next)
   // ===============================
