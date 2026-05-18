@@ -2010,6 +2010,15 @@
     loadGraphData();
   });
 
+  // Populate the graph station selector and refetch when it changes.
+  (function initGraphStationSelect(){
+    const sel = document.getElementById("graphStation");
+    if (!sel) return;
+    sel.innerHTML = '<option value="__all__">All stations</option>' +
+      STATIONS.map(s => '<option value="' + s.deviceId + '">' + (s.name || s.deviceId) + '</option>').join("");
+    sel.addEventListener("change", () => { loadGraphData(); });
+  })();
+
   // Build navigation dots
   (function buildGraphDots(){
     const dotsEl = document.getElementById("graphDots");
