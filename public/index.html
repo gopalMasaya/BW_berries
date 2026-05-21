@@ -746,15 +746,16 @@
     return 1;
   }
 
-  // sensor channels are physically swapped — DB `waterOut` is actual input, `waterIn` is actual drain.
-  // Normalize once at every Firebase read so downstream code uses correct semantics.
-  function swapWaterFields(item){
+  // Normalize water field-name variants (water_in/WaterIn → waterIn) once at every
+  // Firebase read so downstream code uses consistent keys. waterIn/waterOut are taken
+  // straight from the DB (no channel swap).
+  function normalizeWaterFields(item){
     if (!item || typeof item !== "object") return item;
     const out = { ...item };
     const inVal = item.waterIn ?? item.water_in ?? item.WaterIn;
     const outVal = item.waterOut ?? item.water_out ?? item.WaterOut;
-    if (inVal !== undefined) out.waterOut = inVal;
-    if (outVal !== undefined) out.waterIn = outVal;
+    if (inVal !== undefined) out.waterIn = inVal;
+    if (outVal !== undefined) out.waterOut = outVal;
     return out;
   }
 
