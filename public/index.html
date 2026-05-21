@@ -965,7 +965,7 @@
         }
 
         const tsKey = Object.keys(val)[0];
-        const item = swapWaterFields(val[tsKey]);
+        const item = normalizeWaterFields(val[tsKey]);
 
         // Extract timestamp from serverTimestamp (ISO string) or build from tsKey
         let tsISO = null;
@@ -1240,7 +1240,7 @@
 
       Object.keys(val).forEach(tsKey => {
         if (tsKey === "control") return;
-        const item = swapWaterFields(val[tsKey]);
+        const item = normalizeWaterFields(val[tsKey]);
 
         let tsISO = null;
         if (item.serverTimestamp) {
