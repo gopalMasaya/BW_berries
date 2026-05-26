@@ -28,7 +28,12 @@
       "Bash(firebase hosting:channel:delete ci-permcheck --project plantstracker-f1274 --force)",
       "Bash(gh secret *)",
       "Bash(gh api *)",
-      "Bash(echo \"SET_EXIT=$?\")"
+      "Bash(echo \"SET_EXIT=$?\")",
+      "Bash(git fetch *)",
+      "Bash(export MSYS_NO_PATHCONV=1)",
+      "Bash(git rev-list *)",
+      "Bash(git ls-tree *)",
+      "Bash(git push *)"
     ]
   },
   "hooks": {

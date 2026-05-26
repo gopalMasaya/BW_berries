@@ -724,6 +724,7 @@
 
   function unitFor(fieldName){
     const lower = fieldName.toLowerCase();
+    if (lower.includes("npk")) return "mg/kg";
     if (lower.includes("temp")) return "\u00B0C";
     if (lower.includes("humidity")) return "%";
     if (lower.includes("ec")) return "\u00B5S/cm";
@@ -738,6 +739,7 @@
 
   function decimalsFor(fieldName){
     const lower = fieldName.toLowerCase();
+    if (lower.includes("npk")) return 0;
     if (lower.includes("ec")) return 0;
     if (lower.includes("voltage")) return 2;
     if (lower.includes("power")) return 2;
@@ -1540,6 +1542,17 @@
       ]
     },
     {
+      // SEN0605 NPK sensor (station2) — nitrogen / phosphorus / potassium in mg/kg.
+      title: "Soil NPK",
+      unit: "mg/kg",
+      agg: "avg",
+      fields: [
+        { label: "N", candidates: ["npk_n","npkN"], color: C_GREEN,  bg: F_GREEN },
+        { label: "P", candidates: ["npk_p","npkP"], color: C_ORANGE, bg: F_ORANGE },
+        { label: "K", candidates: ["npk_k","npkK"], color: C_BLUE,   bg: F_BLUE }
+      ]
+    },
+    {
       title: "Irrigation Daily Sum",
       unit: "L",
       type: "cumulative",
@@ -1559,7 +1572,7 @@
     }
   ];
 
-  const ML_PER_PULSE = 1.45;
+  const ML_PER_PULSE = 1.6;
 
   let currentGraphIndex = 0;
   let graphChartInstance = null;
