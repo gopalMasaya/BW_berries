@@ -29,17 +29,47 @@ function isAuthorizedQuery(req) {
   return !!stationId && !!deviceSecret && deviceSecret === expectedSecret;
 }
 
+// The device already converts to Israel local time and sends it as
+// payload.time in "DDMMYYYY_HHMMSS" format (same format we use for tsKey).
+// Prefer it so stored keys reflect local time, not the function's UTC clock.
+//
+// Guard: only trust the device clock if its date is within ~2 days of the
+// server clock. A failed NTP/RTC sync returns time_t = -1 (0xFFFFFFFF), which
+// renders as 2106-02-07 and was filing data under a bogus "022106" month node
+// the dashboard never reads (so the station showed as Offline). When the device
+// date is implausible we return null and fall back to buildKeysFromDate(now).
+function buildKeysFromDeviceTime(timeStr, now) {
+  if (typeof timeStr !== "string" || !/^\d{8}_\d{6}$/.test(timeStr)) {
+    return null;
+  }
+  const dd = Number(timeStr.slice(0, 2));
+  const mm = Number(timeStr.slice(2, 4));
+  const yyyy = Number(timeStr.slice(4, 8));
+  const devDate = new Date(yyyy, mm - 1, dd);
+  if (Math.abs(devDate.getTime() - now.getTime()) > 2 * 864e5) {
+    logger.warn("device time rejected (implausible date)", {timeStr});
+    return null;
+  }
+  return {monthKey: `${timeStr.slice(2, 4)}${timeStr.slice(4, 8)}`, tsKey: timeStr};
+}
+
+// Fallback when the device time is missing/malformed: use the server clock but
+// render it in Israel local time. Cloud Functions run in UTC, and getHours()
+// would therefore be 2-3h behind; Intl with timeZone handles DST automatically.
 function buildKeysFromDate(now) {
-  const dd = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(now.getFullYear());
-  const hh = String(now.getHours()).padStart(2, "0");
-  const mi = String(now.getMinutes()).padStart(2, "0");
-  const ss = String(now.getSeconds()).padStart(2, "0");
+  const p = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jerusalem",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now).reduce((a, x) => {
+    a[x.type] = x.value;
+    return a;
+  }, {});
 
   return {
-    monthKey: `${mm}${yyyy}`,
-    tsKey: `${dd}${mm}${yyyy}_${hh}${mi}${ss}`,
+    monthKey: `${p.month}${p.year}`,
+    tsKey: `${p.day}${p.month}${p.year}_${p.hour}${p.minute}${p.second}`,
   };
 }
 
@@ -57,7 +87,10 @@ app.post("/ingest", async (req, res) => {
     }
 
     const now = new Date();
-    const {monthKey, tsKey} = buildKeysFromDate(now);
+    // Prefer the device's Israel-local time; fall back to server time
+    // rendered in Israel local if the device didn't send a valid time.
+    const {monthKey, tsKey} =
+        buildKeysFromDeviceTime(payload.time) || buildKeysFromDate(now);
 
     payload.serverTimestamp = now.toISOString();
     payload.stationId = stationId;

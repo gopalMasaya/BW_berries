@@ -1,6 +1,10 @@
 
 deploying command = firebase deploy --only hosting
 
+facebook confermation code: 
+EAAYDJ9ADPrMBRpO85dP2XKBGd5QBZAA18EIRDuHMqARBZCz3rBf3GtAYRGyCZBkCCLJHLXYCkw1QchNm2OGOeZCaZChklwCBl9eBZBkGLE9rWtBgnYXbH7ZA0ZC7BjuUUgPqjwPzCNtNuxnNWkeKgLyu7Nr25ZBi95gfIR1P4iS1Jh3AWkIsRCBIJhlxmm0hpjAZDZD
+
+
 
 plantstracker-f1274
 

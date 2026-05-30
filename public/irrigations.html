@@ -45,7 +45,7 @@
             </div>
             <div class="field" style="min-width:100px;">
               <label>ml / pulse</label>
-              <input type="number" id="fMl" min="0.1" step="0.1" value="1.6" />
+              <input type="number" id="fMl" min="0.1" step="0.1" value="3.85" />
             </div>
             <button class="btn-primary" id="fLoadBtn" style="height:38px;align-self:flex-end;">Load</button>
           </div>
@@ -185,7 +185,7 @@
       const stationId = document.getElementById("fStation").value.trim();
       const fromStr = document.getElementById("fFrom").value;
       const toStr = document.getElementById("fTo").value;
-      const mlPerPulse = Math.max(0.1, parseFloat(document.getElementById("fMl").value) || 1.6);
+      const mlPerPulse = Math.max(0.1, parseFloat(document.getElementById("fMl").value) || 3.85);
 
       if (!stationId || !fromStr || !toStr) return;
 
