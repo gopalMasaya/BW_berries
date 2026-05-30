@@ -90,7 +90,7 @@ app.post("/ingest", async (req, res) => {
     // Prefer the device's Israel-local time; fall back to server time
     // rendered in Israel local if the device didn't send a valid time.
     const {monthKey, tsKey} =
-        buildKeysFromDeviceTime(payload.time) || buildKeysFromDate(now);
+        buildKeysFromDeviceTime(payload.time, now) || buildKeysFromDate(now);
 
     payload.serverTimestamp = now.toISOString();
     payload.stationId = stationId;
