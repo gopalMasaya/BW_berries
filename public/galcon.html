@@ -193,6 +193,61 @@
     function fmtTime(d) { if (!d) return "—"; const dt = new Date(d); return dt.toLocaleTimeString("en-GB", {hour:"2-digit",minute:"2-digit"}); }
     function fmtNum(v, dec=1) { if (v == null) return "—"; return Number(v).toFixed(dec); }
 
+    // ── Our sensor readings (RTDB berries/{station}/{MMYYYY}/{tsKey}) ──
+    // EC reads ~half of reality (firmware K-factor); ×2 then µS/cm→dS/m so it
+    // sits on the same scale as Galcon's mS/cm. pH is raw.
+    const EC_CAL = v => (v == null ? null : v * 2 / 1000);
+    // Don't match an event to a reading more than 2h away — sensors report
+    // every ~15-30 min, so a wider gap means we simply have no comparison.
+    const MAX_MATCH_MS = 2 * 3600 * 1000;
+    const numOrNull = v => (v == null || v === "" || isNaN(Number(v)) ? null : Number(v));
+
+    function getMonthKeys(fromDate, toDate) {
+      const keys = [];
+      const d = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+      while (d <= toDate) {
+        keys.push(String(d.getMonth() + 1).padStart(2, "0") + String(d.getFullYear()));
+        d.setMonth(d.getMonth() + 1);
+      }
+      return keys;
+    }
+
+    // Returns a time-sorted array of { t, ec, ec2, ph1, ph2 } for a station.
+    async function fetchOurReadings(station, fromDate, toDate) {
+      const rows = [];
+      for (const mk of getMonthKeys(fromDate, toDate)) {
+        const snap = await get(ref(db, "berries/" + station + "/" + mk));
+        const val = snap.val();
+        if (!val) continue;
+        for (const tsKey of Object.keys(val)) {
+          if (tsKey === "control") continue;
+          const item = val[tsKey] || {};
+          let t = null;
+          if (item.serverTimestamp) {
+            t = new Date(item.serverTimestamp).getTime();
+          } else if (tsKey.length >= 13) {
+            const dd = tsKey.slice(0, 2), mm = tsKey.slice(2, 4), yyyy = tsKey.slice(4, 8);
+            const hh = tsKey.slice(9, 11) || "00", mi = tsKey.slice(11, 13) || "00";
+            t = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mi}:00`).getTime();
+          }
+          if (t == null || isNaN(t)) continue;
+          rows.push({ t, ec: numOrNull(item.ec), ec2: numOrNull(item.ec2), ph1: numOrNull(item.ph1), ph2: numOrNull(item.ph2) });
+        }
+      }
+      rows.sort((a, b) => a.t - b.t);
+      return rows;
+    }
+
+    // Reading closest in time to targetMs, or null if none within tolerance.
+    function nearestReading(rows, targetMs) {
+      let best = null, bestDiff = Infinity;
+      for (const r of rows) {
+        const d = Math.abs(r.t - targetMs);
+        if (d < bestDiff) { bestDiff = d; best = r; }
+      }
+      return bestDiff <= MAX_MATCH_MS ? best : null;
+    }
+
     // ── Tabs ──
     document.querySelectorAll(".tab-btn").forEach(btn => {
       btn.addEventListener("click", () => {
