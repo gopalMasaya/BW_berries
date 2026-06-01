@@ -162,7 +162,8 @@
   <script type="module">
     import { requireAuth } from "./guard.mjs";
     import { initSidebar } from "./sidebar.mjs";
-    import { waitForAuth } from "./auth.mjs";
+    import { waitForAuth, db, ref, get } from "./auth.mjs";
+    import { STATIONS } from "./stations.mjs";
     import { getAuth } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
 
     const { user, profile } = await requireAuth(["manager"]);
