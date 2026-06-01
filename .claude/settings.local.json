@@ -33,7 +33,8 @@
       "Bash(export MSYS_NO_PATHCONV=1)",
       "Bash(git rev-list *)",
       "Bash(git ls-tree *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "PowerShell(firebase database:get *)"
     ]
   },
   "hooks": {
