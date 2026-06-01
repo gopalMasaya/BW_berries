@@ -336,7 +336,33 @@
         }
         empty.style.display = "none";
 
-        tbody.innerHTML = valves.map(v => `
+        // Fetch our station's readings once, spanning all event times (+/- the
+        // match tolerance), then match each event to its nearest reading.
+        const station = document.getElementById("vStation").value;
+        let ourRows = [];
+        if (station) {
+          const times = valves
+            .map(v => new Date(v.DateTimeStartValve).getTime())
+            .filter(t => !isNaN(t));
+          if (times.length) {
+            const minT = Math.min(...times), maxT = Math.max(...times);
+            ourRows = await fetchOurReadings(
+              station,
+              new Date(minT - MAX_MATCH_MS),
+              new Date(maxT + MAX_MATCH_MS),
+            );
+          }
+        }
+
+        const ourCell = (m, keys, transform) => {
+          if (!m) return "—";
+          const parts = keys.map(k => fmtNum(transform ? transform(m[k]) : m[k], transform ? 2 : 1));
+          return parts.every(p => p === "—") ? "—" : parts.join(" / ");
+        };
+
+        tbody.innerHTML = valves.map(v => {
+          const m = ourRows.length ? nearestReading(ourRows, new Date(v.DateTimeStartValve).getTime()) : null;
+          return `
           <tr>
             <td>${fmtDate(v.DateTimeStartValve)}</td>
             <td>${fmtTime(v.DateTimeStartValve)}</td>
@@ -348,9 +374,12 @@
             <td>${fmtNum(v.FlowRateM3h)}</td>
             <td>${fmtNum(v.VolumeM3Valve, 2)}</td>
             <td>${v.PhMed > 0 ? `${fmtNum(v.PhMin)}–${fmtNum(v.PhMax)}` : "—"}</td>
+            <td>${ourCell(m, ["ph1", "ph2"])}</td>
             <td>${v.EcMed > 0 ? `${fmtNum(v.EcMin, 2)}–${fmtNum(v.EcMax, 2)}` : "—"}</td>
+            <td>${ourCell(m, ["ec", "ec2"], EC_CAL)}</td>
           </tr>
-        `).join("");
+        `;
+        }).join("");
       } catch (err) {
         console.error("valve load error", err);
         document.getElementById("valveCount").textContent = "Error: " + err.message;
