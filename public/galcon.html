@@ -459,6 +459,14 @@
     document.getElementById("sLoadBtn").addEventListener("click", loadSensors);
 
     // ── Init ──
+    const vStation = document.getElementById("vStation");
+    STATIONS.forEach(s => {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      vStation.appendChild(opt);
+    });
+
     document.getElementById("vFrom").value = daysAgo(7);
     document.getElementById("vTo").value = todayStr();
     document.getElementById("sFrom").value = daysAgo(2);
