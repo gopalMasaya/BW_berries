@@ -34,7 +34,15 @@
       "Bash(git rev-list *)",
       "Bash(git ls-tree *)",
       "Bash(git push *)",
-      "PowerShell(firebase database:get *)"
+      "PowerShell(firebase database:get *)",
+      "Bash(git config *)",
+      "Bash(git remote *)",
+      "Bash(where git-credential-manager *)",
+      "Read(//c/Program Files/Git/mingw64/bin/**)",
+      "Bash(C:/Program Files/GitHub CLI/gh.exe auth *)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" auth status)",
+      "Bash(echo \"push exit: $?\")",
+      "Bash(schtasks /query /tn \"PlantsTracker-GitSync\" /fo LIST)"
     ]
   },
   "hooks": {
