@@ -153,6 +153,25 @@
             </div>
           </div>
 
+          <!-- DOSING (MEVO HORON) TAB -->
+          <div class="tab-panel" id="tab-dosing" dir="rtl">
+            <div class="card">
+              <div class="filters">
+                <button class="btn-primary" id="dLoadBtn" style="height:38px;">רענון</button>
+                <div id="dStatus" style="font-size:13px;color:var(--muted);align-self:center;"></div>
+              </div>
+              <h3 style="margin:8px 0;">שולחנות דישון — מבוא חורון (זמן אמת)</h3>
+              <div id="fertCards" class="stats-row"></div>
+              <h3 style="margin:20px 0 8px;">מכלי סחרור וחיישנים</h3>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">
+                מכלי הסחרור (קרוב / רחוק) מודגשים. הערכים החיים של גובה / pH המכלים
+                יתווספו בשלב הבא (זמינים רק דרך ה-socket של גלקון).
+              </div>
+              <div id="sensorList" class="sensor-grid"></div>
+              <div id="dosingEmpty" class="no-data" style="display:none;">לחץ רענון לטעינה</div>
+            </div>
+          </div>
+
         </div>
       </div>
     </main>
