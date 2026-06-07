@@ -497,4 +497,62 @@ galconApp.get("/sensors", async (req, res) => {
   }
 });
 
+// Live fertigation centers ("שולחנות דישון") + sensor list for Mevo Horon.
+// Tank live values (level/pH) are not REST-exposed (real-time socket only),
+// so we return the sensor NAMES here; numeric values come in a later phase.
+galconApp.get("/dosing", async (req, res) => {
+  try {
+    const cfg = await getMevoConfigId();
+    const to = new Date();
+    const from = new Date(to.getTime() - 7 * 86400000);
+    const range = `startDate=${encodeURIComponent(fmtAppDate(from))}` +
+                  `&endDate=${encodeURIComponent(fmtAppDate(to))}`;
+
+    const [c1, c2, sensorsRes] = await Promise.all([
+      appGet(`/config/${cfg}/dashboard/ecph-widget-info?fertCenterNumber=1&${range}`),
+      appGet(`/config/${cfg}/dashboard/ecph-widget-info?fertCenterNumber=2&${range}`),
+      appGet(`/config/${cfg}/dashboard/active-data-collection-sensors`),
+    ]);
+
+    const lastPoint = (r) => {
+      const arr = (r.json && r.json.body) || [];
+      return Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null;
+    };
+    const fertCenter = (p, num) => {
+      if (!p) return {number: num, name: `שולחן דישון ${num}`, hasData: false};
+      return {
+        number: p.fertCenterNum || num,
+        name: (p.fertCenterName || `שולחן דישון ${num}`).trim(),
+        currentEC: p.currAverageEC,
+        currentPH: p.currAveragePH,
+        requiredEC: p.currRequiredEC,
+        requiredPH: p.currRequiredPH,
+        waterFlow: p.averageWaterFlow,
+        time: p.time || p.receivedDate || null,
+        hasData: true,
+      };
+    };
+
+    const sensors = (((sensorsRes.json && sensorsRes.json.body) || []))
+        .map((s) => ({
+          number: s.number,
+          name: (s.name || "").trim(),
+          unit: s.unit,
+          sensorType: s.sensorType,
+          id: s.id,
+        }));
+
+    return res.json({
+      ok: true,
+      controllerName: "מבוא חורון",
+      configId: cfg,
+      fertCenters: [fertCenter(lastPoint(c1), 1), fertCenter(lastPoint(c2), 2)],
+      sensors,
+    });
+  } catch (err) {
+    logger.error("galcon dosing failed", err);
+    return res.status(500).json({ok: false, error: err.message || "server error"});
+  }
+});
+
 exports.galcon = onRequest({cors: true, timeoutSeconds: 60}, galconApp);
