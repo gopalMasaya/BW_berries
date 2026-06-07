@@ -239,6 +239,101 @@ function normalizeGalileoDate(s) {
   return t.split(":").length === 2 ? `${d}T${t}:00` : `${d}T${t}`;
 }
 
+// ===================== GALCON APP API (live dashboard) =====================
+// The external-api above only exposes finished-irrigation events. The live
+// fertigation-center EC/pH ("שולחן דישון") and tank sensors live in the web
+// app's own API (same host, see /swagger/docs/v1), reached by logging in.
+// NOTE: the account enforces a SINGLE session — calling this logs out any
+// interactive Galcon login on the same user (and vice-versa). Use a dedicated
+// integration user to avoid the tug-of-war. Mevo Horon = serial 000169.
+const GALILEO_APP = {
+  host: "galileo_api.galcon-smart.com",
+  userName: "Liatefi@gmail.com",
+  password: "123456",
+};
+
+let appToken = null; // "Bearer <token>", cached per warm instance
+let mevoConfigId = null; // resolved Mevo Horon configID, cached
+
+function appRequest(method, path, {body, token} = {}) {
+  const data = body ? JSON.stringify(body) : null;
+  const headers = {accept: "application/json"};
+  if (token) headers["Authorization"] = token;
+  if (data) {
+    headers["content-type"] = "application/json";
+    headers["content-length"] = Buffer.byteLength(data);
+  }
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: GALILEO_APP.host, path, method, headers, timeout: 30000,
+    }, (res) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => {
+        const text = Buffer.concat(chunks).toString("utf8");
+        let json = null;
+        try { json = JSON.parse(text); } catch (e) { /* non-JSON */ }
+        resolve({status: res.statusCode, text, json});
+      });
+    });
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("galileo app timeout")));
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+// Log in; if a session is already active, take it over via the tempSession.
+// Token must be sent as the "Bearer <token>" Authorization header.
+async function appLogin() {
+  const creds = {
+    userName: GALILEO_APP.userName,
+    password: GALILEO_APP.password,
+    isMobile: false,
+  };
+  const login = await appRequest("POST", "/auth/login", {body: creds});
+  let token = login.json && login.json.body && login.json.body.accountToken;
+  if (!token) {
+    const tempSession = login.json && login.json.body && login.json.body.tempSessionId;
+    if (!tempSession) throw new Error("galileo login: no token / tempSession");
+    const sess = await appRequest("POST", "/auth/session", {
+      body: Object.assign({tempSession}, creds),
+    });
+    token = sess.json && sess.json.body && sess.json.body.accountToken;
+  }
+  if (!token) throw new Error("galileo login failed");
+  return "Bearer " + token;
+}
+
+async function appGet(path) {
+  if (!appToken) appToken = await appLogin();
+  let r = await appRequest("GET", path, {token: appToken});
+  if (r.status === 401) {
+    appToken = await appLogin();
+    r = await appRequest("GET", path, {token: appToken});
+  }
+  return r;
+}
+
+async function getMevoConfigId() {
+  if (mevoConfigId) return mevoConfigId;
+  const proj = await appGet("/controllers-dashboard/user-projects");
+  const projectId = proj.json.body.activeProjectID;
+  const ctrls = await appGet(
+      `/project/${projectId}/controllers-dashboard?page=1&step=50`);
+  const list = (ctrls.json.body && ctrls.json.body.controllers) || [];
+  const mevo = list.find((c) => String(c.serialNumber || "").includes("000169"));
+  if (!mevo) throw new Error("Mevo Horon (000169) not found");
+  mevoConfigId = mevo.configID;
+  return mevoConfigId;
+}
+
+function fmtAppDate(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+         `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 const galconApp = express();
 galconApp.use(express.json());
 
