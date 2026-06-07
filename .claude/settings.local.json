@@ -87,7 +87,8 @@
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_findhub.js\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_allchunks.js\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_huburl.js\")",
-      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_socket.js\")"
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_socket.js\")",
+      "Bash(gcloud auth *)"
     ]
   },
   "hooks": {
