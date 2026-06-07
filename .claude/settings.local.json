@@ -44,7 +44,8 @@
       "Bash(echo \"push exit: $?\")",
       "Bash(schtasks /query /tn \"PlantsTracker-GitSync\" /fo LIST)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_discover.js\")"
     ]
   },
   "hooks": {
