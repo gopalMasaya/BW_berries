@@ -77,7 +77,8 @@
       "Bash(gh run *)",
       "Bash(curl -s \"https://plantstracker-f1274.web.app/galcon.html\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_signalr.js\")",
-      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_sensorraw.js\")"
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_sensorraw.js\")",
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_webapp.js\")"
     ]
   },
   "hooks": {
