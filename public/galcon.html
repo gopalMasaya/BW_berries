@@ -184,7 +184,25 @@
     // ── State ──
     let controllers = [];
     let sensorGroups = [];
+    let dosingLoaded = false;
     const charts = {};
+
+    // ── Controller labels ──
+    // The 4 active controllers are labelled A–D internally; 000053 is unused
+    // and hidden. Serials arrive full ("GAL0000000000169").
+    const CONTROLLERS = {
+      "GAL0000000000169": { label: "A", name: "מבוא חורון" },
+      "GAL0000000001399": { label: "B", name: "פטל" },
+      "GAL0000000001638": { label: "C", name: "פטל מערב" },
+      "GAL0000000001771": { label: "D", name: "1771" },
+    };
+    const CTRL_ORDER = Object.keys(CONTROLLERS);
+    const HIDDEN_SERIAL = "GAL0000000000053";
+    const ctrlSortKey = s => { const i = CTRL_ORDER.indexOf(s); return i < 0 ? 99 : i; };
+    const ctrlLabel = s => {
+      const c = CONTROLLERS[s];
+      return c ? `${c.label} — ${c.name}` : (s ? s.slice(-6) : "—");
+    };
 
     // ── Date helpers ──
     function todayStr() { return new Date().toISOString().slice(0, 10); }
