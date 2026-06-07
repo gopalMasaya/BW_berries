@@ -92,7 +92,9 @@
       "Bash(DRY_RUN=1 timeout 42 node galcon-realtime.js)",
       "Bash(DRY_RUN=1 timeout 102 node galcon-realtime.js)",
       "Bash(DRY_RUN=1 timeout 0.1 node -e \"1\")",
-      "Bash(grep -nE \"export \\\\{|^export \\\\{|ref,|onValue\" public/auth.mjs)"
+      "Bash(grep -nE \"export \\\\{|^export \\\\{|ref,|onValue\" public/auth.mjs)",
+      "Bash(export GOOGLE_APPLICATION_CREDENTIALS=\"C:/Users/Admin/Downloads/plantstracker-f1274-firebase-adminsdk-fbsvc-d93ff1ae33.json\")",
+      "Bash(timeout 72 node galcon-realtime.js)"
     ]
   },
   "hooks": {
