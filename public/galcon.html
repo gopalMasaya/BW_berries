@@ -536,6 +536,59 @@
 
     document.getElementById("sLoadBtn").addEventListener("click", loadSensors);
 
+    // ── Dosing (Mevo Horon fertigation centers + tank sensors) ──
+    async function loadDosing() {
+      const btn = document.getElementById("dLoadBtn");
+      const status = document.getElementById("dStatus");
+      btn.disabled = true;
+      btn.textContent = "טוען...";
+      status.textContent = "";
+      document.getElementById("dosingEmpty").style.display = "none";
+      try {
+        const data = await galconFetch("/dosing");
+
+        document.getElementById("fertCards").innerHTML = (data.fertCenters || []).map(c => {
+          if (!c.hasData) {
+            return `<div class="stat-card"><div class="label">${c.name}</div>
+              <div class="value" style="font-size:16px;color:var(--muted);">אין נתונים</div></div>`;
+          }
+          return `<div class="stat-card">
+            <div class="label" style="font-weight:700;color:var(--text);">${c.name}</div>
+            <div style="display:flex;gap:20px;margin-top:8px;">
+              <div>
+                <div class="label">pH · נוכחי / דרוש</div>
+                <div class="value" style="font-size:20px;">${fmtNum(c.currentPH)} / ${fmtNum(c.requiredPH)}</div>
+              </div>
+              <div>
+                <div class="label">EC · נוכחי / דרוש</div>
+                <div class="value" style="font-size:20px;">${fmtNum(c.currentEC, 2)} / ${fmtNum(c.requiredEC, 2)}</div>
+              </div>
+            </div>
+            <div class="label" style="margin-top:8px;">ספיקה ${fmtNum(c.waterFlow)} מ"ק/ש${c.time ? " · " + fmtDate(c.time) + " " + fmtTime(c.time) : ""}</div>
+          </div>`;
+        }).join("");
+
+        const sensors = data.sensors || [];
+        document.getElementById("sensorList").innerHTML = sensors.map(s => {
+          const isTank = (s.name || "").includes("מיכל");
+          return `<div class="sensor-card"${isTank ? ' style="border-color:var(--primary);border-width:2px;"' : ""}>
+            <h3>${s.name || ("חיישן " + s.number)}</h3>
+            <div class="label">${isTank ? "🛢️ מכל / סחרור" : "חיישן"} · #${s.number}</div>
+            <div style="font-size:13px;color:var(--muted);margin-top:4px;">ערך חי — בקרוב</div>
+          </div>`;
+        }).join("");
+
+        status.textContent = `עודכן ${new Date().toLocaleTimeString("en-GB")}`;
+      } catch (err) {
+        status.textContent = "שגיאה: " + err.message;
+        console.error("dosing load error", err);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "רענון";
+      }
+    }
+    document.getElementById("dLoadBtn").addEventListener("click", loadDosing);
+
     // ── Init ──
     const vStation = document.getElementById("vStation");
     STATIONS.forEach(s => {
