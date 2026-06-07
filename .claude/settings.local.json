@@ -51,7 +51,10 @@
       "Bash(node _tmp_galcon_sql.js)",
       "Bash(rm \"C:\\\\Users\\\\Admin\\\\Documents\\\\js coding\\\\plantsTracker\\\\functions\\\\_tmp_galcon_sql.js\")",
       "Bash(node _tmp_schema.js)",
-      "Bash(rm _tmp_schema.js)"
+      "Bash(rm _tmp_schema.js)",
+      "Bash(node _tmp_ctrl.js)",
+      "Bash(rm _tmp_ctrl.js)",
+      "WebSearch"
     ]
   },
   "hooks": {
