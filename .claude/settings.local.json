@@ -68,7 +68,14 @@
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_live.js\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_logtypes.js\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_logfind.js\")",
-      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_route_test.js\")"
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_route_test.js\")",
+      "Bash(firebase --version)",
+      "Bash(firebase projects:list)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" \"https://us-central1-plantstracker-f1274.cloudfunctions.net/galcon/dosing\")",
+      "Bash(curl -s \"https://us-central1-plantstracker-f1274.cloudfunctions.net/galcon/dosing\")",
+      "Bash(gh workflow *)",
+      "Bash(gh run *)",
+      "Bash(curl -s \"https://plantstracker-f1274.web.app/galcon.html\")"
     ]
   },
   "hooks": {
