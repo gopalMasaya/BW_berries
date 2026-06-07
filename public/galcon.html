@@ -370,7 +370,7 @@
 
       try {
         const data = await galconFetch("/valves", params);
-        const valves = data.valves || [];
+        const valves = (data.valves || []).filter(v => v.SerialNumber !== HIDDEN_SERIAL);
         const tbody = document.getElementById("valveBody");
         const empty = document.getElementById("valveEmpty");
         const count = document.getElementById("valveCount");
