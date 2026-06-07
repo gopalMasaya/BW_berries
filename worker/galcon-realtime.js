@@ -133,7 +133,9 @@ function handleEvent(ev) {
   }
 
   // EC=3 → group-type status. Fert centers are the ones carrying ECActual/PHActual.
+  // Skip unconfigured center slots (Mevo Horon has 2) — all-zero + inactive.
   if (ev.EC === 3 && de.ECActual != null && de.PHActual != null && de.Number != null) {
+    if (!de.Status && !de.ECActual && !de.PHActual) return;
     const num = de.Number;
     rtdbSet(`${RTDB_BASE}/fertCenters/${num}`, {
       number: num,
