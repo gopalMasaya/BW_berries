@@ -60,7 +60,8 @@
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_probe2.js\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_infra.js\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_swagger.js\")",
-      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_introspect.js\")"
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_introspect.js\")",
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_login.js\")"
     ]
   },
   "hooks": {
