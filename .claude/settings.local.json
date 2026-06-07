@@ -49,7 +49,9 @@
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_sql.js\")",
       "Bash(cp \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_sql.js\" \"C:\\\\Users\\\\Admin\\\\Documents\\\\js coding\\\\plantsTracker\\\\functions\\\\_tmp_galcon_sql.js\")",
       "Bash(node _tmp_galcon_sql.js)",
-      "Bash(rm \"C:\\\\Users\\\\Admin\\\\Documents\\\\js coding\\\\plantsTracker\\\\functions\\\\_tmp_galcon_sql.js\")"
+      "Bash(rm \"C:\\\\Users\\\\Admin\\\\Documents\\\\js coding\\\\plantsTracker\\\\functions\\\\_tmp_galcon_sql.js\")",
+      "Bash(node _tmp_schema.js)",
+      "Bash(rm _tmp_schema.js)"
     ]
   },
   "hooks": {
