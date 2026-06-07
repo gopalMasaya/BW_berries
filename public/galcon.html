@@ -415,7 +415,7 @@
             <td>${fmtDate(v.DateTimeStartValve)}</td>
             <td>${fmtTime(v.DateTimeStartValve)}</td>
             <td>${fmtTime(v.DateTimeStopValve)}</td>
-            <td>${v.SerialNumber ? v.SerialNumber.slice(-6) : v.ControllerID}</td>
+            <td>${ctrlLabel(v.SerialNumber)}</td>
             <td><strong>${v.ValveNo}</strong></td>
             <td>${v.ProgNum}</td>
             <td>${fmtNum(v.DurationValve)}</td>
