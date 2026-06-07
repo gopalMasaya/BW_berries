@@ -89,7 +89,10 @@
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_huburl.js\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_socket.js\")",
       "Bash(gcloud auth *)",
-      "Bash(DRY_RUN=1 timeout 42 node galcon-realtime.js)"
+      "Bash(DRY_RUN=1 timeout 42 node galcon-realtime.js)",
+      "Bash(DRY_RUN=1 timeout 102 node galcon-realtime.js)",
+      "Bash(DRY_RUN=1 timeout 0.1 node -e \"1\")",
+      "Bash(grep -nE \"export \\\\{|^export \\\\{|ref,|onValue\" public/auth.mjs)"
     ]
   },
   "hooks": {
