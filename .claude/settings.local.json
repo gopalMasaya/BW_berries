@@ -67,7 +67,8 @@
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_resp.js\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_live.js\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_logtypes.js\")",
-      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_logfind.js\")"
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_logfind.js\")",
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_route_test.js\")"
     ]
   },
   "hooks": {
