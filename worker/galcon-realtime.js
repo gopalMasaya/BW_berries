@@ -32,7 +32,7 @@ const MEVO = { serial: "GAL0000000000169", configId: 160377, commUnitID: 210202 
 const USER = process.env.GALCON_USER || "Liatefi@gmail.com";
 const PASS = process.env.GALCON_PASS || "123456";
 const TRIGGER_INTERVAL_MS = process.env.TRIGGER_INTERVAL_MS != null ?
-  Number(process.env.TRIGGER_INTERVAL_MS) : 10 * 60 * 1000;
+  Number(process.env.TRIGGER_INTERVAL_MS) : 60 * 1000;
 const DRY_RUN = process.env.DRY_RUN === "1";
 
 // Fallback names/decimals for the tanks so values are labelled even before the
