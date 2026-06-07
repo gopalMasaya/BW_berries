@@ -42,7 +42,9 @@
       "Bash(C:/Program Files/GitHub CLI/gh.exe auth *)",
       "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" auth status)",
       "Bash(echo \"push exit: $?\")",
-      "Bash(schtasks /query /tn \"PlantsTracker-GitSync\" /fo LIST)"
+      "Bash(schtasks /query /tn \"PlantsTracker-GitSync\" /fo LIST)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   },
   "hooks": {
