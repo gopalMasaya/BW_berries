@@ -78,6 +78,10 @@ async function rtdbSet(path, value) {
   if (DRY_RUN) { console.log("DRY write", path, JSON.stringify(value)); return; }
   await db.ref(path).set(value);
 }
+async function rtdbUpdate(path, value) {
+  if (DRY_RUN) { console.log("DRY update", path, JSON.stringify(value)); return; }
+  await db.ref(path).update(value);
+}
 
 // ───────────────────────── Galcon REST (optional) ─────────────────────────
 function apiReq(method, path, {body, token} = {}) {
