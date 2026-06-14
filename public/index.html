@@ -1449,12 +1449,19 @@
 
     // Collect all numeric/boolean field names across all rows
     const skipFields = ["stationId", "serverTimestamp", "time", "deviceId", "sortKey", "tsISO", "tsKey"];
+    // Diagnostic / system telemetry the user doesn't want in the table.
+    // Matched case-insensitively against the raw field name.
+    const HIDDEN_FIELDS = new Set([
+      "apifails", "apifail", "modemfails", "modemfail",
+      "uptime", "charging", "voltage", "chargingvoltage"
+    ]);
     const fieldSet = new Set();
     filteredChartData.forEach(row => {
       Object.keys(row).forEach(k => {
         if (skipFields.includes(k)) return;
         if (k.startsWith("__")) return; // internal computed fields (cumulative liters)
         if (k.toLowerCase().includes("timestamp")) return;
+        if (HIDDEN_FIELDS.has(k.toLowerCase())) return; // diagnostic/system fields
         if (waterKeys.has(k)) return; // shown as dedicated cumulative-liters columns
         const v = row[k];
         if (typeof v === "number" || typeof v === "boolean" || (!isNaN(parseFloat(v)) && v !== null && v !== "")) {
