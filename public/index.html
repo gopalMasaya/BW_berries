@@ -1481,11 +1481,22 @@
     return html;
   }
 
+  // Resolve a CAD valve id (e.g. "B9") to its live Galcon record.
+  function galconValveFor(cadId){
+    const letter = cadId.charAt(0).toUpperCase();
+    const num = parseInt(cadId.slice(1), 10);
+    const ctrlName = (galconCtrls && galconCtrls[letter] && galconCtrls[letter].name) || GALCON_CTRL[letter] || ("בקר " + letter);
+    const rec = galconValves && galconValves[letter] && galconValves[letter][num];
+    return { letter, num, ctrlName, rec };
+  }
+
   function renderValveInfo(v){
-    const ctrl = GALCON_CTRL[v.id.charAt(0)] || ("בקר " + v.id.charAt(0));
-    openPlanInfo("ברז " + v.id, ctrl, null,
+    const g = galconValveFor(v.id);
+    const cards = [["בקר", g.ctrlName], ["מס' ברז", g.num]];
+    if (g.rec && g.rec.name) cards.push(["שם הברז", g.rec.name]);
+    openPlanInfo("ברז " + v.id, g.rec && g.rec.name ? g.rec.name : g.ctrlName, cards,
       galconSharedHtml() +
-      '<div class="pi-note">סטטוס פר-ברז (פתוח/משקה) אינו זמין כרגע ב-Firebase — נתוני הדישון/מיכל הם ברמת המערכת. חיבור סטטוס פר-ברז דורש הרחבת ה-worker של Galcon.</div>');
+      '<div class="pi-note">סטטוס פר-ברז בזמן אמת (פתוח/משקה) משודר מ-Galcon רק בזמן השקיה פעילה; נתוני הדישון/מיכל למעלה הם ברמת המערכת.</div>');
   }
 
   function renderStationInfo(deviceId, approx, vid){
