@@ -117,6 +117,30 @@ async function loadSensorMeta() {
   console.log(`loaded metadata for ${arr.length} sensors`);
 }
 
+// Mirror every controller's valve list (number → Hebrew name) into RTDB so the
+// dashboard's field plan can label/identify each valve. Valve definitions rarely
+// change, so this runs at startup and on the trigger interval. Live per-valve
+// "irrigating" status is NOT in this REST data — it only streams over the socket
+// during active irrigation; historical runs need the external-api `key`.
+async function loadValveMeta() {
+  for (const c of CONTROLLERS) {
+    try {
+      const r = await apiGet(`/config/${c.configId}/element-group/valve`);
+      const arr = (r.json && r.json.body && r.json.body.valveElements) || [];
+      const out = {};
+      for (const v of arr) {
+        if (!v || v.number == null) continue;
+        out[v.number] = {number: v.number, name: (v.name || "").trim(), id: v.id ?? null};
+      }
+      await rtdbSet(`galcon/valves/${c.letter}`, out);
+      console.log(`valves ${c.letter} (${c.name}): ${arr.length}`);
+    } catch (e) { console.error("valve meta", c.letter, e.message); }
+  }
+  const meta = {};
+  for (const c of CONTROLLERS) meta[c.letter] = {letter: c.letter, name: c.name, serial: c.serial, configId: c.configId};
+  await rtdbSet("galcon/controllers", meta);
+}
+
 async function fireTriggers() {
   const nums = Object.keys(sensorMeta).map(Number);
   await apiGet(`/config/${MEVO.configId}/dashboard/run-real-time-events`);
