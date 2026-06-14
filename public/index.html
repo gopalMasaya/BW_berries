@@ -1376,8 +1376,15 @@
   }
 
   // ---- section alignment (s2 is translated/rotated to abut s1) ----
+  // Default alignment of the western A-strip (section s2) onto the numbered
+  // section (s1), determined manually via align mode. A per-browser localStorage
+  // override (fieldPlanTF) wins if present, so it stays fine-tunable.
+  const DEFAULT_SECTION_TF = { s2: { dx: 752.6, dy: -204.1, rot: 0 } };
   function loadSectionTF(){
-    try { return JSON.parse(localStorage.getItem("fieldPlanTF")) || {}; } catch (e) { return {}; }
+    try {
+      const saved = JSON.parse(localStorage.getItem("fieldPlanTF"));
+      return (saved && saved.s2) ? saved : DEFAULT_SECTION_TF;
+    } catch (e) { return DEFAULT_SECTION_TF; }
   }
   function secCenter(sec){
     const bb = planData.sections && planData.sections[sec] && planData.sections[sec].bbox;
