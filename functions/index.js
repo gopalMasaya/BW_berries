@@ -334,8 +334,49 @@ function fmtAppDate(d) {
          `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+// Resolve any controller serial → its Galileo configID. Cached per serial per
+// warm instance. Matches on the full serial or on a trailing fragment (e.g.
+// "000169") so callers can pass either form.
+const configIdBySerial = {};
+async function getConfigIdForSerial(serial) {
+  const s = String(serial || "").trim();
+  if (!s) throw new Error("serial required");
+  if (configIdBySerial[s]) return configIdBySerial[s];
+  const proj = await appGet("/controllers-dashboard/user-projects");
+  const projectId = proj.json.body.activeProjectID;
+  const ctrls = await appGet(
+      `/project/${projectId}/controllers-dashboard?page=1&step=50`);
+  const list = (ctrls.json.body && ctrls.json.body.controllers) || [];
+  const found = list.find((c) => String(c.serialNumber || "").trim() === s) ||
+                list.find((c) => String(c.serialNumber || "").includes(s));
+  if (!found) throw new Error("controller not found: " + s);
+  configIdBySerial[s] = found.configID;
+  return found.configID;
+}
+
 const galconApp = express();
 galconApp.use(express.json());
+
+// Accept Firebase ID tokens from this project (plantstracker-f1274) AND from the
+// qrCode project (song-cd1cd), whose irrigation report embeds Galcon data per
+// station. verifyIdToken validates the JWT signature against Google's public
+// certs and checks the audience against the app's projectId — no service-account
+// credential is needed — so a credential-less named app is enough to verify the
+// other project's tokens.
+let qrAuthApp = null;
+function qrAuth() {
+  if (!qrAuthApp) {
+    qrAuthApp = admin.initializeApp({projectId: "song-cd1cd"}, "qrcode");
+  }
+  return admin.auth(qrAuthApp);
+}
+async function verifyAnyProject(idToken) {
+  try {
+    return await admin.auth().verifyIdToken(idToken);
+  } catch (e) {
+    return await qrAuth().verifyIdToken(idToken);
+  }
+}
 
 // Firebase Auth middleware
 galconApp.use(async (req, res, next) => {
@@ -345,7 +386,7 @@ galconApp.use(async (req, res, next) => {
   }
   try {
     const token = auth.split("Bearer ")[1];
-    req.user = await admin.auth().verifyIdToken(token);
+    req.user = await verifyAnyProject(token);
     next();
   } catch (e) {
     return res.status(401).json({ok: false, error: "invalid token"});
@@ -551,6 +592,56 @@ galconApp.get("/dosing", async (req, res) => {
     });
   } catch (err) {
     logger.error("galcon dosing failed", err);
+    return res.status(500).json({ok: false, error: err.message || "server error"});
+  }
+});
+
+// Irrigation method ("שיטת השקיה") — the per-cycle water-dose percentages the
+// user configures in Galcon ("שינוי מנת המים באחוזים לפי מספר מחזור").
+// changeWaterByCycleItems is a flat list of {number, irrigationMethodNumber,
+// changeWaterByCycle, waterMultiplyForCycle}: `number` is the group/row (1→A…),
+// `irrigationMethodNumber` is the cycle (1-10), waterMultiplyForCycle is the %.
+galconApp.get("/irrigation-method", async (req, res) => {
+  try {
+    const serial = String(req.query.serial || "").trim();
+    if (!serial) return res.status(400).json({ok: false, error: "serial required"});
+    const cfg = await getConfigIdForSerial(serial);
+    const r = await appGet(`/config/${cfg}/program/irrigation-method`);
+    const body = (r.json && r.json.body) || {};
+    return res.json({
+      ok: true,
+      serial,
+      configId: cfg,
+      changeWaterByCycle: body.changeWaterByCycleItems || [],
+    });
+  } catch (err) {
+    logger.error("galcon irrigation-method failed", err);
+    return res.status(500).json({ok: false, error: err.message || "server error"});
+  }
+});
+
+// Irrigation programs for a controller — exposes each program's base water dose
+// (waterProgAmount). A valve event's percentage = its VolumeM3Valve / the base
+// dose of its program (ProgNum) × 100, so the report can label each irrigation.
+galconApp.get("/programs", async (req, res) => {
+  try {
+    const serial = String(req.query.serial || "").trim();
+    if (!serial) return res.status(400).json({ok: false, error: "serial required"});
+    const cfg = await getConfigIdForSerial(serial);
+    const r = await appGet(`/config/${cfg}/program/irrigation-program-multi-programs`);
+    const items = (r.json && r.json.body && r.json.body.items) || [];
+    const programs = items.map((p) => ({
+      number: p.number,
+      name: (p.name || "").trim(),
+      waterProgAmount: p.waterProgAmount,
+      waterUnit: p.waterUnit,
+      cyclePerDay: p.cyclePerDay,
+      valveA: p.valveA,
+      valves: [p.valveA, p.valveB, p.valveC, p.valveD, p.valveE].filter((x) => x != null),
+    }));
+    return res.json({ok: true, serial, configId: cfg, programs});
+  } catch (err) {
+    logger.error("galcon programs failed", err);
     return res.status(500).json({ok: false, error: err.message || "server error"});
   }
 });

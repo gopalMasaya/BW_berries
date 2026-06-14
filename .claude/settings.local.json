@@ -94,7 +94,12 @@
       "Bash(DRY_RUN=1 timeout 0.1 node -e \"1\")",
       "Bash(grep -nE \"export \\\\{|^export \\\\{|ref,|onValue\" public/auth.mjs)",
       "Bash(export GOOGLE_APPLICATION_CREDENTIALS=\"C:/Users/Admin/Downloads/plantstracker-f1274-firebase-adminsdk-fbsvc-d93ff1ae33.json\")",
-      "Bash(timeout 72 node galcon-realtime.js)"
+      "Bash(timeout 72 node galcon-realtime.js)",
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\.claude\\\\jobs\\\\47eb0e45\\\\tmp\\\\galcon_trigtest.js\")",
+      "PowerShell(schtasks *)",
+      "Bash(DRY_RUN=1 TRIGGER_INTERVAL_MS=0 timeout 30 node galcon-realtime.js)",
+      "Bash(export TRIGGER_INTERVAL_MS=1800000)",
+      "Bash(node galcon-realtime.js)"
     ]
   },
   "hooks": {

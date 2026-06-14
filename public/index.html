@@ -451,37 +451,41 @@
   </main>
 
   <div id="chartView">
+    <div id="chartToolbar">
+      <div class="ct-viewnav">
+        <button class="viewBtn" data-view="gis">GIS</button>
+        <button class="viewBtn active" data-view="chart">Chart</button>
+        <button class="viewBtn" data-view="graphs">Graphs</button>
+      </div>
+
+      <div class="ct-group">
+        <label>תחנה</label>
+        <select id="chartStationSelect"></select>
+      </div>
+
+      <div class="ct-group">
+        <label>ימים</label>
+        <input type="number" id="filterDays" value="0" min="0" max="30" />
+        <label>מ־</label>
+        <input type="date" id="filterDateFrom" />
+        <label>עד</label>
+        <input type="date" id="filterDateTo" />
+        <button class="filterBtn" id="btnFilterDate">סינון</button>
+      </div>
+
+      <div class="ct-group">
+        <label>נקודות דגימה</label>
+        <span class="ct-checkboxes" id="stationCheckboxes"></span>
+        <button class="filterBtn" id="btnFilterStation">סינון</button>
+      </div>
+    </div>
+
     <div id="chartContainer">
       <table id="chartTable">
         <thead id="chartHead"></thead>
         <tbody id="chartBody"></tbody>
       </table>
     </div>
-    <aside id="chartFilters">
-      <div class="filterSection">
-        <h4>תחנה פעילה</h4>
-        <select id="chartStationSelect"></select>
-      </div>
-
-      <div class="filterSection">
-        <h4>סינון תאריך לפי</h4>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-          <label style="flex:0 0 auto;font-size:13px;">ימים</label>
-          <input type="number" id="filterDays" value="0" min="0" max="30" style="width:60px;" />
-        </div>
-        <div style="display:flex;gap:6px;flex-direction:column;">
-          <input type="date" id="filterDateFrom" />
-          <input type="date" id="filterDateTo" />
-        </div>
-        <button class="filterBtn" id="btnFilterDate">סינון</button>
-      </div>
-
-      <div class="filterSection">
-        <h4>נקודות דגימה (סינון רב)</h4>
-        <div class="checkboxList" id="stationCheckboxes"></div>
-        <button class="filterBtn" id="btnFilterStation">סינון</button>
-      </div>
-    </aside>
   </div>
 
   <div id="graphView">
