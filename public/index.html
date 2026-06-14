@@ -387,6 +387,57 @@
       .grid{ grid-template-columns: 1fr; }
       #drawer{ width: 92vw; }
     }
+
+    /* ===== Field plan (interactive CAD viewer, replaces Mapbox in GIS view) ===== */
+    #planWrap{ position:absolute; inset:0; background:#0b1220; overflow:hidden; }
+    #planSvg{ width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
+    #planSvg.grabbing{ cursor:grabbing; }
+    #planSvg .pl-row{ stroke:#3a7d44; stroke-width:0.6; fill:none; }
+    #planSvg .pl-pipe-zone{ stroke:#7aa2ff; stroke-width:1.1; fill:none; }
+    #planSvg .pl-pipe-main{ stroke:#ff8c42; stroke-width:2.2; fill:none; }
+    #planSvg .pl-pipe-coll{ stroke:#b07aff; stroke-width:1.6; fill:none; }
+    #planSvg .pl-subarea{ fill:rgba(255,255,255,0.03); stroke:rgba(255,255,255,0.18); stroke-width:0.8; }
+    #planSvg .pl-plot{ fill:rgba(74,163,255,0.10); stroke:#4aa3ff; stroke-width:1.2; cursor:pointer; }
+    #planSvg .pl-plot:hover{ fill:rgba(74,163,255,0.28); }
+    #planSvg .pl-plot.sel{ fill:rgba(43,213,118,0.30); stroke:#2bd576; stroke-width:2.2; }
+    #planSvg .pl-rowhit{ stroke:transparent; stroke-width:4; fill:none; cursor:pointer; }
+    #planSvg .pl-row.sel{ stroke:#2bd576; stroke-width:2.4; }
+    #planSvg .pl-plotlabel{ fill:#e7eefc; font-family:Arial; font-weight:bold; text-anchor:middle;
+      paint-order:stroke; stroke:#0b1220; stroke-width:0.8px; pointer-events:none; }
+    #planSvg .pl-valve{ cursor:pointer; }
+    #planSvg .pl-valve circle{ fill:#ffb020; stroke:#1a1300; stroke-width:0.8; }
+    #planSvg .pl-valve:hover circle{ fill:#ffd070; }
+    #planSvg .pl-valve.sel circle{ fill:#2bd576; r:6; }
+    #planSvg .pl-valve text{ fill:#1a1300; font-family:Arial; font-weight:bold; text-anchor:middle;
+      dominant-baseline:central; pointer-events:none; }
+    #planSvg .pl-station circle{ fill:#ff4d5e; stroke:#fff; stroke-width:1.2; }
+    #planSvg .pl-station.approx circle{ stroke-dasharray:2 1.5; }
+    #planSvg .pl-station text{ fill:#fff; paint-order:stroke; stroke:#0b1220; stroke-width:0.9px;
+      font-family:Arial; font-weight:bold; text-anchor:middle; pointer-events:none; }
+
+    #planControls{ position:absolute; top:12px; left:12px; z-index:3; display:flex; flex-direction:column; gap:6px; }
+    #planControls button{ width:38px; height:38px; border-radius:10px; border:1px solid var(--border);
+      background:rgba(15,26,46,0.92); color:var(--text); font-size:18px; cursor:pointer; }
+    #planControls button:hover{ background:rgba(74,163,255,0.25); }
+    #planLayers{ position:absolute; top:12px; right:12px; z-index:3; background:rgba(15,26,46,0.92);
+      border:1px solid var(--border); border-radius:12px; padding:10px 12px; font-size:13px; color:var(--text);
+      display:flex; flex-direction:column; gap:6px; }
+    #planLayers label{ display:flex; align-items:center; gap:8px; margin:0; color:var(--text); font-size:13px; cursor:pointer; }
+    #planLayers input{ width:auto; }
+    #planInfo{ position:absolute; bottom:12px; right:12px; z-index:3; width:300px; max-width:calc(100% - 24px);
+      max-height:60%; overflow:auto; background:rgba(15,26,46,0.95); border:1px solid var(--border);
+      border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,0.4); padding:14px; display:none; }
+    #planInfo.open{ display:block; }
+    #planInfo .pi-title{ font-size:16px; font-weight:bold; margin:0 0 4px 0; }
+    #planInfo .pi-sub{ font-size:12px; color:var(--muted); margin-bottom:10px; }
+    #planInfo .pi-close{ position:absolute; top:10px; left:10px; cursor:pointer; color:var(--muted);
+      background:none; border:none; font-size:16px; }
+    #planInfo .pi-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+    #planInfo .pi-card{ padding:8px 10px; border:1px solid var(--border); border-radius:10px; background:rgba(255,255,255,0.03); }
+    #planInfo .pi-k{ font-size:11px; color:var(--muted); }
+    #planInfo .pi-v{ font-size:16px; font-weight:bold; color:var(--accent); }
+    #planInfo .pi-note{ font-size:11px; color:var(--warn); margin-top:10px; line-height:1.4; }
+    #planInfo h5{ margin:12px 0 6px 0; font-size:13px; color:var(--text); }
   </style>
 </head>
 
