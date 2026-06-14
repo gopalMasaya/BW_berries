@@ -482,28 +482,23 @@
   </aside>
 
   <main id="map">
-    <div id="sentinelPanel">
-      <label class="sp-toggle">
-        <input type="checkbox" id="sentinelToggle" />
-        <span>Live satellite (Sentinel-2)</span>
-      </label>
-      <div class="sp-controls">
-        <div class="sp-row">
-          <select id="sentinelLayer" title="Visualization">
-            <option value="TRUE_COLOR">True color</option>
-            <option value="VEGETATION_INDEX">NDVI (plant health)</option>
-            <option value="COLOR_INFRARED">False color (vegetation)</option>
-            <option value="MOISTURE_INDEX">Moisture</option>
-            <option value="AGRICULTURE">Agriculture</option>
-          </select>
-        </div>
-        <div class="sp-row">
-          <label>Days back<input type="number" id="sentinelDays" value="14" min="1" max="90" /></label>
-          <label>Max cloud %<input type="number" id="sentinelMaxCC" value="20" min="0" max="100" /></label>
-        </div>
-        <div class="sp-row">
-          <label>Opacity<input type="range" id="sentinelOpacity" min="0" max="100" value="85" /></label>
-        </div>
+    <div id="planWrap">
+      <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="planControls">
+        <button id="planZoomIn" title="Zoom in">+</button>
+        <button id="planZoomOut" title="Zoom out">&minus;</button>
+        <button id="planReset" title="Reset view">&#9633;</button>
+      </div>
+      <div id="planLayers">
+        <label><input type="checkbox" id="lyrPlots" checked /> חלקות</label>
+        <label><input type="checkbox" id="lyrRows" checked /> שורות</label>
+        <label><input type="checkbox" id="lyrPipes" checked /> צנרת</label>
+        <label><input type="checkbox" id="lyrValves" checked /> ברזים</label>
+        <label><input type="checkbox" id="lyrLabels" checked /> תוויות</label>
+      </div>
+      <div id="planInfo">
+        <button class="pi-close" id="planInfoClose">&times;</button>
+        <div id="planInfoBody"></div>
       </div>
     </div>
   </main>
