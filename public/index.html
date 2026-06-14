@@ -1393,8 +1393,18 @@
       const r = svg.getBoundingClientRect();
       const dx = (e.clientX - lastX) * (planVB.w / r.width);
       const dy = (e.clientY - lastY) * (planVB.h / r.height);
-      planVB.x -= dx; planVB.y -= dy; lastX = e.clientX; lastY = e.clientY;
-      setViewBox();
+      lastX = e.clientX; lastY = e.clientY;
+      if (alignMode){
+        // Move section s2 in data space (Y is flipped → subtract dy).
+        SECTION_TF.s2 = SECTION_TF.s2 || {dx:0, dy:0, rot:0};
+        SECTION_TF.s2.dx = (SECTION_TF.s2.dx || 0) + dx;
+        SECTION_TF.s2.dy = (SECTION_TF.s2.dy || 0) - dy;
+        applySectionTransforms();
+        if (setupPlanAlign._show) setupPlanAlign._show();
+      } else {
+        planVB.x -= dx; planVB.y -= dy;
+        setViewBox();
+      }
     });
     svg.addEventListener("wheel", (e) => {
       e.preventDefault();
