@@ -1442,7 +1442,7 @@
     focusBBox(pl.pts, 0.25);
     openPlanInfo(`חלקה ${pl.id || "(ללא מספר)"}`, "שטח השקיה", [
       ["מזהה", pl.id || "—"],
-      ["מס' שורות בחלקה", String((planData.rows || []).filter(r => rowInPoly(r, pl.pts)).length)]
+      ["מס' שורות בחלקה", String((planData.rows || []).filter(r => r.s === pl.s && rowInPoly(r.p, pl.pts)).length)]
     ]);
   }
 
