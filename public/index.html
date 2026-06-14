@@ -1543,17 +1543,14 @@
     loadChartData();
   });
 
-  document.getElementById("btnFilterStation").addEventListener("click", () => {
-    applyChartFilters();
-  });
-
   // Populate the chart-view station dropdown once at boot so it is usable
-  // even before the first data fetch completes.
+  // even before the first data fetch completes. Defaults to station1.
   (function initChartStationSelect(){
     const sel = document.getElementById("chartStationSelect");
     if (!sel) return;
     sel.innerHTML = '<option value="__all__">כל התחנות</option>' +
       STATIONS.map(s => '<option value="' + s.deviceId + '">' + (s.name || s.deviceId) + '</option>').join("");
+    sel.value = "station1";
     sel.addEventListener("change", () => { loadChartData(); });
   })();
 
