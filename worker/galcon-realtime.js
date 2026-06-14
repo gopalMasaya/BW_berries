@@ -275,12 +275,14 @@ function connect() {
   // Valve names for all 4 controllers (independent of the trigger interval — the
   // socket only covers Mevo Horon, but valve metadata is REST for every config).
   try { await loadValveMeta(); } catch (e) { console.warn("valve meta failed:", e.message); }
+  try { await loadValveIrrigation(); } catch (e) { console.warn("valve irrigation failed:", e.message); }
   connect();
   if (TRIGGER_INTERVAL_MS) {
     setInterval(() => fireTriggers().catch((e) => console.error("trigger", e.message)), TRIGGER_INTERVAL_MS);
   }
-  // Refresh valve metadata hourly.
+  // Refresh valve metadata hourly; per-valve last-irrigation every IRR_POLL_MS.
   setInterval(() => loadValveMeta().catch((e) => console.error("valve meta", e.message)), 60 * 60 * 1000);
+  setInterval(() => loadValveIrrigation().catch((e) => console.error("valve irrigation", e.message)), IRR_POLL_MS);
   // heartbeat
   setInterval(() => rtdbSet(`${RTDB_BASE}/updatedAt`, Date.now()).catch(() => {}), 30000);
 })().catch((e) => { console.error("FATAL", e.message); process.exit(1); });
