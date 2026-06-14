@@ -1520,9 +1520,11 @@
   }
 
   function subscribeGalconLive(){
+    database.ref("galcon/valves").on("value", s => { galconValves = s.val(); });
+    database.ref("galcon/controllers").on("value", s => { galconCtrls = s.val(); });
     database.ref("galcon/mevoHoron").on("value", snap => {
       galconLive = snap.val();
-      // refresh info panel if a valve/station is currently shown
+      // refresh info panel if a valve is currently shown
       const open = document.getElementById("planInfo").classList.contains("open");
       const title = document.querySelector("#planInfoBody .pi-title");
       if (open && title && title.textContent.indexOf("ברז") === 0 && planSelected){
