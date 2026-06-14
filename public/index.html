@@ -1123,8 +1123,9 @@
       `;
 
       item.addEventListener("click", () => {
-        map.flyTo({ center: [st.lng, st.lat], zoom: 14, speed: 0.9 });
-        openDrawer(st.deviceId);
+        // GIS view shows the field plan — focus the station's valve there.
+        if (currentView === "gis") focusStationOnPlan(st.deviceId);
+        else openDrawer(st.deviceId);
       });
 
       stationListEl.appendChild(item);
