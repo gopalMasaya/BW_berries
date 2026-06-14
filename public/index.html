@@ -1270,34 +1270,38 @@
     svg.innerHTML = "";
     svg.appendChild(root);
 
-    // Draw order: pipes -> subareas -> rows -> plots -> valves -> labels -> stations
-    const gPipes  = el("g", { id: "gPipes" }, root);
-    (planData.pipes.zone || []).forEach(p => el("polyline", { points: ptsAttr(p), class: "pl-pipe-zone" }, gPipes));
-    (planData.pipes.collectors || []).forEach(p => el("polyline", { points: ptsAttr(p), class: "pl-pipe-coll" }, gPipes));
-    (planData.pipes.main || []).forEach(p => el("polyline", { points: ptsAttr(p), class: "pl-pipe-main" }, gPipes));
+    // Per-section groups so section s2 can be transformed independently (the two
+    // drawings are in separate local coordinate systems). Layer visibility is
+    // controlled by class via a <style> rule, so it spans both sections.
+    const secGroups = {
+      s1: el("g", { class: "pl-sec", "data-sec": "s1" }, root),
+      s2: el("g", { class: "pl-sec", "data-sec": "s2" }, root),
+    };
+    const secOf = (s) => secGroups[s] || secGroups.s1;
 
-    const gSub = el("g", { id: "gSub" }, root);
-    (planData.subareas || []).forEach(p => el("polygon", { points: ptsAttr(p), class: "pl-subarea" }, gSub));
+    const vr = Math.max(w, h) * 0.006; // valve marker radius in data units
+    const fs = Math.max(w, h) * 0.012;
 
-    const gRows = el("g", { id: "gRows" }, root);
-    (planData.rows || []).forEach((p, i) => {
-      el("polyline", { points: ptsAttr(p), class: "pl-row", "data-row": i }, gRows);
-      // transparent fat hit-line for easier clicking
-      const hit = el("polyline", { points: ptsAttr(p), class: "pl-rowhit", "data-row": i }, gRows);
+    // Draw order within each section: pipes -> subareas -> rows -> plots -> valves -> labels
+    (planData.pipes.zone || []).forEach(o => el("polyline", { points: ptsAttr(o.p), class: "pl-pipe-zone Lg-pipes" }, secOf(o.s)));
+    (planData.pipes.collectors || []).forEach(o => el("polyline", { points: ptsAttr(o.p), class: "pl-pipe-coll Lg-pipes" }, secOf(o.s)));
+    (planData.pipes.main || []).forEach(o => el("polyline", { points: ptsAttr(o.p), class: "pl-pipe-main Lg-pipes" }, secOf(o.s)));
+
+    (planData.subareas || []).forEach(o => el("polygon", { points: ptsAttr(o.p), class: "pl-subarea Lg-sub" }, secOf(o.s)));
+
+    (planData.rows || []).forEach((o, i) => {
+      el("polyline", { points: ptsAttr(o.p), class: "pl-row Lg-rows", "data-row": i }, secOf(o.s));
+      const hit = el("polyline", { points: ptsAttr(o.p), class: "pl-rowhit Lg-rows", "data-row": i }, secOf(o.s));
       hit.addEventListener("click", (ev) => { ev.stopPropagation(); selectRow(i); });
     });
 
-    const gPlots = el("g", { id: "gPlots" }, root);
     (planData.plots || []).forEach((pl, i) => {
-      const poly = el("polygon", { points: ptsAttr(pl.pts), class: "pl-plot", "data-plot": i }, gPlots);
+      const poly = el("polygon", { points: ptsAttr(pl.pts), class: "pl-plot Lg-plots", "data-plot": i }, secOf(pl.s));
       poly.addEventListener("click", (ev) => { ev.stopPropagation(); selectPlot(i); });
     });
 
-    const gValves = el("g", { id: "gValves" }, root);
-    const vr = Math.max(w, h) * 0.006; // valve marker radius in data units
     (planData.valves || []).forEach((v, i) => {
-      const g = el("g", { class: "pl-valve", "data-valve": i }, gValves);
-      // counter-flip the marker group so text isn't mirrored
+      const g = el("g", { class: "pl-valve Lg-valves", "data-valve": i }, secOf(v.s));
       el("circle", { cx: v.xy[0], cy: v.xy[1], r: vr }, g);
       const tx = el("text", { x: v.xy[0], y: v.xy[1], "font-size": vr * 1.1,
         transform: `translate(0, ${v.xy[1] * 2}) scale(1, -1)` }, g);
@@ -1305,26 +1309,23 @@
       g.addEventListener("click", (ev) => { ev.stopPropagation(); selectValve(i); });
     });
 
-    const gLabels = el("g", { id: "gLabels" }, root);
-    const fs = Math.max(w, h) * 0.012;
     (planData.plots || []).forEach(pl => {
       if (!pl.id) return;
-      const t = el("text", { x: pl.c[0], y: pl.c[1], class: "pl-plotlabel", "font-size": fs,
-        transform: `translate(0, ${pl.c[1] * 2}) scale(1, -1)` }, gLabels);
+      const t = el("text", { x: pl.c[0], y: pl.c[1], class: "pl-plotlabel Lg-labels", "font-size": fs,
+        transform: `translate(0, ${pl.c[1] * 2}) scale(1, -1)` }, secOf(pl.s));
       t.textContent = pl.id;
     });
 
-    // Station markers (physical sensor stations) at their CAD valve.
-    const gStations = el("g", { id: "gStations" }, root);
+    // Station markers — placed at their controller-B valves (which live in s1).
+    const gStations = el("g", { id: "gStations" }, secGroups.s1);
     STATIONS.forEach(st => {
       const vid = STATION_VALVE[st.deviceId];
       let v = (planData.valves || []).find(x => x.id === vid);
       let approx = false, xy;
       if (v){ xy = v.xy; }
       else {
-        // Fallback: centroid of same-prefix valves (B7/B9 missing in CAD).
         const pre = (vid || "").charAt(0);
-        const sib = (planData.valves || []).filter(x => x.id.charAt(0) === pre);
+        const sib = (planData.valves || []).filter(x => x.id.charAt(0) === pre && x.s === "s1");
         if (sib.length){
           xy = [ sib.reduce((a,b)=>a+b.xy[0],0)/sib.length, sib.reduce((a,b)=>a+b.xy[1],0)/sib.length ];
           approx = true;
@@ -1339,9 +1340,26 @@
       g.addEventListener("click", (ev) => { ev.stopPropagation(); selectStation(st.deviceId, xy, approx, vid); });
     });
 
+    applySectionTransforms();
     setupPlanInteractions(svg);
     setupPlanLayerToggles();
+    setupPlanAlign();
     subscribeGalconLive();
+  }
+
+  // ---- section alignment (s2 is translated/rotated to abut s1) ----
+  function loadSectionTF(){
+    try { return JSON.parse(localStorage.getItem("fieldPlanTF")) || {}; } catch (e) { return {}; }
+  }
+  function secCenter(sec){
+    const bb = planData.sections && planData.sections[sec] && planData.sections[sec].bbox;
+    return bb ? [ (bb[0]+bb[2])/2, (bb[1]+bb[3])/2 ] : [0,0];
+  }
+  function applySectionTransforms(){
+    const t = SECTION_TF.s2 || {dx:0, dy:0, rot:0};
+    const [cx, cy] = secCenter("s2");
+    const g = document.querySelector('.pl-sec[data-sec="s2"]');
+    if (g) g.setAttribute("transform", `translate(${t.dx||0},${t.dy||0}) rotate(${t.rot||0}, ${cx}, ${cy})`);
   }
 
   function setViewBox(){
