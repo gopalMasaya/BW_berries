@@ -488,6 +488,23 @@
         <button id="planZoomIn" title="Zoom in">+</button>
         <button id="planZoomOut" title="Zoom out">&minus;</button>
         <button id="planReset" title="Reset view">&#9633;</button>
+        <button id="planAlignBtn" title="מצב יישור רצועה">&#10021;</button>
+      </div>
+      <div id="planAlign">
+        <div style="font-weight:bold;margin-bottom:4px;">יישור רצועת A</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">גרור את הרצועה למקום. סיבוב:</div>
+        <div style="display:flex;gap:4px;margin-bottom:6px;">
+          <button data-rot="-5">⟲5°</button>
+          <button data-rot="-1">⟲1°</button>
+          <button data-rot="1">⟳1°</button>
+          <button data-rot="5">⟳5°</button>
+        </div>
+        <div id="planAlignReadout" style="font-size:12px;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:6px;">
+          <button id="planAlignSave" style="background:rgba(43,213,118,0.25);">שמור</button>
+          <button id="planAlignReset">איפוס</button>
+          <button id="planAlignDone">סגור</button>
+        </div>
       </div>
       <div id="planLayers">
         <label><input type="checkbox" id="lyrPlots" checked /> חלקות</label>
