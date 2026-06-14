@@ -1234,7 +1234,9 @@
   let planVB = null;          // current viewBox {x,y,w,h}
   let planInitVB = null;      // initial (full) viewBox for reset
   let planSelected = null;    // currently highlighted element
-  let galconLive = null;      // latest galcon/mevoHoron snapshot
+  let galconLive = null;      // latest galcon/mevoHoron snapshot (fert + tank sensors)
+  let galconValves = null;    // galcon/valves/<A|B|C|D>/<number> -> {number,name}
+  let galconCtrls = null;     // galcon/controllers/<letter> -> {name,serial,configId}
 
   function el(tag, attrs, parent){
     const n = document.createElementNS(SVGNS, tag);
