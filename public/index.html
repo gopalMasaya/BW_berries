@@ -1510,9 +1510,13 @@
       want.forEach(k => { if (item[k] != null) cards.push([fmtFieldName(k), parseFloat(item[k]).toFixed(decimalsFor(k))]); });
       sub = "עודכן: " + new Date(latest.tsISO).toLocaleString("he-IL");
     }
-    openPlanInfo((st ? st.name : deviceId) + " · ברז " + vid, sub, cards.length ? cards : null,
+    const g = galconValveFor(vid);
+    const valveName = g.rec && g.rec.name ? g.rec.name : null;
+    openPlanInfo((st ? st.name : deviceId) + " · ברז " + vid + (valveName ? " (" + valveName + ")" : ""),
+      sub, cards.length ? cards : null,
       (cards.length ? "" : '<div class="pi-sub">אין נתוני חיישנים טעונים עדיין.</div>') +
-      (approx ? `<div class="pi-note">מיקום הברז ${vid} לא קיים בתכנית ה-CAD (יש רק B1–B4) — הסמן ממוקם בקירוב באזור בקר B. ספק מיקום מדויק כדי לתקן.</div>` : ""));
+      (valveName ? `<div class="pi-sub" style="margin-top:8px">ברז Galcon: ${valveName} · ${g.ctrlName}</div>` : "") +
+      (approx ? `<div class="pi-note">הברז ${vid} לא תויג בתכנית ה-CAD — הסמן ממוקם בקירוב באזור בקר B. לחיצה על הברז הנכון בתכנית תאפשר מיקום מדויק.</div>` : ""));
   }
 
   function subscribeGalconLive(){
