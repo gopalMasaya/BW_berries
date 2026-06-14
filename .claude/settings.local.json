@@ -99,7 +99,10 @@
       "PowerShell(schtasks *)",
       "Bash(DRY_RUN=1 TRIGGER_INTERVAL_MS=0 timeout 30 node galcon-realtime.js)",
       "Bash(export TRIGGER_INTERVAL_MS=1800000)",
-      "Bash(node galcon-realtime.js)"
+      "Bash(node galcon-realtime.js)",
+      "Bash(node --check /tmp/_chk.js)",
+      "Bash(node --check _chk.js)",
+      "Bash(rm -f _chk.js)"
     ]
   },
   "hooks": {
