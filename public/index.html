@@ -1180,39 +1180,50 @@
   // ===============================
   // VIEW TOGGLE
   // ===============================
+  function applyView(view) {
+    currentView = view;
+
+    // There are now two sets of view buttons (left sidebar + chart toolbar);
+    // keep the active state in sync across both by matching on data-view.
+    document.querySelectorAll(".viewBtn").forEach(b =>
+      b.classList.toggle("active", b.dataset.view === view));
+
+    const mapEl = document.getElementById("map");
+    const chartEl = document.getElementById("chartView");
+    const graphEl = document.getElementById("graphView");
+    const drawerEl = document.getElementById("drawer");
+    const leftPanel = document.getElementById("leftPanel");
+
+    mapEl.classList.add("hidden");
+    chartEl.classList.remove("active");
+    graphEl.classList.remove("active");
+
+    // Chart view is full-width with its own top toolbar, so the main left
+    // sidebar is hidden to give the table the entire width.
+    leftPanel.style.display = (view === "chart") ? "none" : "";
+
+    if (view === "gis") {
+      mapEl.classList.remove("hidden");
+      drawerEl.style.display = "";
+      if (map) map.resize();
+    } else if (view === "chart") {
+      chartEl.classList.add("active");
+      drawerEl.style.display = "none";
+      closeDrawer();
+      loadChartData();
+    } else if (view === "graphs") {
+      graphEl.classList.add("active");
+      drawerEl.style.display = "none";
+      closeDrawer();
+      loadGraphData();
+    }
+  }
+
   document.querySelectorAll(".viewBtn").forEach(btn => {
     btn.addEventListener("click", () => {
       const view = btn.dataset.view;
       if (view === currentView) return;
-      currentView = view;
-
-      document.querySelectorAll(".viewBtn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-
-      const mapEl = document.getElementById("map");
-      const chartEl = document.getElementById("chartView");
-      const graphEl = document.getElementById("graphView");
-      const drawerEl = document.getElementById("drawer");
-
-      mapEl.classList.add("hidden");
-      chartEl.classList.remove("active");
-      graphEl.classList.remove("active");
-
-      if (view === "gis") {
-        mapEl.classList.remove("hidden");
-        drawerEl.style.display = "";
-        if (map) map.resize();
-      } else if (view === "chart") {
-        chartEl.classList.add("active");
-        drawerEl.style.display = "none";
-        closeDrawer();
-        loadChartData();
-      } else if (view === "graphs") {
-        graphEl.classList.add("active");
-        drawerEl.style.display = "none";
-        closeDrawer();
-        loadGraphData();
-      }
+      applyView(view);
     });
   });
 
