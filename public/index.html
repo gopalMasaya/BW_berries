@@ -1385,6 +1385,52 @@
     ec2: { transform: v => v * 2 / 1000, unit: "dS/m", decimals: 2 }
   };
 
+  // waterIn/waterOut are cumulative pulse counters on the device. For the table
+  // the user wants a running total of liters consumed within the filtered window.
+  // Process each station in chronological order: reset-aware delta vs. the
+  // previous reading (a drop is treated as a counter reset), ×ML_PER_PULSE ÷1000
+  // → liters, then accumulate. Each row receives __cumWaterInL / __cumWaterOutL
+  // = liters since the start of the window for that station.
+  const WATER_IN_KEYS  = ["waterIn", "water_in", "WaterIn"];
+  const WATER_OUT_KEYS = ["waterOut", "water_out", "WaterOut"];
+
+  function pickWaterValue(row, keys) {
+    for (const k of keys) {
+      const raw = row[k];
+      if (raw === undefined || raw === null || raw === "") continue;
+      const n = parseFloat(raw);
+      if (Number.isFinite(n)) return n;
+    }
+    return null;
+  }
+
+  function computeChartWaterCumulative(rows) {
+    const FIELDS = [
+      { keys: WATER_IN_KEYS,  out: "__cumWaterInL"  },
+      { keys: WATER_OUT_KEYS, out: "__cumWaterOutL" },
+    ];
+    const chrono = [...rows].sort((a, b) => new Date(a.tsISO) - new Date(b.tsISO));
+    const prevByStation = new Map(); // sid -> { idx: rawPrevValue }
+    const cumByStation  = new Map(); // sid -> { idx: litersSoFar }
+    for (const r of chrono) {
+      const sid = r.stationId || r.deviceId || "__unknown__";
+      const prev = prevByStation.get(sid) || {};
+      const cum  = cumByStation.get(sid)  || {};
+      FIELDS.forEach((f, i) => {
+        const val = pickWaterValue(r, f.keys);
+        if (cum[i] === undefined) cum[i] = 0;
+        if (val === null) { r[f.out] = cum[i]; return; }
+        const prevVal = prev[i];
+        const deltaPulses = prevVal === undefined ? 0 : (val >= prevVal ? val - prevVal : val);
+        cum[i] += deltaPulses * ML_PER_PULSE / 1000;
+        prev[i] = val;
+        r[f.out] = cum[i];
+      });
+      prevByStation.set(sid, prev);
+      cumByStation.set(sid, cum);
+    }
+  }
+
   function renderChartTable() {
     const head = document.getElementById("chartHead");
     const body = document.getElementById("chartBody");
@@ -1395,6 +1441,12 @@
       return;
     }
 
+    // Compute the running liters totals (stored on each row) before rendering.
+    computeChartWaterCumulative(filteredChartData);
+    const hasWaterIn  = filteredChartData.some(r => pickWaterValue(r, WATER_IN_KEYS)  !== null);
+    const hasWaterOut = filteredChartData.some(r => pickWaterValue(r, WATER_OUT_KEYS) !== null);
+    const waterKeys = new Set([...WATER_IN_KEYS, ...WATER_OUT_KEYS]);
+
     // Collect all numeric/boolean field names across all rows
     const skipFields = ["stationId", "serverTimestamp", "time", "deviceId", "sortKey", "tsISO", "tsKey"];
     const fieldSet = new Set();
@@ -1402,6 +1454,7 @@
       Object.keys(row).forEach(k => {
         if (skipFields.includes(k)) return;
         if (k.toLowerCase().includes("timestamp")) return;
+        if (waterKeys.has(k)) return; // shown as dedicated cumulative-liters columns
         const v = row[k];
         if (typeof v === "number" || typeof v === "boolean" || (!isNaN(parseFloat(v)) && v !== null && v !== "")) {
           fieldSet.add(k);
