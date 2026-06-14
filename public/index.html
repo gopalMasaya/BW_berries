@@ -1423,14 +1423,59 @@
   }
 
   function setupPlanLayerToggles(){
-    const map = { lyrPlots: "gPlots", lyrRows: "gRows", lyrPipes: "gPipes", lyrValves: "gValves", lyrLabels: "gLabels" };
-    Object.keys(map).forEach(id => {
-      const cb = document.getElementById(id);
-      cb.onchange = () => {
-        const g = document.getElementById(map[id]);
-        if (g) g.style.display = cb.checked ? "" : "none";
+    // Toggle visibility by class via a single <style> rule — instant regardless
+    // of how many thousands of elements each layer has.
+    const map = { lyrPlots: "Lg-plots", lyrRows: "Lg-rows", lyrPipes: "Lg-pipes", lyrValves: "Lg-valves", lyrLabels: "Lg-labels" };
+    let styleEl = document.getElementById("planLayerStyle");
+    if (!styleEl){ styleEl = document.createElement("style"); styleEl.id = "planLayerStyle"; document.head.appendChild(styleEl); }
+    const refresh = () => {
+      let css = "";
+      Object.keys(map).forEach(id => {
+        const cb = document.getElementById(id);
+        if (cb && !cb.checked) css += `.${map[id]}{display:none}`;
+      });
+      styleEl.textContent = css;
+    };
+    Object.keys(map).forEach(id => { const cb = document.getElementById(id); if (cb) cb.onchange = refresh; });
+    refresh();
+  }
+
+  // ---- align mode (manually position section s2 against s1) ----
+  function setupPlanAlign(){
+    const btn = document.getElementById("planAlignBtn");
+    const panel = document.getElementById("planAlign");
+    if (!btn || !panel) return;
+    const readout = document.getElementById("planAlignReadout");
+    const show = () => {
+      const t = SECTION_TF.s2 || {dx:0, dy:0, rot:0};
+      readout.textContent = `Δx ${Math.round(t.dx||0)} · Δy ${Math.round(t.dy||0)} · ${(t.rot||0).toFixed(1)}°`;
+    };
+    btn.onclick = () => {
+      alignMode = !alignMode;
+      btn.classList.toggle("on", alignMode);
+      panel.classList.toggle("open", alignMode);
+      if (alignMode && !SECTION_TF.s2) SECTION_TF.s2 = {dx:0, dy:0, rot:0};
+      show();
+    };
+    panel.querySelectorAll("button[data-rot]").forEach(b => {
+      b.onclick = () => {
+        SECTION_TF.s2 = SECTION_TF.s2 || {dx:0, dy:0, rot:0};
+        SECTION_TF.s2.rot = (SECTION_TF.s2.rot || 0) + parseFloat(b.dataset.rot);
+        applySectionTransforms(); show();
       };
     });
+    document.getElementById("planAlignSave").onclick = () => {
+      localStorage.setItem("fieldPlanTF", JSON.stringify(SECTION_TF));
+      btn.classList.remove("on"); panel.classList.remove("open"); alignMode = false;
+    };
+    document.getElementById("planAlignReset").onclick = () => {
+      SECTION_TF.s2 = {dx:0, dy:0, rot:0}; applySectionTransforms(); show();
+    };
+    document.getElementById("planAlignDone").onclick = () => {
+      btn.classList.remove("on"); panel.classList.remove("open"); alignMode = false;
+    };
+    // expose for the drag handler in setupPlanInteractions
+    setupPlanAlign._show = show;
   }
 
   // ---- selection handlers ----
