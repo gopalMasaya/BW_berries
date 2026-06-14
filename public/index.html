@@ -1326,11 +1326,9 @@
       allRows.sort((a, b) => new Date(b.tsISO) - new Date(a.tsISO));
       chartData = allRows;
 
-      // Build station checkboxes
-      buildStationCheckboxes();
       buildChartStationSelect();
 
-      // Apply filters
+      // Render (station selection is applied at fetch time via the dropdown)
       applyChartFilters();
     } catch (err) {
       console.error(err);
