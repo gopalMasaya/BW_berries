@@ -1453,6 +1453,7 @@
     filteredChartData.forEach(row => {
       Object.keys(row).forEach(k => {
         if (skipFields.includes(k)) return;
+        if (k.startsWith("__")) return; // internal computed fields (cumulative liters)
         if (k.toLowerCase().includes("timestamp")) return;
         if (waterKeys.has(k)) return; // shown as dedicated cumulative-liters columns
         const v = row[k];
