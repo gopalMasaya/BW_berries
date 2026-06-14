@@ -1527,6 +1527,18 @@
     });
 
     body.innerHTML = bodyHtml;
+    applyStickyOffsets();
+  }
+
+  // The date column is pinned with right:0; the station column must be pinned
+  // immediately to its left, so its `right` offset = the date column's actual
+  // rendered width. Measured after each render since column widths vary.
+  function applyStickyOffsets() {
+    const firstTh = document.querySelector("#chartTable thead th:nth-child(1)");
+    if (!firstTh) return;
+    const w = firstTh.getBoundingClientRect().width;
+    document.querySelectorAll("#chartTable th:nth-child(2), #chartTable td:nth-child(2)")
+      .forEach(el => { el.style.right = w + "px"; });
   }
 
   // Filter button handlers
