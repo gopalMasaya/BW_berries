@@ -1439,7 +1439,8 @@
     // Matched case-insensitively against the raw field name.
     const HIDDEN_FIELDS = new Set([
       "apifails", "apifail", "modemfails", "modemfail",
-      "uptime", "charging", "voltage", "chargingvoltage"
+      "uptime", "charging", "voltage", "chargingvoltage",
+      "gps_lat", "gps_lng", "gps_lon", "gpslat", "gpslng"
     ]);
     const fieldSet = new Set();
     filteredChartData.forEach(row => {
