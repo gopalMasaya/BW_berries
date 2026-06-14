@@ -139,18 +139,68 @@ async function loadValveMeta() {
     try {
       const r = await apiGet(`/config/${c.configId}/element-group/valve`);
       const arr = (r.json && r.json.body && r.json.body.valveElements) || [];
-      const out = {};
+      // Per-valve update (not a whole-node set) so lastIrr written by
+      // loadValveIrrigation isn't clobbered on refresh.
       for (const v of arr) {
         if (!v || v.number == null) continue;
-        out[v.number] = {number: v.number, name: (v.name || "").trim(), id: v.id ?? null};
+        await rtdbUpdate(`galcon/valves/${c.letter}/${v.number}`,
+          {number: v.number, name: (v.name || "").trim(), id: v.id ?? null});
       }
-      await rtdbSet(`galcon/valves/${c.letter}`, out);
       console.log(`valves ${c.letter} (${c.name}): ${arr.length}`);
     } catch (e) { console.error("valve meta", c.letter, e.message); }
   }
   const meta = {};
   for (const c of CONTROLLERS) meta[c.letter] = {letter: c.letter, name: c.name, serial: c.serial, configId: c.configId};
   await rtdbSet("galcon/controllers", meta);
+}
+
+// external-api request: GET with a JSON body (yes, a body on GET — Galcon's API).
+function extApiReq(path, body) {
+  const data = JSON.stringify(body);
+  const headers = {accept: "application/json", "content-type": "application/json", "content-length": Buffer.byteLength(data)};
+  return new Promise((resolve) => {
+    const r = https.request({hostname: API_HOST, path, method: "GET", headers, timeout: 60000}, (x) => {
+      const c = []; x.on("data", (d) => c.push(d));
+      x.on("end", () => { let j = null; try { j = JSON.parse(Buffer.concat(c).toString()); } catch {} resolve({status: x.statusCode, json: j}); });
+    });
+    r.on("error", () => resolve({status: "ERR"}));
+    r.on("timeout", () => { r.destroy(); resolve({status: "TO"}); });
+    r.write(data); r.end();
+  });
+}
+function fmtExtDate(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth()+1) + "-" + p(d.getDate()) + " " +
+    p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()) + ".000";
+}
+
+// Pull the latest finished-irrigation event per valve (all controllers) and
+// merge it into galcon/valves/<letter>/<number>/lastIrr.
+async function loadValveIrrigation() {
+  const to = new Date(), from = new Date(Date.now() - IRR_LOOKBACK_DAYS * 864e5);
+  const body = {externalUserInfo: {userName: USER, password: PASS}, from: fmtExtDate(from), to: fmtExtDate(to), key: EXTERNAL_KEY};
+  const r = await extApiReq("/external-api/get-valve-finish-irrigation-info", body);
+  if (r.status !== 200 || !(r.json && r.json.body)) { console.warn("valve irrigation fetch:", r.status); return; }
+  for (const c of (r.json.body.controllers || [])) {
+    const letter = SERIAL_TO_LETTER[c.serialNumber];
+    if (!letter) continue;
+    const latest = {};
+    for (const v of (c.valves || [])) {
+      if (v.valveNo == null) continue;
+      const t = Date.parse((v.dateTimeStopValve || v.time || "").replace(" ", "T")) || 0;
+      if (!latest[v.valveNo] || t > latest[v.valveNo]._t) latest[v.valveNo] = Object.assign({_t: t}, v);
+    }
+    for (const num of Object.keys(latest)) {
+      const v = latest[num];
+      await rtdbUpdate(`galcon/valves/${letter}/${num}`, {lastIrr: {
+        time: v.time || null, progNum: v.progNum ?? null,
+        start: v.dateTimeStartValve || null, stop: v.dateTimeStopValve || null,
+        durationMin: v.durationValve ?? null, flowRateM3h: v.flowRateM3h ?? null,
+        volumeM3: v.volumeM3Valve ?? null, ec: v.ecMed ?? v.ecRef ?? null, ph: v.phMed ?? v.phRef ?? null,
+      }});
+    }
+    console.log(`irrigation ${letter}: ${Object.keys(latest).length} valves with events`);
+  }
 }
 
 async function fireTriggers() {
