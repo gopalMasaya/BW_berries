@@ -1336,19 +1336,8 @@
     }
   }
 
-  function buildStationCheckboxes() {
-    const container = document.getElementById("stationCheckboxes");
-    const uniqueIds = [...new Set(chartData.map(r => r.stationId || r.deviceId))];
-    container.innerHTML = "";
-    uniqueIds.forEach(id => {
-      const lbl = document.createElement("label");
-      lbl.innerHTML = '<input type="checkbox" value="' + id + '" checked /> ' + id;
-      container.appendChild(lbl);
-    });
-  }
-
-  // Populate the single-station dropdown shown in the chart filters panel.
-  // Preserves the user's current selection across reloads.
+  // Populate the single-station dropdown in the chart toolbar.
+  // Preserves the user's current selection across reloads; defaults to station1.
   function buildChartStationSelect() {
     const sel = document.getElementById("chartStationSelect");
     if (!sel) return;
@@ -1356,18 +1345,13 @@
     sel.innerHTML = '<option value="__all__">כל התחנות</option>' +
       STATIONS.map(s => '<option value="' + s.deviceId + '">' + (s.name || s.deviceId) + '</option>').join("");
     if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+    else sel.value = "station1";
   }
 
   function applyChartFilters() {
-    // Get checked stations
-    const checked = [...document.querySelectorAll("#stationCheckboxes input:checked")].map(cb => cb.value);
-
-    if (checked.length === 0) {
-      filteredChartData = chartData;
-    } else {
-      filteredChartData = chartData.filter(r => checked.includes(r.stationId || r.deviceId));
-    }
-
+    // Station selection is handled by the toolbar dropdown at fetch time, so
+    // everything fetched is shown as-is.
+    filteredChartData = chartData;
     renderChartTable();
   }
 
