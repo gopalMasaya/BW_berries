@@ -210,10 +210,15 @@ function connect() {
   if (TRIGGER_INTERVAL_MS) {
     try { await loadSensorMeta(); } catch (e) { console.warn("metadata fetch failed, using fallback:", e.message); }
   }
+  // Valve names for all 4 controllers (independent of the trigger interval — the
+  // socket only covers Mevo Horon, but valve metadata is REST for every config).
+  try { await loadValveMeta(); } catch (e) { console.warn("valve meta failed:", e.message); }
   connect();
   if (TRIGGER_INTERVAL_MS) {
     setInterval(() => fireTriggers().catch((e) => console.error("trigger", e.message)), TRIGGER_INTERVAL_MS);
   }
+  // Refresh valve metadata hourly.
+  setInterval(() => loadValveMeta().catch((e) => console.error("valve meta", e.message)), 60 * 60 * 1000);
   // heartbeat
   setInterval(() => rtdbSet(`${RTDB_BASE}/updatedAt`, Date.now()).catch(() => {}), 30000);
 })().catch((e) => { console.error("FATAL", e.message); process.exit(1); });
