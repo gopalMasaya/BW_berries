@@ -1450,7 +1450,7 @@
     clearPlanSelection();
     const node = document.querySelector(`.pl-row[data-row="${i}"]`);
     if (node){ node.classList.add("sel"); planSelected = node; }
-    const r = planData.rows[i];
+    const r = planData.rows[i].p;
     focusBBox(r, 1.2);
     openPlanInfo(`שורה #${i + 1}`, "קו טפטוף", [
       ["אורך (יחידות תכנית)", String(Math.round(polyLen(r)))]
