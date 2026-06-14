@@ -102,7 +102,20 @@
       "Bash(node galcon-realtime.js)",
       "Bash(node --check /tmp/_chk.js)",
       "Bash(node --check _chk.js)",
-      "Bash(rm -f _chk.js)"
+      "Bash(rm -f _chk.js)",
+      "Read(//c/Users/Admin/Downloads/P9225-B etransmit 1//**)",
+      "Read(//c/Users/Admin/Downloads/P9225-B etransmit 1/**)",
+      "Read(//c/Program Files/**)",
+      "Bash(python -c \"import ezdxf; print\\('ezdxf', ezdxf.__version__\\)\")",
+      "Bash(node -e \"try{require.resolve\\('dxf'\\);console.log\\('dxf installed'\\)}catch\\(e\\){console.log\\('no dxf node lib'\\)}\")",
+      "Bash(winget --version)",
+      "Bash(winget search *)",
+      "Bash(choco --version)",
+      "Bash(pip --version)",
+      "Bash(winget install *)",
+      "Bash(pip install *)",
+      "Bash(python -c ' *)",
+      "Bash(cygpath -w /tmp/dwgout/\"P9225-B etransmit.dxf\")"
     ]
   },
   "hooks": {
