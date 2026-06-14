@@ -53,6 +53,14 @@ const CONTROLLERS = [
   {letter: "C", serial: "GAL0000000001638", configId: 160950, name: "פטל מערב"},
   {letter: "D", serial: "GAL0000000001771", configId: 161088, name: "1771"},
 ];
+const SERIAL_TO_LETTER = {};
+CONTROLLERS.forEach((c) => { SERIAL_TO_LETTER[c.serial] = c.letter; });
+
+// external-api (separate from the web-app token): GET + JSON body, needs the
+// account `key`. Returns finished-irrigation events per valve (last run, water).
+const EXTERNAL_KEY = process.env.GALCON_EXTERNAL_KEY || "GCX6KN4KSU10KC78";
+const IRR_LOOKBACK_DAYS = Number(process.env.IRR_LOOKBACK_DAYS || 14);
+const IRR_POLL_MS = Number(process.env.IRR_POLL_MS || 10 * 60 * 1000);
 
 let sensorMeta = Object.assign({}, FALLBACK_SENSORS); // number → { name, dec, unit }
 

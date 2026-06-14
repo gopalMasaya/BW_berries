@@ -119,7 +119,8 @@
       "Bash(node -e \"const d=require\\('./public/fieldPlan.json'\\); console.log\\('bbox',d.bbox,'plots',d.plots.length,'rows',d.rows.length,'valves',d.valves.length\\); console.log\\('sample valve', d.valves[0]\\); console.log\\('sample plot id', d.plots.find\\(p=>p.id\\)\\)\")",
       "Bash(curl *)",
       "Bash(cp /tmp/galcon-discover.js \"/c/Users/Admin/Documents/js coding/plantsTracker/worker/_discover.js\")",
-      "Bash(node _discover.js)"
+      "Bash(node _discover.js)",
+      "Bash(node --check worker/galcon-realtime.js)"
     ]
   },
   "hooks": {
