@@ -44,6 +44,16 @@ const FALLBACK_SENSORS = {
 };
 const FERT_CENTER_NAMES = {1: "שולחן דישון ראשי", 2: "שולחן דשן 2"};
 
+// All four project controllers. The CAD field plan labels valves by controller
+// letter + valve number (e.g. "B9" = controller B / valve 9), so we mirror each
+// controller's valve list into RTDB under galcon/valves/<letter>/<number>.
+const CONTROLLERS = [
+  {letter: "A", serial: "GAL0000000000169", configId: 160377, name: "מבוא חורון"},
+  {letter: "B", serial: "GAL0000000001399", configId: 160673, name: "פטל"},
+  {letter: "C", serial: "GAL0000000001638", configId: 160950, name: "פטל מערב"},
+  {letter: "D", serial: "GAL0000000001771", configId: 161088, name: "1771"},
+];
+
 let sensorMeta = Object.assign({}, FALLBACK_SENSORS); // number → { name, dec, unit }
 
 // ───────────────────────── Firebase RTDB ─────────────────────────
