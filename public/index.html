@@ -1533,6 +1533,7 @@
       sub, cards.length ? cards : null,
       (cards.length ? "" : '<div class="pi-sub">אין נתוני חיישנים טעונים עדיין.</div>') +
       (valveName ? `<div class="pi-sub" style="margin-top:8px">ברז Galcon: ${valveName} · ${g.ctrlName}</div>` : "") +
+      valveIrrHtml(g.rec) +
       (approx ? `<div class="pi-note">הברז ${vid} לא תויג בתכנית ה-CAD — הסמן ממוקם בקירוב באזור בקר B. לחיצה על הברז הנכון בתכנית תאפשר מיקום מדויק.</div>` : ""));
   }
 
