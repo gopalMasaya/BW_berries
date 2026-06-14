@@ -1220,6 +1220,336 @@
   drawerClose.addEventListener("click", closeDrawer);
 
   // ===============================
+  // FIELD PLAN (interactive CAD viewer — replaces Mapbox in GIS view)
+  // Geometry extracted from the Rivulis DWG into public/fieldPlan.json.
+  // ===============================
+  const SVGNS = "http://www.w3.org/2000/svg";
+  // Which CAD valve each physical sensor station sits on (per user).
+  const STATION_VALVE = { station1: "B9", station2: "B7" };
+  // CAD node prefix A/B/C/D -> Galcon controller (see galcon controllers memory).
+  const GALCON_CTRL = { A: "בקר A — מבוא חורון", B: "בקר B", C: "בקר C", D: "בקר D" };
+
+  let planData = null;
+  let planVB = null;          // current viewBox {x,y,w,h}
+  let planInitVB = null;      // initial (full) viewBox for reset
+  let planSelected = null;    // currently highlighted element
+  let galconLive = null;      // latest galcon/mevoHoron snapshot
+
+  function el(tag, attrs, parent){
+    const n = document.createElementNS(SVGNS, tag);
+    if (attrs) for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function ptsAttr(pts){ return pts.map(p => p[0] + "," + p[1]).join(" "); }
+
+  async function initFieldPlan(){
+    const svg = document.getElementById("planSvg");
+    try {
+      const res = await fetch("fieldPlan.json", { cache: "no-cache" });
+      planData = await res.json();
+    } catch (e){
+      svg.innerHTML = '';
+      const t = el("text", { x: 20, y: 40, fill: "#ff4d5e", "font-size": 16 }, svg);
+      t.textContent = "שגיאה בטעינת תכנית השדה: " + e.message;
+      return;
+    }
+
+    const [minX, minY, maxX, maxY] = planData.bbox;
+    const w = maxX - minX, h = maxY - minY;
+    const pad = Math.max(w, h) * 0.04;
+    planInitVB = { x: minX - pad, y: minY - pad, w: w + pad * 2, h: h + pad * 2 };
+    planVB = { ...planInitVB };
+    setViewBox();
+
+    // Flip Y (CAD is Y-up, SVG is Y-down) around the data's vertical span.
+    const root = el("g", { transform: `translate(0, ${minY + maxY}) scale(1, -1)` }, svg);
+    svg.innerHTML = "";
+    svg.appendChild(root);
+
+    // Draw order: pipes -> subareas -> rows -> plots -> valves -> labels -> stations
+    const gPipes  = el("g", { id: "gPipes" }, root);
+    (planData.pipes.zone || []).forEach(p => el("polyline", { points: ptsAttr(p), class: "pl-pipe-zone" }, gPipes));
+    (planData.pipes.collectors || []).forEach(p => el("polyline", { points: ptsAttr(p), class: "pl-pipe-coll" }, gPipes));
+    (planData.pipes.main || []).forEach(p => el("polyline", { points: ptsAttr(p), class: "pl-pipe-main" }, gPipes));
+
+    const gSub = el("g", { id: "gSub" }, root);
+    (planData.subareas || []).forEach(p => el("polygon", { points: ptsAttr(p), class: "pl-subarea" }, gSub));
+
+    const gRows = el("g", { id: "gRows" }, root);
+    (planData.rows || []).forEach((p, i) => {
+      el("polyline", { points: ptsAttr(p), class: "pl-row", "data-row": i }, gRows);
+      // transparent fat hit-line for easier clicking
+      const hit = el("polyline", { points: ptsAttr(p), class: "pl-rowhit", "data-row": i }, gRows);
+      hit.addEventListener("click", (ev) => { ev.stopPropagation(); selectRow(i); });
+    });
+
+    const gPlots = el("g", { id: "gPlots" }, root);
+    (planData.plots || []).forEach((pl, i) => {
+      const poly = el("polygon", { points: ptsAttr(pl.pts), class: "pl-plot", "data-plot": i }, gPlots);
+      poly.addEventListener("click", (ev) => { ev.stopPropagation(); selectPlot(i); });
+    });
+
+    const gValves = el("g", { id: "gValves" }, root);
+    const vr = Math.max(w, h) * 0.006; // valve marker radius in data units
+    (planData.valves || []).forEach((v, i) => {
+      const g = el("g", { class: "pl-valve", "data-valve": i }, gValves);
+      // counter-flip the marker group so text isn't mirrored
+      el("circle", { cx: v.xy[0], cy: v.xy[1], r: vr }, g);
+      const tx = el("text", { x: v.xy[0], y: v.xy[1], "font-size": vr * 1.1,
+        transform: `translate(0, ${v.xy[1] * 2}) scale(1, -1)` }, g);
+      tx.textContent = v.id;
+      g.addEventListener("click", (ev) => { ev.stopPropagation(); selectValve(i); });
+    });
+
+    const gLabels = el("g", { id: "gLabels" }, root);
+    const fs = Math.max(w, h) * 0.012;
+    (planData.plots || []).forEach(pl => {
+      if (!pl.id) return;
+      const t = el("text", { x: pl.c[0], y: pl.c[1], class: "pl-plotlabel", "font-size": fs,
+        transform: `translate(0, ${pl.c[1] * 2}) scale(1, -1)` }, gLabels);
+      t.textContent = pl.id;
+    });
+
+    // Station markers (physical sensor stations) at their CAD valve.
+    const gStations = el("g", { id: "gStations" }, root);
+    STATIONS.forEach(st => {
+      const vid = STATION_VALVE[st.deviceId];
+      let v = (planData.valves || []).find(x => x.id === vid);
+      let approx = false, xy;
+      if (v){ xy = v.xy; }
+      else {
+        // Fallback: centroid of same-prefix valves (B7/B9 missing in CAD).
+        const pre = (vid || "").charAt(0);
+        const sib = (planData.valves || []).filter(x => x.id.charAt(0) === pre);
+        if (sib.length){
+          xy = [ sib.reduce((a,b)=>a+b.xy[0],0)/sib.length, sib.reduce((a,b)=>a+b.xy[1],0)/sib.length ];
+          approx = true;
+        }
+      }
+      if (!xy) return;
+      const g = el("g", { class: "pl-station" + (approx ? " approx" : ""), "data-station": st.deviceId }, gStations);
+      el("circle", { cx: xy[0], cy: xy[1], r: vr * 1.4 }, g);
+      const t = el("text", { x: xy[0], y: xy[1] - vr * 2.2, "font-size": fs,
+        transform: `translate(0, ${(xy[1] - vr * 2.2) * 2}) scale(1, -1)` }, g);
+      t.textContent = st.name + (approx ? " ~" : "");
+      g.addEventListener("click", (ev) => { ev.stopPropagation(); selectStation(st.deviceId, xy, approx, vid); });
+    });
+
+    setupPlanInteractions(svg);
+    setupPlanLayerToggles();
+    subscribeGalconLive();
+  }
+
+  function setViewBox(){
+    document.getElementById("planSvg")
+      .setAttribute("viewBox", `${planVB.x} ${planVB.y} ${planVB.w} ${planVB.h}`);
+  }
+
+  function focusBBox(pts, padFactor){
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    let w = Math.max(x1 - x0, 1), h = Math.max(y1 - y0, 1);
+    const pf = padFactor != null ? padFactor : 0.5;
+    const px = w * pf, py = h * pf;
+    planVB = { x: x0 - px, y: y0 - py, w: w + px * 2, h: h + py * 2 };
+    setViewBox();
+  }
+
+  function clearPlanSelection(){
+    if (planSelected){ planSelected.classList.remove("sel"); planSelected = null; }
+  }
+
+  function setupPlanInteractions(svg){
+    let dragging = false, lastX = 0, lastY = 0;
+    svg.addEventListener("mousedown", (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; svg.classList.add("grabbing"); });
+    window.addEventListener("mouseup", () => { dragging = false; svg.classList.remove("grabbing"); });
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      const r = svg.getBoundingClientRect();
+      const dx = (e.clientX - lastX) * (planVB.w / r.width);
+      const dy = (e.clientY - lastY) * (planVB.h / r.height);
+      planVB.x -= dx; planVB.y -= dy; lastX = e.clientX; lastY = e.clientY;
+      setViewBox();
+    });
+    svg.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const r = svg.getBoundingClientRect();
+      const mx = planVB.x + (e.clientX - r.left) / r.width * planVB.w;
+      const my = planVB.y + (e.clientY - r.top) / r.height * planVB.h;
+      const f = e.deltaY < 0 ? 0.85 : 1.18;
+      planVB.x = mx - (mx - planVB.x) * f;
+      planVB.y = my - (my - planVB.y) * f;
+      planVB.w *= f; planVB.h *= f;
+      setViewBox();
+    }, { passive: false });
+
+    document.getElementById("planZoomIn").onclick  = () => zoomCenter(0.8);
+    document.getElementById("planZoomOut").onclick = () => zoomCenter(1.25);
+    document.getElementById("planReset").onclick   = () => { planVB = { ...planInitVB }; setViewBox(); clearPlanSelection(); closePlanInfo(); };
+    document.getElementById("planInfoClose").onclick = closePlanInfo;
+    svg.addEventListener("click", () => { clearPlanSelection(); closePlanInfo(); });
+  }
+
+  function zoomCenter(f){
+    const cx = planVB.x + planVB.w / 2, cy = planVB.y + planVB.h / 2;
+    planVB.w *= f; planVB.h *= f;
+    planVB.x = cx - planVB.w / 2; planVB.y = cy - planVB.h / 2;
+    setViewBox();
+  }
+
+  function setupPlanLayerToggles(){
+    const map = { lyrPlots: "gPlots", lyrRows: "gRows", lyrPipes: "gPipes", lyrValves: "gValves", lyrLabels: "gLabels" };
+    Object.keys(map).forEach(id => {
+      const cb = document.getElementById(id);
+      cb.onchange = () => {
+        const g = document.getElementById(map[id]);
+        if (g) g.style.display = cb.checked ? "" : "none";
+      };
+    });
+  }
+
+  // ---- selection handlers ----
+  function selectPlot(i){
+    clearPlanSelection();
+    const node = document.querySelector(`.pl-plot[data-plot="${i}"]`);
+    if (node){ node.classList.add("sel"); planSelected = node; }
+    const pl = planData.plots[i];
+    focusBBox(pl.pts, 0.25);
+    openPlanInfo(`חלקה ${pl.id || "(ללא מספר)"}`, "שטח השקיה", [
+      ["מזהה", pl.id || "—"],
+      ["מס' שורות בחלקה", String((planData.rows || []).filter(r => rowInPoly(r, pl.pts)).length)]
+    ]);
+  }
+
+  function selectRow(i){
+    clearPlanSelection();
+    const node = document.querySelector(`.pl-row[data-row="${i}"]`);
+    if (node){ node.classList.add("sel"); planSelected = node; }
+    const r = planData.rows[i];
+    focusBBox(r, 1.2);
+    openPlanInfo(`שורה #${i + 1}`, "קו טפטוף", [
+      ["אורך (יחידות תכנית)", String(Math.round(polyLen(r)))]
+    ]);
+  }
+
+  function selectValve(i){
+    clearPlanSelection();
+    const node = document.querySelector(`.pl-valve[data-valve="${i}"]`);
+    if (node){ node.classList.add("sel"); planSelected = node; }
+    const v = planData.valves[i];
+    focusBBox([[v.xy[0]-30, v.xy[1]-30],[v.xy[0]+30, v.xy[1]+30]], 0.3);
+    renderValveInfo(v);
+  }
+
+  function selectStation(deviceId, xy, approx, vid){
+    clearPlanSelection();
+    focusBBox([[xy[0]-30, xy[1]-30],[xy[0]+30, xy[1]+30]], 0.3);
+    renderStationInfo(deviceId, approx, vid);
+  }
+
+  // ---- info panel ----
+  function openPlanInfo(title, sub, cards, extraHtml){
+    const body = document.getElementById("planInfoBody");
+    let html = `<div class="pi-title">${title}</div><div class="pi-sub">${sub || ""}</div>`;
+    if (cards && cards.length){
+      html += '<div class="pi-grid">';
+      cards.forEach(([k, v]) => { html += `<div class="pi-card"><div class="pi-k">${k}</div><div class="pi-v">${v}</div></div>`; });
+      html += '</div>';
+    }
+    if (extraHtml) html += extraHtml;
+    body.innerHTML = html;
+    document.getElementById("planInfo").classList.add("open");
+  }
+  function closePlanInfo(){ document.getElementById("planInfo").classList.remove("open"); }
+
+  function galconSharedHtml(){
+    if (!galconLive) return '<h5>מערכת דישון (Galcon)</h5><div class="pi-sub">טוען…</div>';
+    let html = '<h5>מערכת דישון (Galcon)</h5><div class="pi-grid">';
+    (galconLive.fertCenters || []).forEach(fc => {
+      if (!fc) return;
+      html += `<div class="pi-card"><div class="pi-k">${fc.name || ("דישון " + fc.number)}</div><div class="pi-v">EC ${fc.ec ?? "—"} · pH ${fc.ph ?? "—"}</div></div>`;
+    });
+    (galconLive.sensors || []).forEach(sn => {
+      if (!sn) return;
+      html += `<div class="pi-card"><div class="pi-k">${sn.name || ("חיישן " + sn.number)}</div><div class="pi-v">${sn.value ?? "—"}</div></div>`;
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderValveInfo(v){
+    const ctrl = GALCON_CTRL[v.id.charAt(0)] || ("בקר " + v.id.charAt(0));
+    openPlanInfo("ברז " + v.id, ctrl, null,
+      galconSharedHtml() +
+      '<div class="pi-note">סטטוס פר-ברז (פתוח/משקה) אינו זמין כרגע ב-Firebase — נתוני הדישון/מיכל הם ברמת המערכת. חיבור סטטוס פר-ברז דורש הרחבת ה-worker של Galcon.</div>');
+  }
+
+  function renderStationInfo(deviceId, approx, vid){
+    const st = STATIONS.find(s => s.deviceId === deviceId);
+    const latest = latestByDevice[deviceId];
+    const cards = [];
+    let sub = "תחנת חיישנים";
+    if (latest && latest.item){
+      const item = latest.item;
+      const want = ["ec", "ec2", "ph1", "ph2", "temp", "scale1", "soil1_humidity", "soil2_humidity"];
+      want.forEach(k => { if (item[k] != null) cards.push([fmtFieldName(k), parseFloat(item[k]).toFixed(decimalsFor(k))]); });
+      sub = "עודכן: " + new Date(latest.tsISO).toLocaleString("he-IL");
+    }
+    openPlanInfo((st ? st.name : deviceId) + " · ברז " + vid, sub, cards.length ? cards : null,
+      (cards.length ? "" : '<div class="pi-sub">אין נתוני חיישנים טעונים עדיין.</div>') +
+      (approx ? `<div class="pi-note">מיקום הברז ${vid} לא קיים בתכנית ה-CAD (יש רק B1–B4) — הסמן ממוקם בקירוב באזור בקר B. ספק מיקום מדויק כדי לתקן.</div>` : ""));
+  }
+
+  function subscribeGalconLive(){
+    database.ref("galcon/mevoHoron").on("value", snap => {
+      galconLive = snap.val();
+      // refresh info panel if a valve/station is currently shown
+      const open = document.getElementById("planInfo").classList.contains("open");
+      const title = document.querySelector("#planInfoBody .pi-title");
+      if (open && title && title.textContent.indexOf("ברז") === 0 && planSelected){
+        const i = planSelected.getAttribute("data-valve");
+        if (i != null) renderValveInfo(planData.valves[+i]);
+      }
+    });
+  }
+
+  // ---- geometry helpers ----
+  function polyLen(pts){
+    let L = 0;
+    for (let i = 1; i < pts.length; i++){
+      L += Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]);
+    }
+    return L;
+  }
+  function pointInPoly(x, y, poly){
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++){
+      const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+  function rowInPoly(row, poly){
+    const mx = row.reduce((a,b)=>a+b[0],0)/row.length;
+    const my = row.reduce((a,b)=>a+b[1],0)/row.length;
+    return pointInPoly(mx, my, poly);
+  }
+
+  // Focus the plan on a station's marker (used by the left-panel station list).
+  function focusStationOnPlan(deviceId){
+    const vid = STATION_VALVE[deviceId];
+    let v = planData && (planData.valves || []).find(x => x.id === vid);
+    let xy = v ? v.xy : null;
+    if (!xy && planData){
+      const pre = (vid || "").charAt(0);
+      const sib = (planData.valves || []).filter(x => x.id.charAt(0) === pre);
+      if (sib.length) xy = [ sib.reduce((a,b)=>a+b.xy[0],0)/sib.length, sib.reduce((a,b)=>a+b.xy[1],0)/sib.length ];
+    }
+    if (xy){ focusBBox([[xy[0]-40, xy[1]-40],[xy[0]+40, xy[1]+40]], 0.3); selectStation(deviceId, xy, !v, vid); }
+  }
+
+  // ===============================
   // BOOT
   // ===============================
   let booted = false;
