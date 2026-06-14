@@ -1203,7 +1203,7 @@
 
     btnFly.onclick = () => {
       if (!st) return;
-      map.flyTo({ center: [st.lng, st.lat], zoom: 15, speed: 0.9 });
+      if (map) map.flyTo({ center: [st.lng, st.lat], zoom: 15, speed: 0.9 });
     };
 
     btnRoute.onclick = () => {
