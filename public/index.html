@@ -1490,13 +1490,30 @@
     return { letter, num, ctrlName, rec };
   }
 
+  function piCard(k, v){ return `<div class="pi-card"><div class="pi-k">${k}</div><div class="pi-v">${v}</div></div>`; }
+
+  // Last finished-irrigation block for a valve (from galcon/valves/.../lastIrr).
+  function valveIrrHtml(rec){
+    if (!rec || !rec.lastIrr) return '<div class="pi-sub" style="margin-top:8px">אין נתוני השקיה אחרונה.</div>';
+    const i = rec.lastIrr;
+    let h = '<h5>השקיה אחרונה</h5><div class="pi-grid">';
+    if (i.stop || i.time) h += piCard("זמן סיום", (i.stop || i.time));
+    if (i.durationMin != null) h += piCard("משך (דק׳)", i.durationMin);
+    if (i.volumeM3 != null) h += piCard("מים (m³)", i.volumeM3);
+    if (i.flowRateM3h != null) h += piCard("ספיקה (m³/h)", i.flowRateM3h);
+    if (i.ec != null) h += piCard("EC", i.ec);
+    if (i.ph != null) h += piCard("pH", i.ph);
+    h += '</div>';
+    return h;
+  }
+
   function renderValveInfo(v){
     const g = galconValveFor(v.id);
     const cards = [["בקר", g.ctrlName], ["מס' ברז", g.num]];
     if (g.rec && g.rec.name) cards.push(["שם הברז", g.rec.name]);
     openPlanInfo("ברז " + v.id, g.rec && g.rec.name ? g.rec.name : g.ctrlName, cards,
-      galconSharedHtml() +
-      '<div class="pi-note">סטטוס פר-ברז בזמן אמת (פתוח/משקה) משודר מ-Galcon רק בזמן השקיה פעילה; נתוני הדישון/מיכל למעלה הם ברמת המערכת.</div>');
+      valveIrrHtml(g.rec) + galconSharedHtml() +
+      '<div class="pi-note">"השקיה אחרונה" מתעדכן בתום כל השקיה (מ-Galcon). סטטוס "משקה כרגע" בזמן אמת משודר רק בזמן השקיה פעילה.</div>');
   }
 
   function renderStationInfo(deviceId, approx, vid){
