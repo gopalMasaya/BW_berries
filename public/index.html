@@ -1692,14 +1692,54 @@
 
   function renderValveInfo(v){
     const g = galconValveFor(v.id);
+    const cName = customName(v.id);
     const cards = [["בקר", g.ctrlName], ["מס' ברז", g.num]];
-    if (g.rec && g.rec.name) cards.push(["שם הברז", g.rec.name]);
+    if (g.rec && g.rec.name) cards.push(["שם בגלקון", g.rec.name]);
+    const notInGalcon = !g.rec;     // valve not defined in Galcon (e.g. phantom CAD label)
     const seq = ++_stationInfoSeq;
-    openPlanInfo("ברז " + v.id, g.rec && g.rec.name ? g.rec.name : g.ctrlName, cards,
+    openPlanInfo("ברז " + v.id + (cName ? " — " + cName : ""),
+      cName || (g.rec && g.rec.name ? g.rec.name : g.ctrlName), cards,
+      '<div class="pi-edit-row"><button id="piEditName" class="pi-editbtn">✏️ ערוך שם</button></div>' +
+      '<div id="piEditBox"></div>' +
+      (notInGalcon ? '<div class="pi-note">ℹ️ ברז זה אינו מוגדר בגלקון — ייתכן שאינו קיים פיזית, ולכן אין לו נתוני השקיה.</div>' : '') +
       '<div id="stIrrToday" class="pi-sub" style="margin-top:8px">💧 טוען השקיות היום…</div>' +
       galconSharedHtml() +
       '<div class="pi-note">אחוז "בפועל" = נפח חלקי מנת 100% של התוכנית. "מתוכנן" = מתוך שיטת ההשקיה.</div>');
+    wireNameEdit(v);
     fillStationIrr(v.id, seq);   // today's irrigations for this valve
+  }
+
+  // Inline rename control for the currently-open valve panel. Saves a custom
+  // name (localStorage), updates the live map label, and re-renders the panel.
+  function wireNameEdit(v){
+    const btn = document.getElementById("piEditName");
+    if (!btn) return;
+    btn.onclick = () => {
+      const box = document.getElementById("piEditBox");
+      const cur = customName(v.id) || "";
+      box.innerHTML =
+        `<div class="pi-edit-form">
+          <input id="piNameInput" type="text" maxlength="40" placeholder="שם מותאם לברז ${v.id}" value="${cur.replace(/"/g, "&quot;")}" />
+          <div class="pi-edit-btns">
+            <button id="piNameSave" class="pi-editbtn save">💾 שמור</button>
+            <button id="piNameClear" class="pi-editbtn">🗑️ נקה</button>
+            <button id="piNameCancel" class="pi-editbtn">בטל</button>
+          </div>
+        </div>`;
+      const input = document.getElementById("piNameInput");
+      input.focus(); input.select();
+      const apply = (name) => {
+        savePlanName(v.id, name);
+        // Update the live marker label on the map.
+        const t = planSelected && planSelected.querySelector("text");
+        if (t) t.textContent = customName(v.id) || v.id;
+        renderValveInfo(v);   // re-render panel with the new name
+      };
+      document.getElementById("piNameSave").onclick = () => apply(input.value);
+      document.getElementById("piNameClear").onclick = () => apply("");
+      document.getElementById("piNameCancel").onclick = () => { box.innerHTML = ""; };
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(input.value); });
+    };
   }
 
   // ---- on-demand Galcon day data (today's irrigations for a station's valve) ----
