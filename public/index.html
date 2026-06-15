@@ -1667,6 +1667,152 @@
       '<div class="pi-note">"השקיה אחרונה" מתעדכן בתום כל השקיה (מ-Galcon). סטטוס "משקה כרגע" בזמן אמת משודר רק בזמן השקיה פעילה.</div>');
   }
 
+  // ---- on-demand Galcon day data (today's irrigations for a station's valve) ----
+  const _gFmt = (v, d = 1) => (v == null || v === "" || isNaN(Number(v))) ? "—" : Number(v).toFixed(d);
+  const _gTime = (s) => { if (!s) return "—"; const x = new Date(s); return isNaN(x) ? "—" : x.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }); };
+  const _todayStr = () => { const d = new Date(), p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
+
+  async function galconGet(path){
+    const user = auth.currentUser;
+    if (!user) throw new Error("not signed in");
+    const token = await user.getIdToken();
+    const resp = await fetch(GALCON_API + path, { headers: { Authorization: "Bearer " + token } });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    return resp.json();
+  }
+
+  // Caches keyed by date / serial so reopening stations is cheap within a session.
+  const _gValvesByDate = {}, _gMethodBySerial = {}, _gBasesBySerial = {};
+  async function gValvesForDate(date){
+    if (_gValvesByDate[date]) return _gValvesByDate[date];
+    const p = (async () => {
+      const data = await galconGet(`/valves?from=${date}&to=${date}`);
+      const byKey = {};
+      for (const v of (data.valves || [])){
+        const serial = String(v.SerialNumber == null ? "" : v.SerialNumber).trim();
+        const k = serial + "|" + v.ValveNo;
+        (byKey[k] = byKey[k] || []).push(v);
+      }
+      return byKey;
+    })();
+    _gValvesByDate[date] = p;
+    return p;
+  }
+  // `${cycle}|${program}` → configured water-dose percentage (שיטת השקיה).
+  async function gMethodMap(serial){
+    if (_gMethodBySerial[serial]) return _gMethodBySerial[serial];
+    const p = (async () => {
+      const data = await galconGet(`/irrigation-method?serial=${encodeURIComponent(serial)}`);
+      const map = {};
+      for (const it of (data.changeWaterByCycle || [])) map[`${it.number}|${it.irrigationMethodNumber}`] = it.waterMultiplyForCycle;
+      return map;
+    })();
+    _gMethodBySerial[serial] = p;
+    return p;
+  }
+  // valveNo → { base (100% dose, m³), name, prog, cyclePerDay }.
+  async function gProgramBases(serial){
+    if (_gBasesBySerial[serial]) return _gBasesBySerial[serial];
+    const p = (async () => {
+      const data = await galconGet(`/programs?serial=${encodeURIComponent(serial)}`);
+      const byValve = {};
+      for (const pr of (data.programs || [])){
+        if (pr.waterProgAmount == null) continue;
+        for (const vn of (pr.valves || [])){
+          if (byValve[vn] == null || pr.valveA === vn)
+            byValve[vn] = { base: pr.waterProgAmount, name: pr.name, prog: pr.number, cyclePerDay: pr.cyclePerDay };
+        }
+      }
+      return byValve;
+    })();
+    _gBasesBySerial[serial] = p;
+    return p;
+  }
+
+  // Build the "today's irrigations" HTML for a CAD valve id (e.g. "B9").
+  async function stationIrrHtml(vid){
+    const letter = String(vid || "").charAt(0).toUpperCase();
+    const valveNo = parseInt(String(vid || "").slice(1), 10);
+    const serial = LETTER_TO_SERIAL[letter];
+    if (!serial || isNaN(valveNo)) return '<div class="pi-sub">אין שיוך ברז ל-Galcon.</div>';
+
+    const date = _todayStr();
+    const byKey = await gValvesForDate(date);
+    const events = (byKey[serial + "|" + valveNo] || []).slice()
+      .sort((a, b) => String(a.DateTimeStartValve||"").localeCompare(String(b.DateTimeStartValve||"")));
+    events.forEach((v, i) => { v._cycle = i + 1; });
+
+    // Optional enrichment — percentages and base dose. Degrade gracefully.
+    let methodMap = null, bases = null;
+    try { methodMap = await gMethodMap(serial); } catch (e) {}
+    try { bases = await gProgramBases(serial); } catch (e) {}
+    const baseInfo = bases && bases[valveNo] || null;
+    const baseM3 = baseInfo ? baseInfo.base : null;
+    const prog = baseInfo ? baseInfo.prog : null;
+    const cyclePerDay = baseInfo ? baseInfo.cyclePerDay : null;
+    const pctFor = (cycle, program) => (methodMap && cycle != null && program != null) ? methodMap[`${cycle}|${program}`] : null;
+
+    let h = `<h5>💧 השקיות היום (${date})</h5>`;
+    if (baseInfo) h += `<div class="pi-sub">תוכנית ${prog} · ${baseInfo.name || ""} · מנה 100% = ${baseM3} m³${cyclePerDay ? ` · ${cyclePerDay} מחזורים/יום` : ""}</div>`;
+
+    if (!events.length){
+      h += '<div class="pi-sub" style="margin-top:6px">אין השקיות שהסתיימו היום.</div>';
+    } else {
+      let totDur = 0, totVol = 0, totFlow = 0, nFlow = 0;
+      let list = '<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">';
+      for (const v of events){
+        if (!isNaN(Number(v.DurationValve))) totDur += Number(v.DurationValve);
+        if (!isNaN(Number(v.VolumeM3Valve))) totVol += Number(v.VolumeM3Valve);
+        if (!isNaN(Number(v.FlowRateM3h))) { totFlow += Number(v.FlowRateM3h); nFlow++; }
+        const pctCfg = pctFor(v._cycle, v.ProgNum != null ? v.ProgNum : prog);
+        const vol = isNaN(Number(v.VolumeM3Valve)) ? null : Number(v.VolumeM3Valve);
+        const actualPct = (baseM3 && vol != null) ? Math.round(vol / baseM3 * 100) : null;
+        const expected = (baseM3 != null && pctCfg != null) ? baseM3 * pctCfg / 100 : null;
+        let gapChip = "";
+        if (expected != null && vol != null){
+          const gap = vol - expected, within = Math.abs(gap) <= expected * 0.05;
+          const col = within ? "var(--good,#4ade80)" : (gap < 0 ? "#f87171" : "#fbbf24");
+          gapChip = `<span class="pi-chip" style="color:${col}">פער ${gap>0?"+":""}${gap.toFixed(2)}</span>`;
+        }
+        list += `<div class="pi-irr">
+          <div class="pi-irr-h"><b>${_gTime(v.DateTimeStartValve)}–${_gTime(v.DateTimeStopValve)}</b><span class="pi-irr-c">מחזור ${v._cycle}</span></div>
+          <div class="pi-chips">
+            <span class="pi-chip">⏱ ${_gFmt(v.DurationValve)} דק׳</span>
+            <span class="pi-chip">🚿 ${_gFmt(v.FlowRateM3h)} m³/h</span>
+            <span class="pi-chip">💧 ${_gFmt(v.VolumeM3Valve, 2)} m³</span>
+            ${actualPct != null ? `<span class="pi-chip">בפועל ${actualPct}%</span>` : ""}
+            ${pctCfg != null ? `<span class="pi-chip">מתוכנן ${pctCfg}%</span>` : ""}
+            ${gapChip}
+          </div>
+        </div>`;
+      }
+      list += '</div>';
+      const avgFlow = nFlow ? totFlow / nFlow : null;
+      h += `<div class="pi-grid" style="margin-top:8px">
+        ${piCard("השקיות היום", events.length)}
+        ${piCard("סה״כ מים", totVol.toFixed(2) + " m³")}
+        ${piCard("משך כולל", _gFmt(totDur) + " דק׳")}
+        ${piCard("ספיקה ממוצעת", _gFmt(avgFlow) + " m³/h")}
+      </div>` + list;
+
+      // Next irrigation = next cycle of the program (Galcon exposes no clock time).
+      if (cyclePerDay != null){
+        if (events.length < cyclePerDay){
+          const nextCycle = events.length + 1;
+          const nextPct = pctFor(nextCycle, prog);
+          const nextVol = (baseM3 != null && nextPct != null) ? (baseM3 * nextPct / 100).toFixed(2) + " m³" : null;
+          h += `<div class="pi-next">➡️ השקיה הבאה: מחזור ${nextCycle} מתוך ${cyclePerDay}${nextPct != null ? ` · מנה ${nextPct}%` : ""}${nextVol ? ` (≈ ${nextVol})` : ""}</div>`;
+        } else {
+          h += `<div class="pi-next">✅ הסתיימו כל ${cyclePerDay} המחזורים להיום.</div>`;
+        }
+      }
+    }
+    return h;
+  }
+
+  // Guard so a slow fetch from a previous click can't overwrite a newer panel.
+  let _stationInfoSeq = 0;
+
   function renderStationInfo(deviceId, approx, vid){
     const st = STATIONS.find(s => s.deviceId === deviceId);
     const latest = latestByDevice[deviceId];
@@ -1680,12 +1826,24 @@
     }
     const g = galconValveFor(vid);
     const valveName = g.rec && g.rec.name ? g.rec.name : null;
+    const seq = ++_stationInfoSeq;
     openPlanInfo((st ? st.name : deviceId) + " · ברז " + vid + (valveName ? " (" + valveName + ")" : ""),
       sub, cards.length ? cards : null,
       (cards.length ? "" : '<div class="pi-sub">אין נתוני חיישנים טעונים עדיין.</div>') +
       (valveName ? `<div class="pi-sub" style="margin-top:8px">ברז Galcon: ${valveName} · ${g.ctrlName}</div>` : "") +
-      valveIrrHtml(g.rec) +
+      '<div id="stIrrToday" class="pi-sub" style="margin-top:8px">💧 טוען השקיות היום…</div>' +
       (approx ? `<div class="pi-note">הברז ${vid} לא תויג בתכנית ה-CAD — הסמן ממוקם בקירוב באזור בקר B. לחיצה על הברז הנכון בתכנית תאפשר מיקום מדויק.</div>` : ""));
+
+    // Pull today's irrigations asynchronously and slot them into the placeholder.
+    stationIrrHtml(vid).then(html => {
+      if (seq !== _stationInfoSeq) return;            // a newer panel opened meanwhile
+      const slot = document.getElementById("stIrrToday");
+      if (slot){ slot.classList.remove("pi-sub"); slot.innerHTML = html; }
+    }).catch(err => {
+      if (seq !== _stationInfoSeq) return;
+      const slot = document.getElementById("stIrrToday");
+      if (slot) slot.innerHTML = `<span class="warn">שגיאת טעינת השקיות: ${err.message || err}</span>`;
+    });
   }
 
   function subscribeGalconLive(){
