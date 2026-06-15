@@ -1690,6 +1690,13 @@
       btn.classList.toggle("on", alignMode);
       panel.classList.toggle("open", alignMode);
       if (alignMode && !SECTION_TF.s2) SECTION_TF.s2 = {dx:0, dy:0, rot:0};
+      // Section-align and position-edit are mutually exclusive.
+      if (alignMode && posEditMode){
+        posEditMode = false;
+        document.getElementById("planPosBtn").classList.remove("on");
+        document.getElementById("planSvg").classList.remove("posedit");
+        const ph = document.getElementById("planPosHint"); if (ph) ph.classList.remove("open");
+      }
       show();
     };
     panel.querySelectorAll("button[data-rot]").forEach(b => {
