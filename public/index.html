@@ -1610,6 +1610,36 @@
     document.getElementById("planReset").onclick   = () => { planVB = { ...planInitVB }; setViewBox(); clearPlanSelection(); closePlanInfo(); };
     document.getElementById("planInfoClose").onclick = closePlanInfo;
     svg.addEventListener("click", () => { clearPlanSelection(); closePlanInfo(); });
+
+    // Position-edit mode: toggle dragging of valve markers.
+    const posBtn = document.getElementById("planPosBtn");
+    const posHint = document.getElementById("planPosHint");
+    if (posBtn){
+      posBtn.onclick = () => {
+        posEditMode = !posEditMode;
+        posBtn.classList.toggle("on", posEditMode);
+        svg.classList.toggle("posedit", posEditMode);
+        if (posHint) posHint.classList.toggle("open", posEditMode);
+        if (posEditMode){ clearPlanSelection(); closePlanInfo(); }
+      };
+    }
+    const posReset = document.getElementById("planPosReset");
+    if (posReset){
+      posReset.onclick = () => {
+        if (!confirm("לאפס את כל מיקומי הברזים למיקום המקורי מהתכנית?")) return;
+        planValvePos = {};
+        localStorage.removeItem("planValvePos");
+        (planData.valves || []).forEach((v, i) => {
+          valvePos[i] = [v.xy[0], v.xy[1]];
+          const g = document.querySelector(`.pl-valve[data-valve="${i}"]`);
+          if (!g) return;
+          const c = g.querySelector("circle"), t = g.querySelector("text");
+          c.setAttribute("cx", v.xy[0]); c.setAttribute("cy", v.xy[1]);
+          t.setAttribute("x", v.xy[0]); t.setAttribute("y", v.xy[1]);
+          t.setAttribute("transform", `translate(0, ${v.xy[1] * 2}) scale(1, -1)`);
+        });
+      };
+    }
   }
 
   function zoomCenter(f){
