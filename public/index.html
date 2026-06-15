@@ -1778,7 +1778,7 @@
       h += '<div class="pi-sub" style="margin-top:6px">אין השקיות שהסתיימו היום.</div>';
     } else {
       let totDur = 0, totVol = 0, totFlow = 0, nFlow = 0;
-      let list = '<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">';
+      let list = '<div style="margin-top:10px;display:flex;flex-direction:column;gap:10px;">';
       for (const v of events){
         if (!isNaN(Number(v.DurationValve))) totDur += Number(v.DurationValve);
         if (!isNaN(Number(v.VolumeM3Valve))) totVol += Number(v.VolumeM3Valve);
@@ -1787,21 +1787,21 @@
         const vol = isNaN(Number(v.VolumeM3Valve)) ? null : Number(v.VolumeM3Valve);
         const actualPct = (baseM3 && vol != null) ? Math.round(vol / baseM3 * 100) : null;
         const expected = (baseM3 != null && pctCfg != null) ? baseM3 * pctCfg / 100 : null;
-        let gapChip = "";
+        let gapCell = "";
         if (expected != null && vol != null){
           const gap = vol - expected, within = Math.abs(gap) <= expected * 0.05;
           const col = within ? "var(--good,#4ade80)" : (gap < 0 ? "#f87171" : "#fbbf24");
-          gapChip = `<span class="pi-chip" style="color:${col}">פער ${gap>0?"+":""}${gap.toFixed(2)}</span>`;
+          gapCell = `<div><span>פער</span><b style="color:${col}">${gap>0?"+":""}${gap.toFixed(2)} m³</b></div>`;
         }
         list += `<div class="pi-irr">
-          <div class="pi-irr-h"><b>${_gTime(v.DateTimeStartValve)}–${_gTime(v.DateTimeStopValve)}</b><span class="pi-irr-c">מחזור ${v._cycle}</span></div>
-          <div class="pi-chips">
-            <span class="pi-chip">⏱ ${_gFmt(v.DurationValve)} דק׳</span>
-            <span class="pi-chip">🚿 ${_gFmt(v.FlowRateM3h)} m³/h</span>
-            <span class="pi-chip">💧 ${_gFmt(v.VolumeM3Valve, 2)} m³</span>
-            ${actualPct != null ? `<span class="pi-chip">בפועל ${actualPct}%</span>` : ""}
-            ${pctCfg != null ? `<span class="pi-chip">מתוכנן ${pctCfg}%</span>` : ""}
-            ${gapChip}
+          <div class="pi-irr-h"><b>🕒 ${_gTime(v.DateTimeStartValve)}–${_gTime(v.DateTimeStopValve)}</b><span class="pi-irr-c">מחזור ${v._cycle}</span></div>
+          <div class="pi-irr-grid">
+            <div><span>⏱ משך</span><b>${_gFmt(v.DurationValve)} דק׳</b></div>
+            <div><span>🚿 ספיקה</span><b>${_gFmt(v.FlowRateM3h)} m³/h</b></div>
+            <div><span>💧 נפח</span><b>${_gFmt(v.VolumeM3Valve, 2)} m³</b></div>
+            ${actualPct != null ? `<div><span>בפועל</span><b>${actualPct}%</b></div>` : ""}
+            ${pctCfg != null ? `<div><span>מתוכנן</span><b>${pctCfg}%</b></div>` : ""}
+            ${gapCell}
           </div>
         </div>`;
       }
