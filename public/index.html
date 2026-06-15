@@ -1560,7 +1560,7 @@
     const node = document.querySelector(`.pl-plot[data-plot="${i}"]`);
     if (node){ node.classList.add("sel"); planSelected = node; }
     const pl = planData.plots[i];
-    focusNode(node, 0.25);
+    focusPts(pl.pts, pl.s, 0.25);
     openPlanInfo(`חלקה ${pl.id || "(ללא מספר)"}`, "שטח השקיה", [
       ["מזהה", pl.id || "—"],
       ["מס' שורות בחלקה", String((planData.rows || []).filter(r => r.s === pl.s && rowInPoly(r.p, pl.pts)).length)]
