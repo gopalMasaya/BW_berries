@@ -1607,7 +1607,7 @@
     const node = document.querySelector(`.pl-valve[data-valve="${i}"]`);
     if (node){ node.classList.add("sel"); planSelected = node; }
     const v = planData.valves[i];
-    focusPoint(v.xy[0], v.xy[1], v.s, 0.05);
+    // No auto-zoom on valve click — the user pans/zooms manually if desired.
     renderValveInfo(v);
   }
 
