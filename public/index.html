@@ -1316,6 +1316,20 @@
     localStorage.setItem("planValveNames", JSON.stringify(planNames));
   }
 
+  // User-dragged valve positions (data coords), keyed by valve INDEX (unique;
+  // valve ids repeat across sections). Stored per-browser in localStorage.
+  let planValvePos = {};      // { index: [x,y] } persisted overrides
+  let valvePos = [];          // live current position per valve index
+  let posEditMode = false;    // when true, dragging a valve moves it
+  function loadValvePos(){
+    try { planValvePos = JSON.parse(localStorage.getItem("planValvePos")) || {}; }
+    catch (e) { planValvePos = {}; }
+  }
+  function saveValvePos(i, xy){
+    planValvePos[i] = [xy[0], xy[1]];
+    localStorage.setItem("planValvePos", JSON.stringify(planValvePos));
+  }
+
   let planData = null;
   let planVB = null;          // current viewBox {x,y,w,h}
   let planInitVB = null;      // initial (full) viewBox for reset
