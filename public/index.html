@@ -1362,6 +1362,7 @@
 
     SECTION_TF = loadSectionTF();
     loadPlanNames();
+    loadValvePos();
     const [minX, minY, maxX, maxY] = planData.bbox;
     const w = maxX - minX, h = maxY - minY;
     const pad = Math.max(w, h) * 0.04;
