@@ -1402,14 +1402,34 @@
       .setAttribute("viewBox", `${planVB.x} ${planVB.y} ${planVB.w} ${planVB.h}`);
   }
 
-  function focusBBox(pts, padFactor){
-    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-    let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  // Focus on a box given in SVG viewBox space (already transform-corrected).
+  function focusViewBox(x0, y0, x1, y1, padFactor){
     let w = Math.max(x1 - x0, 1), h = Math.max(y1 - y0, 1);
     const pf = padFactor != null ? padFactor : 0.5;
     const px = w * pf, py = h * pf;
     planVB = { x: x0 - px, y: y0 - py, w: w + px * 2, h: h + py * 2 };
     setViewBox();
+  }
+
+  // Focus on a rendered node. Uses getBBox()+getCTM() so the Y-flip, the
+  // per-section translate, and any rotation are all accounted for — raw CAD
+  // coords alone would mis-place the zoom (mirrored vertically, and offset for
+  // section s2). Returns false if the node has no measurable box.
+  function focusNode(node, padFactor){
+    if (!node || !node.getBBox || !node.getCTM) return false;
+    let bb, m;
+    try { bb = node.getBBox(); m = node.getCTM(); } catch (e) { return false; }
+    if (!m || (!bb.width && !bb.height)) {
+      // Degenerate box (e.g. a single point) — fall back to the transformed origin.
+      if (!m) return false;
+    }
+    const corners = [
+      [bb.x, bb.y], [bb.x + bb.width, bb.y],
+      [bb.x, bb.y + bb.height], [bb.x + bb.width, bb.y + bb.height]
+    ].map(([x, y]) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f]);
+    const xs = corners.map(c => c[0]), ys = corners.map(c => c[1]);
+    focusViewBox(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), padFactor);
+    return true;
   }
 
   function clearPlanSelection(){
