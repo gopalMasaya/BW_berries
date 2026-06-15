@@ -1620,7 +1620,15 @@
         posBtn.classList.toggle("on", posEditMode);
         svg.classList.toggle("posedit", posEditMode);
         if (posHint) posHint.classList.toggle("open", posEditMode);
-        if (posEditMode){ clearPlanSelection(); closePlanInfo(); }
+        if (posEditMode){
+          clearPlanSelection(); closePlanInfo();
+          // Position-edit and section-align are mutually exclusive.
+          if (alignMode){
+            alignMode = false;
+            document.getElementById("planAlignBtn").classList.remove("on");
+            document.getElementById("planAlign").classList.remove("open");
+          }
+        }
       };
     }
     const posReset = document.getElementById("planPosReset");
