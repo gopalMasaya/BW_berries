@@ -1822,6 +1822,20 @@
   // Guard so a slow fetch from a previous click can't overwrite a newer panel.
   let _stationInfoSeq = 0;
 
+  // Fill the "#stIrrToday" placeholder (present in both the station and valve
+  // panels) with today's irrigations for the given CAD valve id (e.g. "C4").
+  function fillStationIrr(vid, seq){
+    stationIrrHtml(vid).then(html => {
+      if (seq !== _stationInfoSeq) return;            // a newer panel opened meanwhile
+      const slot = document.getElementById("stIrrToday");
+      if (slot){ slot.classList.remove("pi-sub"); slot.innerHTML = html; }
+    }).catch(err => {
+      if (seq !== _stationInfoSeq) return;
+      const slot = document.getElementById("stIrrToday");
+      if (slot) slot.innerHTML = `<span class="warn">שגיאת טעינת השקיות: ${err.message || err}</span>`;
+    });
+  }
+
   function renderStationInfo(deviceId, approx, vid){
     const st = STATIONS.find(s => s.deviceId === deviceId);
     const latest = latestByDevice[deviceId];
