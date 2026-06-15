@@ -1719,7 +1719,7 @@
       const sib = (planData.valves || []).filter(x => x.id.charAt(0) === pre);
       if (sib.length) xy = [ sib.reduce((a,b)=>a+b.xy[0],0)/sib.length, sib.reduce((a,b)=>a+b.xy[1],0)/sib.length ];
     }
-    if (xy){ focusBBox([[xy[0]-40, xy[1]-40],[xy[0]+40, xy[1]+40]], 0.3); selectStation(deviceId, xy, !v, vid); }
+    if (xy){ selectStation(deviceId, xy, !v, vid); }
   }
 
   // ===============================
