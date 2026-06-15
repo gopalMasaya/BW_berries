@@ -130,7 +130,10 @@
       "Bash(ls -la qrcode/)",
       "Bash(sed -n '621,2936p' index.html)",
       "Bash(node --check /tmp/idx.js)",
-      "Bash(git log *)"
+      "Bash(git log *)",
+      "Bash(node --check /tmp/idx2.js)",
+      "Bash(sed -n '621,2944p' index.html)",
+      "Bash(node --check /tmp/idx3.js)"
     ]
   },
   "hooks": {
