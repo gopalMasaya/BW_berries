@@ -1857,16 +1857,7 @@
       '<div id="stIrrToday" class="pi-sub" style="margin-top:8px">💧 טוען השקיות היום…</div>' +
       (approx ? `<div class="pi-note">הברז ${vid} לא תויג בתכנית ה-CAD — הסמן ממוקם בקירוב באזור בקר B. לחיצה על הברז הנכון בתכנית תאפשר מיקום מדויק.</div>` : ""));
 
-    // Pull today's irrigations asynchronously and slot them into the placeholder.
-    stationIrrHtml(vid).then(html => {
-      if (seq !== _stationInfoSeq) return;            // a newer panel opened meanwhile
-      const slot = document.getElementById("stIrrToday");
-      if (slot){ slot.classList.remove("pi-sub"); slot.innerHTML = html; }
-    }).catch(err => {
-      if (seq !== _stationInfoSeq) return;
-      const slot = document.getElementById("stIrrToday");
-      if (slot) slot.innerHTML = `<span class="warn">שגיאת טעינת השקיות: ${err.message || err}</span>`;
-    });
+    fillStationIrr(vid, seq);   // pull today's irrigations into the placeholder
   }
 
   function subscribeGalconLive(){
