@@ -1411,37 +1411,39 @@
     setViewBox();
   }
 
-  // Focus on a rendered node. Uses getBBox()+getCTM() so the Y-flip, the
-  // per-section translate, and any rotation are all accounted for — raw CAD
-  // coords alone would mis-place the zoom (mirrored vertically, and offset for
-  // section s2). Returns false if the node has no measurable box.
-  function focusNode(node, padFactor){
-    if (!node || !node.getBBox || !node.getCTM) return false;
-    let bb, m;
-    try { bb = node.getBBox(); m = node.getCTM(); } catch (e) { return false; }
-    if (!m) return false;
-    const corners = [
-      [bb.x, bb.y], [bb.x + bb.width, bb.y],
-      [bb.x, bb.y + bb.height], [bb.x + bb.width, bb.y + bb.height]
-    ].map(([x, y]) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f]);
-    const xs = corners.map(c => c[0]), ys = corners.map(c => c[1]);
+  // Transform a CAD data point (in section `sec`) into SVG viewBox coords by
+  // replicating exactly what the DOM does: apply the section's translate/rotate
+  // (s2 only — s1 is untransformed), then the root Y-flip. Done in math rather
+  // than via getBBox()/getCTM() because getCTM() is unreliable here (it folds in
+  // the viewBox→pixel scale, so it returns pixel-space coords, not viewBox units).
+  function dataToVB(x, y, sec){
+    let px = x, py = y;
+    if (sec === "s2"){
+      const t = SECTION_TF.s2 || { dx: 0, dy: 0, rot: 0 };
+      const [cx, cy] = secCenter("s2");
+      const rad = (t.rot || 0) * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+      const ox = x - cx, oy = y - cy;
+      px = cx + ox * cos - oy * sin + (t.dx || 0);
+      py = cy + ox * sin + oy * cos + (t.dy || 0);
+    }
+    const [, minY, , maxY] = planData.bbox;
+    return [px, minY + maxY - py];   // root <g> flips Y around the data span
+  }
+
+  // Focus on a set of CAD points belonging to `sec` (used for plots/rows).
+  function focusPts(pts, sec, padFactor){
+    const vb = pts.map(p => dataToVB(p[0], p[1], sec));
+    const xs = vb.map(p => p[0]), ys = vb.map(p => p[1]);
     focusViewBox(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), padFactor);
-    return true;
   }
 
   // Focus a point-like marker (valve/station) to a FIXED window centered on it,
-  // so the zoom level is identical for every marker regardless of label width.
-  // `half` is a fraction of the full-plan size. Returns false if unmeasurable.
-  function focusPointNode(node, half){
-    if (!node || !node.getBBox || !node.getCTM) return false;
-    let bb, m;
-    try { bb = node.getBBox(); m = node.getCTM(); } catch (e) { return false; }
-    if (!m) return false;
-    const lx = bb.x + bb.width / 2, ly = bb.y + bb.height / 2;
-    const cx = m.a * lx + m.c * ly + m.e, cy = m.b * lx + m.d * ly + m.f;
+  // so the zoom level is identical for every marker. `half` is a fraction of the
+  // full-plan size.
+  function focusPoint(x, y, sec, half){
+    const [cx, cy] = dataToVB(x, y, sec);
     const r = Math.max(planInitVB.w, planInitVB.h) * (half || 0.05);
     focusViewBox(cx - r, cy - r, cx + r, cy + r, 0);
-    return true;
   }
 
   function clearPlanSelection(){
