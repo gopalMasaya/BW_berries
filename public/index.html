@@ -1591,12 +1591,13 @@
   function selectStation(deviceId, xy, approx, vid){
     clearPlanSelection();
     const node = document.querySelector(`.pl-station[data-station="${deviceId}"]`);
-    if (!focusNode(node, 2.5) && xy){
+    if (!focusPointNode(node, 0.05) && xy){
       // Fallback: stations sit in section s1 (no extra transform), so only the
       // Y-flip needs correcting to land in viewBox space.
       const [minX, minY, maxX, maxY] = planData.bbox;
       const fy = minY + maxY - xy[1];
-      focusViewBox(xy[0] - 30, fy - 30, xy[0] + 30, fy + 30, 0.3);
+      const r = Math.max(planInitVB.w, planInitVB.h) * 0.05;
+      focusViewBox(xy[0] - r, fy - r, xy[0] + r, fy + r, 0);
     }
     renderStationInfo(deviceId, approx, vid);
   }
