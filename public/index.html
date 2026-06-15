@@ -1255,6 +1255,14 @@
   // CAD node prefix A/B/C/D -> Galcon controller (see galcon controllers memory).
   const GALCON_CTRL = { A: "בקר A — מבוא חורון", B: "בקר B", C: "בקר C", D: "בקר D" };
 
+  // Galcon Cloud Function (same project) + controller-letter → serial map. Used to
+  // pull a station's day-of irrigations on demand (valves/programs/irrigation-method).
+  const GALCON_API = "https://us-central1-plantstracker-f1274.cloudfunctions.net/galcon";
+  const LETTER_TO_SERIAL = {
+    A: "GAL0000000000169", B: "GAL0000000001399",
+    C: "GAL0000000001638", D: "GAL0000000001771",
+  };
+
   let planData = null;
   let planVB = null;          // current viewBox {x,y,w,h}
   let planInitVB = null;      // initial (full) viewBox for reset
