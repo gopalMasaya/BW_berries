@@ -1432,6 +1432,21 @@
     return true;
   }
 
+  // Focus a point-like marker (valve/station) to a FIXED window centered on it,
+  // so the zoom level is identical for every marker regardless of label width.
+  // `half` is a fraction of the full-plan size. Returns false if unmeasurable.
+  function focusPointNode(node, half){
+    if (!node || !node.getBBox || !node.getCTM) return false;
+    let bb, m;
+    try { bb = node.getBBox(); m = node.getCTM(); } catch (e) { return false; }
+    if (!m) return false;
+    const lx = bb.x + bb.width / 2, ly = bb.y + bb.height / 2;
+    const cx = m.a * lx + m.c * ly + m.e, cy = m.b * lx + m.d * ly + m.f;
+    const r = Math.max(planInitVB.w, planInitVB.h) * (half || 0.05);
+    focusViewBox(cx - r, cy - r, cx + r, cy + r, 0);
+    return true;
+  }
+
   function clearPlanSelection(){
     if (planSelected){ planSelected.classList.remove("sel"); planSelected = null; }
   }
