@@ -1279,6 +1279,21 @@
     C: "GAL0000000001638", D: "GAL0000000001771",
   };
 
+  // User-editable custom names per CAD valve id (e.g. "A24" → "חממה צפונית").
+  // Stored per-browser in localStorage (like the field-plan alignment); shown in
+  // the info panel and on the map label.
+  let planNames = {};
+  function loadPlanNames(){
+    try { planNames = JSON.parse(localStorage.getItem("planValveNames")) || {}; }
+    catch (e) { planNames = {}; }
+  }
+  function customName(vid){ return (planNames && planNames[vid]) || null; }
+  function savePlanName(vid, name){
+    const v = (name || "").trim();
+    if (v) planNames[vid] = v; else delete planNames[vid];
+    localStorage.setItem("planValveNames", JSON.stringify(planNames));
+  }
+
   let planData = null;
   let planVB = null;          // current viewBox {x,y,w,h}
   let planInitVB = null;      // initial (full) viewBox for reset
