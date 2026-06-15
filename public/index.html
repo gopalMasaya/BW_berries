@@ -1321,6 +1321,27 @@
   let planValvePos = {};      // { index: [x,y] } persisted overrides
   let valvePos = [];          // live current position per valve index
   let posEditMode = false;    // when true, dragging a valve moves it
+  let _dragValve = null;      // { i, circle, text } currently being dragged
+  let _dragLast = null;       // last pointer {x,y} during a valve drag
+
+  // Move a dragged valve by a viewBox-space delta, converting it to the valve's
+  // data coords (undo the Y-flip, and the section rotation for s2) and updating
+  // the live SVG. Mirrors how dataToVB maps the other direction.
+  function moveValveBy(d, vbDx, vbDy){
+    const v = planData.valves[d.i];
+    let ddx = vbDx, ddy = -vbDy;                    // undo Y-flip
+    if (v.s === "s2" && SECTION_TF.s2 && SECTION_TF.s2.rot){
+      const rad = -(SECTION_TF.s2.rot) * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+      const rx = ddx * cos - ddy * sin, ry = ddx * sin + ddy * cos;
+      ddx = rx; ddy = ry;
+    }
+    const cur = valvePos[d.i] || v.xy;
+    const nx = cur[0] + ddx, ny = cur[1] + ddy;
+    valvePos[d.i] = [nx, ny];
+    d.circle.setAttribute("cx", nx); d.circle.setAttribute("cy", ny);
+    d.text.setAttribute("x", nx); d.text.setAttribute("y", ny);
+    d.text.setAttribute("transform", `translate(0, ${ny * 2}) scale(1, -1)`);
+  }
   function loadValvePos(){
     try { planValvePos = JSON.parse(localStorage.getItem("planValvePos")) || {}; }
     catch (e) { planValvePos = {}; }
