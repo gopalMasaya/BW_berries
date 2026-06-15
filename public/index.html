@@ -1671,9 +1671,12 @@
     const g = galconValveFor(v.id);
     const cards = [["בקר", g.ctrlName], ["מס' ברז", g.num]];
     if (g.rec && g.rec.name) cards.push(["שם הברז", g.rec.name]);
+    const seq = ++_stationInfoSeq;
     openPlanInfo("ברז " + v.id, g.rec && g.rec.name ? g.rec.name : g.ctrlName, cards,
-      valveIrrHtml(g.rec) + galconSharedHtml() +
-      '<div class="pi-note">"השקיה אחרונה" מתעדכן בתום כל השקיה (מ-Galcon). סטטוס "משקה כרגע" בזמן אמת משודר רק בזמן השקיה פעילה.</div>');
+      '<div id="stIrrToday" class="pi-sub" style="margin-top:8px">💧 טוען השקיות היום…</div>' +
+      galconSharedHtml() +
+      '<div class="pi-note">אחוז "בפועל" = נפח חלקי מנת 100% של התוכנית. "מתוכנן" = מתוך שיטת ההשקיה.</div>');
+    fillStationIrr(v.id, seq);   // today's irrigations for this valve
   }
 
   // ---- on-demand Galcon day data (today's irrigations for a station's valve) ----
