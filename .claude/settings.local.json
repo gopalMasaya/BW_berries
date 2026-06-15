@@ -121,7 +121,11 @@
       "Bash(cp /tmp/galcon-discover.js \"/c/Users/Admin/Documents/js coding/plantsTracker/worker/_discover.js\")",
       "Bash(node _discover.js)",
       "Bash(node --check worker/galcon-realtime.js)",
-      "Bash(node -e \"const d=require\\('./public/fieldPlan.json'\\); console.log\\('sections', Object.keys\\(d.sections\\), 'rows[0]', JSON.stringify\\(d.rows[0]\\).slice\\(0,40\\), 'plot[0].s', d.plots[0].s\\)\")"
+      "Bash(node -e \"const d=require\\('./public/fieldPlan.json'\\); console.log\\('sections', Object.keys\\(d.sections\\), 'rows[0]', JSON.stringify\\(d.rows[0]\\).slice\\(0,40\\), 'plot[0].s', d.plots[0].s\\)\")",
+      "Bash(sed -n '612,2761p' index.html)",
+      "Bash(node --check /tmp/plan_script.js)",
+      "PowerShell(firebase deploy *)",
+      "Bash(git rm *)"
     ]
   },
   "hooks": {
