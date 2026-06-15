@@ -1583,7 +1583,7 @@
     const node = document.querySelector(`.pl-valve[data-valve="${i}"]`);
     if (node){ node.classList.add("sel"); planSelected = node; }
     const v = planData.valves[i];
-    focusPointNode(node, 0.05);
+    focusPoint(v.xy[0], v.xy[1], v.s, 0.05);
     renderValveInfo(v);
   }
 
