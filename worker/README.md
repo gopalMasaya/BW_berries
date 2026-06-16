@@ -1,9 +1,12 @@
 # Galcon real-time worker
 
-Holds one persistent **Socket.IO v2** connection to Galcon's online server and
-writes Mevo Horon's live **fertigation centers** (EC/pH) and **tank sensors**
-(level / pH) into Firebase RTDB. The dashboard (`public/galcon.html`) reads these
-values live, so it no longer needs the per-request Galcon login.
+Holds one persistent **Socket.IO v2** connection **per controller** (A–D) to
+Galcon's online server and writes each controller's live **fertigation centers**
+(EC/pH) and **tank sensors** (level / pH) into Firebase RTDB. The dashboard reads
+these values live, so it no longer needs the per-request Galcon login.
+
+Each controller is a separate socket registration (`GALILEO_<commUnitID>`), so a
+dedicated socket per controller keeps their event streams cleanly separated.
 
 ## Why a worker (and not a Cloud Function)
 The values are pushed over a socket, not exposed via REST. A Cloud Function is
