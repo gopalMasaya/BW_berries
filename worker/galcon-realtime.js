@@ -262,6 +262,10 @@ async function fireTriggers(c) {
 function handleEvent(c, ev) {
   const de = ev && ev.DataEvent;
   if (!de) return;
+  // Each event is tagged with its source controller; ignore anything that isn't
+  // this controller's (defends against the server broadcasting all comm units).
+  if (ev.ControlUnitID != null && c.commUnitID != null &&
+      Number(ev.ControlUnitID) !== Number(c.commUnitID)) return;
   const ts = Date.now();
   const bases = [liveBase(c)].concat(c.legacyBase ? [c.legacyBase] : []);
 
