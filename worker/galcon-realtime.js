@@ -1,23 +1,28 @@
 /**
- * Galcon real-time worker — Mevo Horon (000169).
+ * Galcon real-time worker — all project controllers (A–D).
  *
  * Galcon's live fertigation-center EC/pH and tank sensors are NOT in the REST
  * API; they are pushed over a Socket.IO v2 server (galileo_onlineserver:3008).
- * This worker holds ONE persistent socket, registers the controller, and writes
- * the live values into Firebase RTDB so the dashboard can read them instantly.
+ * Each controller (comm unit) is a separate registration, so this worker holds
+ * ONE persistent socket PER controller, registers it, and writes the live values
+ * into Firebase RTDB so the dashboard can read them instantly.
  *
  *   socket: connect → on 'server_ready' → emit('register', ['GALILEO_<commUnitID>'])
  *           → receive 'events' (array). EC=3 = fert centers, EC=5 = sensors.
  *
+ * A single socket carries only the controllers it registered, so per-controller
+ * sockets keep each controller's events cleanly separated (no routing guesswork).
+ *
  * The socket itself needs NO auth. A Galcon login is only used (optionally) to
- * (a) read sensor names/decimals once and (b) POST the run-events triggers that
- * force a fresh snapshot. Use a DEDICATED Galcon user for that to avoid the
- * single-session tug-of-war with interactive logins.
+ * (a) read sensor names/decimals once, (b) POST the run-events triggers that
+ * force a fresh snapshot, and (c) DISCOVER each controller's commUnitID. Use a
+ * DEDICATED Galcon user for that to avoid the single-session tug-of-war.
  *
  * Env:
  *   GOOGLE_APPLICATION_CREDENTIALS  path to a Firebase service-account JSON (required unless DRY_RUN)
- *   GALCON_USER / GALCON_PASS       Galcon creds for metadata + triggers (optional)
- *   TRIGGER_INTERVAL_MS             how often to force a snapshot (default 600000 = 10 min; 0 = never)
+ *   GALCON_USER / GALCON_PASS       Galcon creds for metadata + triggers + discovery (optional)
+ *   GALCON_COMMUNIT_<LETTER>        override/supply a controller's commUnitID (e.g. GALCON_COMMUNIT_B=210555)
+ *   TRIGGER_INTERVAL_MS             how often to force a snapshot (default 60000; 0 = never)
  *   DRY_RUN=1                       log writes instead of touching RTDB
  */
 const io = require("socket.io-client"); // v2
@@ -26,9 +31,7 @@ const https = require("https");
 const SOCKET_URL = "https://galileo_onlineserver.galcon-smart.com:3008";
 const API_HOST = "galileo_api.galcon-smart.com";
 const RTDB_URL = "https://plantstracker-f1274-default-rtdb.firebaseio.com/";
-const RTDB_BASE = "galcon/mevoHoron";
 
-const MEVO = { serial: "GAL0000000000169", configId: 160377, commUnitID: 210202 };
 const USER = process.env.GALCON_USER || "Liatefi@gmail.com";
 const PASS = process.env.GALCON_PASS || "123456";
 const TRIGGER_INTERVAL_MS = process.env.TRIGGER_INTERVAL_MS != null ?
@@ -37,32 +40,40 @@ const DRY_RUN = process.env.DRY_RUN === "1";
 
 // Fallback names/decimals for the tanks so values are labelled even before the
 // metadata fetch (number → { name, dec }). dec = decimal places (formatValue).
+// These are Mevo Horon's (A) tanks; other controllers get their names from REST.
 const FALLBACK_SENSORS = {
   1: {name: "גובה מיכל רחוק", dec: 1}, 2: {name: "גובה מיכל קרוב", dec: 1},
   3: {name: "PH מיכל רחוק", dec: 2}, 4: {name: "PH מיכל קרוב", dec: 2},
   19: {name: "PH מיכל 3", dec: 2}, 25: {name: "גובה מיכל 3", dec: 1},
 };
-const FERT_CENTER_NAMES = {1: "שולחן דישון ראשי", 2: "שולחן דשן 2"};
 
 // All four project controllers. The CAD field plan labels valves by controller
-// letter + valve number (e.g. "B9" = controller B / valve 9), so we mirror each
-// controller's valve list into RTDB under galcon/valves/<letter>/<number>.
+// letter + valve number (e.g. "B9" = controller B / valve 9). Each controller's
+// live data is written under galcon/live/<letter>; A is also mirrored to the
+// legacy galcon/mevoHoron path that the dosing tab still reads.
+//   commUnitID is the socket registration id. A's (210202) is known; the rest
+//   are discovered from the controllers-dashboard at startup, or supplied via
+//   the GALCON_COMMUNIT_<LETTER> env var.
 const CONTROLLERS = [
-  {letter: "A", serial: "GAL0000000000169", configId: 160377, name: "מבוא חורון"},
-  {letter: "B", serial: "GAL0000000001399", configId: 160673, name: "פטל"},
-  {letter: "C", serial: "GAL0000000001638", configId: 160950, name: "פטל מערב"},
-  {letter: "D", serial: "GAL0000000001771", configId: 161088, name: "1771"},
+  {letter: "A", serial: "GAL0000000000169", configId: 160377, name: "מבוא חורון", commUnitID: 210202, legacyBase: "galcon/mevoHoron"},
+  {letter: "B", serial: "GAL0000000001399", configId: 160673, name: "פטל", commUnitID: null},
+  {letter: "C", serial: "GAL0000000001638", configId: 160950, name: "פטל מערב", commUnitID: null},
+  {letter: "D", serial: "GAL0000000001771", configId: 161088, name: "1771", commUnitID: null},
 ];
+CONTROLLERS.forEach((c) => {
+  const env = process.env["GALCON_COMMUNIT_" + c.letter];
+  if (env && !isNaN(Number(env))) c.commUnitID = Number(env);
+  c.sensorMeta = Object.assign({}, FALLBACK_SENSORS); // number → { name, dec, unit }
+});
 const SERIAL_TO_LETTER = {};
 CONTROLLERS.forEach((c) => { SERIAL_TO_LETTER[c.serial] = c.letter; });
+const liveBase = (c) => `galcon/live/${c.letter}`;
 
 // external-api (separate from the web-app token): GET + JSON body, needs the
 // account `key`. Returns finished-irrigation events per valve (last run, water).
 const EXTERNAL_KEY = process.env.GALCON_EXTERNAL_KEY || "GCX6KN4KSU10KC78";
 const IRR_LOOKBACK_DAYS = Number(process.env.IRR_LOOKBACK_DAYS || 14);
 const IRR_POLL_MS = Number(process.env.IRR_POLL_MS || 10 * 60 * 1000);
-
-let sensorMeta = Object.assign({}, FALLBACK_SENSORS); // number → { name, dec, unit }
 
 // ───────────────────────── Firebase RTDB ─────────────────────────
 let db = null;
@@ -120,13 +131,49 @@ async function apiGet(path) {
   return r;
 }
 
-async function loadSensorMeta() {
-  const r = await apiGet(`/config/${MEVO.configId}/dashboard/active-data-collection-sensors`);
+// Per-controller sensor names/decimals (tank labels differ per controller).
+async function loadSensorMeta(c) {
+  const r = await apiGet(`/config/${c.configId}/dashboard/active-data-collection-sensors`);
   const arr = (r.json && r.json.body) || [];
   for (const s of arr) {
-    sensorMeta[s.number] = {name: (s.name || "").trim(), dec: s.formatValue, unit: s.unit};
+    c.sensorMeta[s.number] = {name: (s.name || "").trim(), dec: s.formatValue, unit: s.unit};
   }
-  console.log(`loaded metadata for ${arr.length} sensors`);
+  console.log(`loaded metadata for ${arr.length} sensors (${c.letter})`);
+}
+
+// Discover each controller's commUnitID (the socket registration id) from the
+// controllers-dashboard. Galcon's exact field name isn't documented here, so we
+// scan for the usual suspects and log each record's keys for manual confirmation
+// (set GALCON_COMMUNIT_<LETTER> if the field can't be auto-detected).
+function pickCommUnit(rec) {
+  for (const k of Object.keys(rec)) {
+    if (/comm.*unit|communicat|comm_?id|unit_?id/i.test(k)) {
+      const v = rec[k];
+      if (v != null && !isNaN(Number(v))) return Number(v);
+    }
+  }
+  return null;
+}
+async function discoverCommUnits() {
+  const proj = await apiGet("/controllers-dashboard/user-projects");
+  const projectId = proj.json && proj.json.body && proj.json.body.activeProjectID;
+  if (!projectId) { console.warn("commUnit discovery: no active project"); return; }
+  const r = await apiGet(`/project/${projectId}/controllers-dashboard?page=1&step=50`);
+  const list = (r.json && r.json.body && r.json.body.controllers) || [];
+  for (const c of CONTROLLERS) {
+    const frag = c.serial.replace(/^GAL0+/, "");
+    const rec = list.find((x) => String(x.serialNumber || "").trim() === c.serial) ||
+                list.find((x) => String(x.serialNumber || "").includes(frag));
+    if (!rec) { console.warn(`commUnit ${c.letter} (${c.serial}): not in dashboard`); continue; }
+    const cand = pickCommUnit(rec);
+    if (c.commUnitID == null && cand != null) {
+      c.commUnitID = cand;
+      console.log(`commUnit ${c.letter}: discovered ${cand}`);
+    } else {
+      console.log(`commUnit ${c.letter}: ${c.commUnitID == null ? "UNKNOWN" : c.commUnitID}` +
+                  ` (candidate ${cand}; dashboard keys: ${Object.keys(rec).join(",")})`);
+    }
+  }
 }
 
 // Mirror every controller's valve list (number → Hebrew name) into RTDB so the
@@ -203,48 +250,50 @@ async function loadValveIrrigation() {
   }
 }
 
-async function fireTriggers() {
-  const nums = Object.keys(sensorMeta).map(Number);
-  await apiGet(`/config/${MEVO.configId}/dashboard/run-real-time-events`);
-  await apiReq("POST", `/config/${MEVO.configId}/element-group/data-collection-sensor/run-events`,
+async function fireTriggers(c) {
+  const nums = Object.keys(c.sensorMeta).map(Number);
+  await apiGet(`/config/${c.configId}/dashboard/run-real-time-events`);
+  await apiReq("POST", `/config/${c.configId}/element-group/data-collection-sensor/run-events`,
       {token: apiToken, body: {numbers: nums}});
-  console.log("triggers fired for", nums.length, "sensors");
+  console.log(`triggers fired for ${nums.length} sensors (${c.letter})`);
 }
 
 // ───────────────────────── event handling ─────────────────────────
-function handleEvent(ev) {
+function handleEvent(c, ev) {
   const de = ev && ev.DataEvent;
   if (!de) return;
   const ts = Date.now();
+  const bases = [liveBase(c)].concat(c.legacyBase ? [c.legacyBase] : []);
 
   // EC=5 → data-collection sensor reading { Index, Value }
   if (ev.EC === 5 && de.Index != null && de.Value != null) {
     const num = de.Index;
-    const meta = sensorMeta[num] || {name: "חיישן " + num, dec: 0};
+    const meta = c.sensorMeta[num] || {name: "חיישן " + num, dec: 0};
     const value = de.Value / Math.pow(10, meta.dec || 0);
-    rtdbSet(`${RTDB_BASE}/sensors/${num}`, {
-      number: num, name: meta.name, value, raw: de.Value, unit: meta.unit ?? null, ts,
-    }).catch((e) => console.error("rtdb sensor", e.message));
+    const rec = {number: num, name: meta.name, value, raw: de.Value, unit: meta.unit ?? null, ts};
+    for (const b of bases) rtdbSet(`${b}/sensors/${num}`, rec).catch((e) => console.error("rtdb sensor", c.letter, e.message));
     return;
   }
 
   // EC=3 → group-type status. Fert centers are the ones carrying ECActual/PHActual.
-  // Skip unconfigured center slots (Mevo Horon has 2) — all-zero + inactive.
+  // Skip unconfigured center slots — all-zero + inactive.
   if (ev.EC === 3 && de.ECActual != null && de.PHActual != null && de.Number != null) {
     if (!de.Status && !de.ECActual && !de.PHActual) return;
     const num = de.Number;
-    rtdbSet(`${RTDB_BASE}/fertCenters/${num}`, {
+    const rec = {
       number: num,
-      name: FERT_CENTER_NAMES[num] || ("שולחן דישון " + num),
+      name: "שולחן דישון " + num,
       ec: de.ECActual / 100, ph: de.PHActual / 100,
       reqEc: (de.RequiredEC || 0) / 100, reqPh: (de.RequiredPH || 0) / 100,
       status: de.Status, ts,
-    }).catch((e) => console.error("rtdb fert", e.message));
+    };
+    for (const b of bases) rtdbSet(`${b}/fertCenters/${num}`, rec).catch((e) => console.error("rtdb fert", c.letter, e.message));
   }
 }
 
 // ───────────────────────── socket lifecycle ─────────────────────────
-function connect() {
+// One socket per controller, registered with only that controller's commUnitID.
+function connect(c) {
   const socket = io(SOCKET_URL, {
     query: {clientTime: Date.now()},
     rejectUnauthorized: false,
@@ -253,36 +302,54 @@ function connect() {
     reconnectionDelay: 3000,
   });
 
-  socket.on("connect", () => console.log("socket connected", socket.id));
-  socket.on("connect_error", (e) => console.log("connect_error", e && e.message));
-  socket.on("disconnect", (r) => console.log("disconnect", r));
+  socket.on("connect", () => console.log(`socket ${c.letter} connected`, socket.id));
+  socket.on("connect_error", (e) => console.log(`connect_error ${c.letter}`, e && e.message));
+  socket.on("disconnect", (r) => console.log(`disconnect ${c.letter}`, r));
   socket.on("server_ready", () => {
-    console.log("server_ready → register GALILEO_" + MEVO.commUnitID);
-    socket.emit("register", ["GALILEO_" + MEVO.commUnitID]);
-    if (TRIGGER_INTERVAL_MS) fireTriggers().catch((e) => console.error("trigger", e.message));
+    console.log(`server_ready ${c.letter} → register GALILEO_${c.commUnitID}`);
+    socket.emit("register", ["GALILEO_" + c.commUnitID]);
+    if (TRIGGER_INTERVAL_MS) fireTriggers(c).catch((e) => console.error("trigger", c.letter, e.message));
   });
   socket.on("events", (payload) => {
-    for (const ev of (Array.isArray(payload) ? payload : [payload])) handleEvent(ev);
+    for (const ev of (Array.isArray(payload) ? payload : [payload])) handleEvent(c, ev);
   });
   return socket;
 }
 
 (async () => {
   console.log(`Galcon worker starting (DRY_RUN=${DRY_RUN}, trigger=${TRIGGER_INTERVAL_MS}ms)`);
+  // Resolve commUnitIDs (needs a login). Without it, only controllers with a
+  // known/overridden commUnitID (A) get a live socket.
+  try { await discoverCommUnits(); } catch (e) { console.warn("commUnit discovery failed:", e.message); }
   if (TRIGGER_INTERVAL_MS) {
-    try { await loadSensorMeta(); } catch (e) { console.warn("metadata fetch failed, using fallback:", e.message); }
+    for (const c of CONTROLLERS) {
+      if (c.commUnitID == null) continue;
+      try { await loadSensorMeta(c); } catch (e) { console.warn(`metadata ${c.letter} failed, using fallback:`, e.message); }
+    }
   }
-  // Valve names for all 4 controllers (independent of the trigger interval — the
-  // socket only covers Mevo Horon, but valve metadata is REST for every config).
+  // Valve names for all 4 controllers (independent of the trigger interval).
   try { await loadValveMeta(); } catch (e) { console.warn("valve meta failed:", e.message); }
   try { await loadValveIrrigation(); } catch (e) { console.warn("valve irrigation failed:", e.message); }
-  connect();
+
+  // One live socket per controller that has a commUnitID.
+  const active = CONTROLLERS.filter((c) => c.commUnitID != null);
+  const skipped = CONTROLLERS.filter((c) => c.commUnitID == null);
+  if (skipped.length) console.warn("no commUnitID (live socket skipped) for:", skipped.map((c) => c.letter).join(",") + " — set GALCON_COMMUNIT_<LETTER>");
+  for (const c of active) connect(c);
+
   if (TRIGGER_INTERVAL_MS) {
-    setInterval(() => fireTriggers().catch((e) => console.error("trigger", e.message)), TRIGGER_INTERVAL_MS);
+    setInterval(() => {
+      for (const c of active) fireTriggers(c).catch((e) => console.error("trigger", c.letter, e.message));
+    }, TRIGGER_INTERVAL_MS);
   }
   // Refresh valve metadata hourly; per-valve last-irrigation every IRR_POLL_MS.
   setInterval(() => loadValveMeta().catch((e) => console.error("valve meta", e.message)), 60 * 60 * 1000);
   setInterval(() => loadValveIrrigation().catch((e) => console.error("valve irrigation", e.message)), IRR_POLL_MS);
-  // heartbeat
-  setInterval(() => rtdbSet(`${RTDB_BASE}/updatedAt`, Date.now()).catch(() => {}), 30000);
+  // heartbeat (per active controller)
+  setInterval(() => {
+    for (const c of active) {
+      rtdbSet(`${liveBase(c)}/updatedAt`, Date.now()).catch(() => {});
+      if (c.legacyBase) rtdbSet(`${c.legacyBase}/updatedAt`, Date.now()).catch(() => {});
+    }
+  }, 30000);
 })().catch((e) => { console.error("FATAL", e.message); process.exit(1); });
