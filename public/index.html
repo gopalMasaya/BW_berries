@@ -1856,10 +1856,12 @@
     }
   }
 
-  // Resolve a CAD valve id (e.g. "B9") to its live Galcon record.
+  // Resolve a CAD valve id (e.g. "B9") to its live Galcon record. A code-style
+  // rename (e.g. "A36" → "B07") remaps which controller/valve is queried.
   function galconValveFor(cadId){
-    const letter = cadId.charAt(0).toUpperCase();
-    const num = parseInt(cadId.slice(1), 10);
+    const code = effectiveValveId(cadId);
+    const letter = code.charAt(0).toUpperCase();
+    const num = parseInt(code.slice(1), 10);
     const ctrlName = (galconCtrls && galconCtrls[letter] && galconCtrls[letter].name) || GALCON_CTRL[letter] || ("בקר " + letter);
     const rec = galconValves && galconValves[letter] && galconValves[letter][num];
     return { letter, num, ctrlName, rec };
