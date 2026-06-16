@@ -1886,10 +1886,11 @@
       '<div id="piEditBox"></div>' +
       (notInGalcon ? '<div class="pi-note">ℹ️ ברז זה אינו מוגדר בגלקון — ייתכן שאינו קיים פיזית, ולכן אין לו נתוני השקיה.</div>' : '') +
       '<div id="stIrrToday" class="pi-sub" style="margin-top:8px">💧 טוען השקיות היום…</div>' +
-      galconSharedHtml() +
+      galconSharedHtml(g.letter) +
       '<div class="pi-note">אחוז "בפועל" = נפח חלקי מנת 100% של התוכנית. "מתוכנן" = מתוך שיטת ההשקיה.</div>');
     wireNameEdit(v);
     fillStationIrr(v.id, seq);   // today's irrigations for this valve
+    dosingForLetter(g.letter);   // fertigation for THIS valve's controller (B for B-stations)
   }
 
   // Inline rename control for the currently-open valve panel. Saves a custom
