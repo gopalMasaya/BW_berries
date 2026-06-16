@@ -51,14 +51,14 @@ const FALLBACK_SENSORS = {
 // letter + valve number (e.g. "B9" = controller B / valve 9). Each controller's
 // live data is written under galcon/live/<letter>; A is also mirrored to the
 // legacy galcon/mevoHoron path that the dosing tab still reads.
-//   commUnitID is the socket registration id. A's (210202) is known; the rest
-//   are discovered from the controllers-dashboard at startup, or supplied via
-//   the GALCON_COMMUNIT_<LETTER> env var.
+//   commUnitID is the socket registration id. These are the values observed from
+//   the controllers-dashboard (kept as fallbacks); discoverCommUnits() refreshes
+//   them at startup, and GALCON_COMMUNIT_<LETTER> overrides either.
 const CONTROLLERS = [
   {letter: "A", serial: "GAL0000000000169", configId: 160377, name: "מבוא חורון", commUnitID: 210202, legacyBase: "galcon/mevoHoron"},
-  {letter: "B", serial: "GAL0000000001399", configId: 160673, name: "פטל", commUnitID: null},
-  {letter: "C", serial: "GAL0000000001638", configId: 160950, name: "פטל מערב", commUnitID: null},
-  {letter: "D", serial: "GAL0000000001771", configId: 161088, name: "1771", commUnitID: null},
+  {letter: "B", serial: "GAL0000000001399", configId: 160673, name: "פטל", commUnitID: 210498},
+  {letter: "C", serial: "GAL0000000001638", configId: 160950, name: "פטל מערב", commUnitID: 210775},
+  {letter: "D", serial: "GAL0000000001771", configId: 161088, name: "1771", commUnitID: 210913},
 ];
 CONTROLLERS.forEach((c) => {
   const env = process.env["GALCON_COMMUNIT_" + c.letter];

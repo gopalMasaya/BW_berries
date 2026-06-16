@@ -133,7 +133,13 @@
       "Bash(git log *)",
       "Bash(node --check /tmp/idx2.js)",
       "Bash(sed -n '621,2944p' index.html)",
-      "Bash(node --check /tmp/idx3.js)"
+      "Bash(node --check /tmp/idx3.js)",
+      "Bash(npx eslint *)",
+      "Bash(ls node_modules)",
+      "Bash(ls node_modules/socket.io-client)",
+      "Bash(grep -q \"commUnit\" dryrun.log)",
+      "Bash(break)",
+      "Bash(taskkill //F //IM node.exe)"
     ]
   },
   "hooks": {
