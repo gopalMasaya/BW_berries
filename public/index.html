@@ -1778,19 +1778,73 @@
   }
   function closePlanInfo(){ document.getElementById("planInfo").classList.remove("open"); }
 
-  function galconSharedHtml(){
-    if (!galconLive) return '<h5>מערכת דישון (Galcon)</h5><div class="pi-sub">טוען…</div>';
-    let html = '<h5>מערכת דישון (Galcon)</h5><div class="pi-grid">';
-    (galconLive.fertCenters || []).forEach(fc => {
+  // Per-controller fertigation snapshots from REST /dosing?serial=. Cached per
+  // letter; resolving one re-renders the open valve panel (live overlay arrives
+  // separately via galcon/live/<letter>).
+  const _dosingByLetter = {};        // letter -> Promise (in-flight / resolved)
+  const galconDosingByLetter = {};   // letter -> resolved /dosing payload
+  function dosingForLetter(letter){
+    const serial = LETTER_TO_SERIAL[letter];
+    if (!serial) return Promise.resolve(null);
+    if (_dosingByLetter[letter]) return _dosingByLetter[letter];
+    const p = galconGet(`/dosing?serial=${encodeURIComponent(serial)}`)
+      .then(d => { galconDosingByLetter[letter] = d; refreshOpenValvePanel(); return d; })
+      .catch(() => null);
+    _dosingByLetter[letter] = p;
+    return p;
+  }
+
+  // Fertigation ("מערכת דישון") for ONE controller — the one the open valve sits
+  // on. REST (/dosing) supplies the center names + required setpoints; the live
+  // socket snapshot (galcon/live/<letter>) overlays fresher EC/pH when present.
+  function galconSharedHtml(letter){
+    letter = (letter || "").toUpperCase();
+    const ctrlName = (galconCtrls && galconCtrls[letter] && galconCtrls[letter].name) || GALCON_CTRL[letter] || ("בקר " + letter);
+    const title = `<h5>מערכת דישון — ${ctrlName}</h5>`;
+    const rest = galconDosingByLetter[letter];
+    const live = galconLiveByLetter[letter];
+    if (!rest && !live) return title + '<div class="pi-sub">טוען…</div>';
+
+    let html = title + '<div class="pi-grid">';
+    // Canonical fert-center list comes from REST (has names + setpoints); fall
+    // back to the live snapshot's centers if REST hasn't loaded yet.
+    const liveFert = (live && live.fertCenters) || {};
+    const restFert = (rest && rest.fertCenters) || [];
+    const centers = restFert.length ? restFert :
+      Object.keys(liveFert).map(n => ({number: +n, name: liveFert[n].name}));
+    centers.forEach(fc => {
       if (!fc) return;
-      html += `<div class="pi-card"><div class="pi-k">${fc.name || ("דישון " + fc.number)}</div><div class="pi-v">EC ${fc.ec ?? "—"} · pH ${fc.ph ?? "—"}</div></div>`;
+      const lv = liveFert[fc.number];
+      const ec = (lv && lv.ec != null) ? lv.ec : fc.currentEC;
+      const ph = (lv && lv.ph != null) ? lv.ph : fc.currentPH;
+      const req = (fc.requiredEC != null || fc.requiredPH != null) ?
+        ` <span class="pi-sub">(יעד EC ${fc.requiredEC ?? "—"} · pH ${fc.requiredPH ?? "—"})</span>` : "";
+      html += `<div class="pi-card"><div class="pi-k">${fc.name || ("דישון " + fc.number)}</div><div class="pi-v">EC ${ec ?? "—"} · pH ${ph ?? "—"}${req}</div></div>`;
     });
-    (galconLive.sensors || []).forEach(sn => {
+    // Tank/data-collection sensors: live values overlay the REST name list.
+    const liveSensors = (live && live.sensors) || {};
+    const restSensors = (rest && rest.sensors) || [];
+    const sensors = restSensors.length ? restSensors :
+      Object.keys(liveSensors).map(n => ({number: +n, name: liveSensors[n].name}));
+    sensors.forEach(sn => {
       if (!sn) return;
-      html += `<div class="pi-card"><div class="pi-k">${sn.name || ("חיישן " + sn.number)}</div><div class="pi-v">${sn.value ?? "—"}</div></div>`;
+      const lv = liveSensors[sn.number];
+      const val = (lv && lv.value != null) ? lv.value : null;
+      html += `<div class="pi-card"><div class="pi-k">${sn.name || ("חיישן " + sn.number)}</div><div class="pi-v">${val ?? "—"}</div></div>`;
     });
     html += '</div>';
     return html;
+  }
+
+  // Re-render the valve panel if one is currently open (used when live/REST
+  // fertigation data arrives after the panel was first drawn).
+  function refreshOpenValvePanel(){
+    const open = document.getElementById("planInfo").classList.contains("open");
+    const title = document.querySelector("#planInfoBody .pi-title");
+    if (open && title && title.textContent.indexOf("ברז") === 0 && planSelected){
+      const i = planSelected.getAttribute("data-valve");
+      if (i != null && planData && planData.valves) renderValveInfo(planData.valves[+i]);
+    }
   }
 
   // Resolve a CAD valve id (e.g. "B9") to its live Galcon record.
