@@ -166,12 +166,16 @@ async function discoverCommUnits() {
                 list.find((x) => String(x.serialNumber || "").includes(frag));
     if (!rec) { console.warn(`commUnit ${c.letter} (${c.serial}): not in dashboard`); continue; }
     const cand = pickCommUnit(rec);
-    if (c.commUnitID == null && cand != null) {
+    // GALCON_COMMUNIT_<LETTER> (set above) wins; otherwise prefer the live value
+    // and fall back to the baked-in default if discovery found nothing.
+    if (process.env["GALCON_COMMUNIT_" + c.letter]) {
+      console.log(`commUnit ${c.letter}: ${c.commUnitID} (env override; live candidate ${cand})`);
+    } else if (cand != null) {
+      if (cand !== c.commUnitID) console.log(`commUnit ${c.letter}: ${c.commUnitID} → ${cand} (updated from dashboard)`);
+      else console.log(`commUnit ${c.letter}: ${cand} (confirmed)`);
       c.commUnitID = cand;
-      console.log(`commUnit ${c.letter}: discovered ${cand}`);
     } else {
-      console.log(`commUnit ${c.letter}: ${c.commUnitID == null ? "UNKNOWN" : c.commUnitID}` +
-                  ` (candidate ${cand}; dashboard keys: ${Object.keys(rec).join(",")})`);
+      console.log(`commUnit ${c.letter}: ${c.commUnitID == null ? "UNKNOWN" : c.commUnitID + " (default; not found in dashboard)"}`);
     }
   }
 }
