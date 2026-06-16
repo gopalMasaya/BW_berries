@@ -538,12 +538,16 @@ galconApp.get("/sensors", async (req, res) => {
   }
 });
 
-// Live fertigation centers ("שולחנות דישון") + sensor list for Mevo Horon.
+// Live fertigation centers ("שולחנות דישון") + sensor list for a controller.
+// Pass ?serial=<controllerSerial> for a specific controller (e.g. B = 001399);
+// with no serial it defaults to Mevo Horon (A) for backward compatibility.
 // Tank live values (level/pH) are not REST-exposed (real-time socket only),
 // so we return the sensor NAMES here; numeric values come in a later phase.
 galconApp.get("/dosing", async (req, res) => {
   try {
-    const cfg = await getMevoConfigId();
+    const serial = String(req.query.serial || "").trim();
+    const cfg = serial ?
+      await getConfigIdForSerial(serial) : await getMevoConfigId();
     const to = new Date();
     const from = new Date(to.getTime() - 7 * 86400000);
     const range = `startDate=${encodeURIComponent(fmtAppDate(from))}` +
