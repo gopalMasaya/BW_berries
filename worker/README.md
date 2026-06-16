@@ -59,7 +59,8 @@ node galcon-realtime.js
 | var | default | meaning |
 |-----|---------|---------|
 | `GOOGLE_APPLICATION_CREDENTIALS` | – | service-account JSON path (required unless DRY_RUN) |
-| `GALCON_USER` / `GALCON_PASS` | shared account | used only for metadata + snapshot triggers |
+| `GALCON_USER` / `GALCON_PASS` | shared account | used for metadata, snapshot triggers + commUnitID discovery |
+| `GALCON_COMMUNIT_<LETTER>` | – | supply/override a controller's commUnitID (e.g. `GALCON_COMMUNIT_B=210555`) |
 | `TRIGGER_INTERVAL_MS` | `600000` | force a fresh sensor snapshot every N ms; `0` = never (pure socket) |
 | `DRY_RUN` | – | `1` = log instead of writing RTDB |
 
