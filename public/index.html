@@ -1891,8 +1891,9 @@
     if (g.rec && g.rec.name) cards.push(["שם בגלקון", g.rec.name]);
     const notInGalcon = !g.rec;     // valve not defined in Galcon (e.g. phantom CAD label)
     const seq = ++_stationInfoSeq;
-    openPlanInfo("ברז " + v.id + (cName ? " — " + cName : ""),
-      cName || (g.rec && g.rec.name ? g.rec.name : g.ctrlName), cards,
+    // A renamed valve shows ONLY the new name (the original CAD id is replaced).
+    openPlanInfo("ברז " + (cName || v.id),
+      (g.rec && g.rec.name) ? g.rec.name : g.ctrlName, cards,
       '<div class="pi-edit-row"><button id="piEditName" class="pi-editbtn">✏️ ערוך שם</button></div>' +
       '<div id="piEditBox"></div>' +
       (notInGalcon ? '<div class="pi-note">ℹ️ ברז זה אינו מוגדר בגלקון — ייתכן שאינו קיים פיזית, ולכן אין לו נתוני השקיה.</div>' : '') +
