@@ -1355,7 +1355,10 @@
   let planVB = null;          // current viewBox {x,y,w,h}
   let planInitVB = null;      // initial (full) viewBox for reset
   let planSelected = null;    // currently highlighted element
-  let galconLive = null;      // latest galcon/mevoHoron snapshot (fert + tank sensors)
+  // Per-controller live fert/tank snapshots: letter -> galcon/live/<letter> (or
+  // legacy galcon/mevoHoron for A). The fertigation panel is scoped to whichever
+  // controller the open valve belongs to, so B stations show B's data — not A's.
+  let galconLiveByLetter = {};
   let galconValves = null;    // galcon/valves/<A|B|C|D>/<number> -> {number,name}
   let galconCtrls = null;     // galcon/controllers/<letter> -> {name,serial,configId}
   let SECTION_TF = {};        // { s2: {dx,dy,rot} } — manual alignment of section s2
