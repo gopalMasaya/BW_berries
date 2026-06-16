@@ -1886,9 +1886,33 @@
     return h;
   }
 
+  // Reverse of STATION_VALVE: which sensor station (if any) sits on this valve.
+  function stationForValve(code){
+    for (const dev in STATION_VALVE){ if (STATION_VALVE[dev] === code) return dev; }
+    return null;
+  }
+  // Latest sensor readings for a station, as a "🌡️ תחנת חיישנים" section. Reuses
+  // the same fields/formatting as the standalone station panel.
+  const STATION_FIELDS = ["ec", "ec2", "ph1", "ph2", "temp", "scale1", "soil1_humidity", "soil2_humidity"];
+  function stationSensorHtml(deviceId){
+    const st = STATIONS.find(s => s.deviceId === deviceId);
+    const latest = latestByDevice[deviceId];
+    let h = `<h5>🌡️ תחנת חיישנים — ${st ? st.name : deviceId}</h5>`;
+    if (!latest || !latest.item) return h + '<div class="pi-sub">אין נתוני חיישנים טעונים עדיין.</div>';
+    const item = latest.item;
+    let cards = "";
+    STATION_FIELDS.forEach(k => {
+      if (item[k] != null) cards += `<div class="pi-card"><div class="pi-k">${fmtFieldName(k)}</div><div class="pi-v">${parseFloat(item[k]).toFixed(decimalsFor(k))}</div></div>`;
+    });
+    h += `<div class="pi-sub">עודכן: ${new Date(latest.tsISO).toLocaleString("he-IL")}</div>`;
+    h += cards ? `<div class="pi-grid">${cards}</div>` : '<div class="pi-sub">אין מדדים זמינים.</div>';
+    return h;
+  }
+
   function renderValveInfo(v){
     const g = galconValveFor(v.id);
     const cName = customName(v.id);
+    const deviceId = stationForValve(effectiveValveId(v.id));  // station on this valve (B9→station1, B7→station2)
     const cards = [["בקר", g.ctrlName], ["מס' ברז", g.num]];
     if (g.rec && g.rec.name) cards.push(["שם בגלקון", g.rec.name]);
     const notInGalcon = !g.rec;     // valve not defined in Galcon (e.g. phantom CAD label)
@@ -1899,6 +1923,7 @@
       '<div class="pi-edit-row"><button id="piEditName" class="pi-editbtn">✏️ ערוך שם</button></div>' +
       '<div id="piEditBox"></div>' +
       (notInGalcon ? '<div class="pi-note">ℹ️ ברז זה אינו מוגדר בגלקון — ייתכן שאינו קיים פיזית, ולכן אין לו נתוני השקיה.</div>' : '') +
+      (deviceId ? stationSensorHtml(deviceId) : "") +
       '<div id="stIrrToday" class="pi-sub" style="margin-top:8px">💧 טוען השקיות היום…</div>' +
       galconSharedHtml(g.letter) +
       '<div class="pi-note">אחוז "בפועל" = נפח חלקי מנת 100% של התוכנית. "מתוכנן" = מתוך שיטת ההשקיה.</div>');
