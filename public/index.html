@@ -2002,8 +2002,9 @@
 
   // Build the "today's irrigations" HTML for a CAD valve id (e.g. "B9").
   async function stationIrrHtml(vid){
-    const letter = String(vid || "").charAt(0).toUpperCase();
-    const valveNo = parseInt(String(vid || "").slice(1), 10);
+    const code = effectiveValveId(vid);   // honor a code-style rename (A36 → B07)
+    const letter = String(code).charAt(0).toUpperCase();
+    const valveNo = parseInt(String(code).slice(1), 10);
     const serial = LETTER_TO_SERIAL[letter];
     if (!serial || isNaN(valveNo)) return '<div class="pi-sub">אין שיוך ברז ל-Galcon.</div>';
 
