@@ -16,19 +16,27 @@ optional snapshot triggers do, via a Galcon login.
 
 ## How it works
 ```
-connect galileo_onlineserver.galcon-smart.com:3008
- → on 'server_ready'  emit('register', ['GALILEO_210202'])   // Mevo Horon commUnitID
- → receive 'events'   EC=3 → fert centers (ECActual/PHActual ÷100)
-                      EC=5 → sensors      (Index→Value ÷10^decimals)
- → write to RTDB  galcon/mevoHoron/{fertCenters,sensors}/{number}
+for each controller with a known commUnitID:
+  connect galileo_onlineserver.galcon-smart.com:3008
+   → on 'server_ready'  emit('register', ['GALILEO_<commUnitID>'])
+   → receive 'events'   EC=3 → fert centers (ECActual/PHActual ÷100)
+                        EC=5 → sensors      (Index→Value ÷10^decimals)
+   → write to RTDB  galcon/live/<letter>/{fertCenters,sensors}/{number}
 ```
+`commUnitID` is the socket registration id. **A** (Mevo Horon) = `210202` is
+known; **B/C/D** are auto-discovered from `/controllers-dashboard` at startup. If
+discovery can't find the field, set `GALCON_COMMUNIT_<LETTER>` (the worker logs
+each controller's dashboard keys + candidate so you can confirm the value).
+Controllers without a commUnitID are skipped (no live socket) until one is set.
 
 ## Data written (RTDB)
 ```
-galcon/mevoHoron/
-  updatedAt: <epoch ms>                         // heartbeat
+galcon/live/<letter>/                            // <letter> = A | B | C | D
+  updatedAt: <epoch ms>                          // heartbeat
   fertCenters/<n>: { number, name, ec, ph, reqEc, reqPh, status, ts }
   sensors/<n>:     { number, name, value, raw, unit, ts }
+galcon/mevoHoron/                                // legacy mirror of A (dosing tab)
+  ...same shape as galcon/live/A
 ```
 
 ## Setup
