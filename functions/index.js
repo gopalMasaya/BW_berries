@@ -589,7 +589,8 @@ galconApp.get("/dosing", async (req, res) => {
 
     return res.json({
       ok: true,
-      controllerName: "מבוא חורון",
+      controllerName: serial ? serial : "מבוא חורון",
+      serial: serial || null,
       configId: cfg,
       fertCenters: [fertCenter(lastPoint(c1), 1), fertCenter(lastPoint(c2), 2)],
       sensors,
