@@ -2113,15 +2113,17 @@
   function subscribeGalconLive(){
     database.ref("galcon/valves").on("value", s => { galconValves = s.val(); });
     database.ref("galcon/controllers").on("value", s => { galconCtrls = s.val(); });
+    // Per-controller live fert/tank snapshots (worker writes galcon/live/<letter>).
+    database.ref("galcon/live").on("value", snap => {
+      const all = snap.val() || {};
+      Object.keys(all).forEach(letter => { galconLiveByLetter[letter.toUpperCase()] = all[letter]; });
+      refreshOpenValvePanel();
+    });
+    // Legacy path: the worker still mirrors controller A under galcon/mevoHoron,
+    // so keep reading it as A's snapshot until galcon/live/A is populated.
     database.ref("galcon/mevoHoron").on("value", snap => {
-      galconLive = snap.val();
-      // refresh info panel if a valve is currently shown
-      const open = document.getElementById("planInfo").classList.contains("open");
-      const title = document.querySelector("#planInfoBody .pi-title");
-      if (open && title && title.textContent.indexOf("ברז") === 0 && planSelected){
-        const i = planSelected.getAttribute("data-valve");
-        if (i != null) renderValveInfo(planData.valves[+i]);
-      }
+      if (!galconLiveByLetter.A) galconLiveByLetter.A = snap.val();
+      refreshOpenValvePanel();
     });
   }
 
