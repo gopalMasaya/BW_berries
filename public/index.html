@@ -1370,6 +1370,41 @@
     planValvePos[i] = [xy[0], xy[1]];
     localStorage.setItem("planValvePos", JSON.stringify(planValvePos));
   }
+  function loadStationPos(){
+    try { planStationPos = JSON.parse(localStorage.getItem("planStationPos")) || {}; }
+    catch (e) { planStationPos = {}; }
+  }
+  function saveStationPos(deviceId, xy){
+    planStationPos[deviceId] = [xy[0], xy[1]];
+    localStorage.setItem("planStationPos", JSON.stringify(planStationPos));
+  }
+  // Default (un-dragged) position of a station: its STATION_VALVE valve, or the
+  // centroid of that controller's s1 valves if the exact valve isn't in the CAD.
+  function stationOriginXY(vid){
+    const v = (planData.valves || []).find(x => x.id === vid);
+    if (v) return { xy: [v.xy[0], v.xy[1]], approx: false };
+    const pre = (vid || "").charAt(0);
+    const sib = (planData.valves || []).filter(x => x.id.charAt(0) === pre && x.s === "s1");
+    if (sib.length) return {
+      xy: [ sib.reduce((a,b)=>a+b.xy[0],0)/sib.length, sib.reduce((a,b)=>a+b.xy[1],0)/sib.length ],
+      approx: true,
+    };
+    return null;
+  }
+  // Move a dragged station marker. Stations live in section s1, so we only undo
+  // the root Y-flip (no s2 rotation). Circle + label move together; the circle's
+  // position is the persisted anchor.
+  function moveStationBy(d, vbDx, vbDy){
+    const ddx = vbDx, ddy = -vbDy;
+    const cx = parseFloat(d.circle.getAttribute("cx")) + ddx;
+    const cy = parseFloat(d.circle.getAttribute("cy")) + ddy;
+    d.circle.setAttribute("cx", cx); d.circle.setAttribute("cy", cy);
+    const tx = parseFloat(d.text.getAttribute("x")) + ddx;
+    const ty = parseFloat(d.text.getAttribute("y")) + ddy;
+    d.text.setAttribute("x", tx); d.text.setAttribute("y", ty);
+    d.text.setAttribute("transform", `translate(0, ${ty * 2}) scale(1, -1)`);
+    stationPos[d.deviceId] = [cx, cy];
+  }
 
   let planData = null;
   let planVB = null;          // current viewBox {x,y,w,h}
