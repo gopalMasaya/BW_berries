@@ -1418,7 +1418,15 @@
       s1: el("g", { class: "pl-sec", "data-sec": "s1" }, root),
       s2: el("g", { class: "pl-sec", "data-sec": "s2" }, root),
     };
+    // Overlay layer for valves + labels + stations. Appended AFTER both sections'
+    // base groups so a valve is never hidden under a neighbouring section's plot
+    // polygon. Same pl-sec class + data-sec so applySectionTransforms moves it too.
+    const ovGroups = {
+      s1: el("g", { class: "pl-sec pl-sec-ov", "data-sec": "s1" }, root),
+      s2: el("g", { class: "pl-sec pl-sec-ov", "data-sec": "s2" }, root),
+    };
     const secOf = (s) => secGroups[s] || secGroups.s1;
+    const ovOf  = (s) => ovGroups[s] || ovGroups.s1;
 
     const vr = Math.max(w, h) * 0.006; // valve marker radius in data units
     const fs = Math.max(w, h) * 0.012;
