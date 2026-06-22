@@ -1474,6 +1474,7 @@
 
     const vr = Math.max(w, h) * 0.006; // valve marker radius in data units
     const fs = Math.max(w, h) * 0.012;
+    planVR = vr;                        // shared with the station-reset handler
 
     // Draw order within each section: pipes -> subareas -> rows -> plots -> valves -> labels
     (planData.pipes.zone || []).forEach(o => el("polyline", { points: ptsAttr(o.p), class: "pl-pipe-zone Lg-pipes" }, secOf(o.s)));
