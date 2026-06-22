@@ -1525,8 +1525,8 @@
   function applySectionTransforms(){
     const t = SECTION_TF.s2 || {dx:0, dy:0, rot:0};
     const [cx, cy] = secCenter("s2");
-    const g = document.querySelector('.pl-sec[data-sec="s2"]');
-    if (g) g.setAttribute("transform", `translate(${t.dx||0},${t.dy||0}) rotate(${t.rot||0}, ${cx}, ${cy})`);
+    const tf = `translate(${t.dx||0},${t.dy||0}) rotate(${t.rot||0}, ${cx}, ${cy})`;
+    document.querySelectorAll('.pl-sec[data-sec="s2"]').forEach(g => g.setAttribute("transform", tf));
   }
 
   function setViewBox(){
