@@ -1477,7 +1477,7 @@
     });
 
     // Station markers — placed at their controller-B valves (which live in s1).
-    const gStations = el("g", { id: "gStations" }, secGroups.s1);
+    const gStations = el("g", { id: "gStations" }, ovGroups.s1);
     STATIONS.forEach(st => {
       const vid = STATION_VALVE[st.deviceId];
       let v = (planData.valves || []).find(x => x.id === vid);
