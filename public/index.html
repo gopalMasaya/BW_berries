@@ -1452,7 +1452,7 @@
     (planData.valves || []).forEach((v, i) => {
       const xy0 = planValvePos[i] || v.xy;          // saved override or default
       valvePos[i] = [xy0[0], xy0[1]];
-      const g = el("g", { class: "pl-valve Lg-valves", "data-valve": i }, secOf(v.s));
+      const g = el("g", { class: "pl-valve Lg-valves", "data-valve": i }, ovOf(v.s));
       el("circle", { cx: xy0[0], cy: xy0[1], r: vr }, g);
       const tx = el("text", { x: xy0[0], y: xy0[1], "font-size": vr * 1.1,
         transform: `translate(0, ${xy0[1] * 2}) scale(1, -1)` }, g);
