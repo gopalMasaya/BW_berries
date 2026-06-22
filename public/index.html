@@ -1711,7 +1711,7 @@
     const posReset = document.getElementById("planPosReset");
     if (posReset){
       posReset.onclick = () => {
-        if (!confirm("לאפס את כל מיקומי הברזים למיקום המקורי מהתכנית?")) return;
+        if (!confirm("לאפס את כל מיקומי הברזים והתחנות למיקום המקורי מהתכנית?")) return;
         planValvePos = {};
         localStorage.removeItem("planValvePos");
         (planData.valves || []).forEach((v, i) => {
@@ -1722,6 +1722,21 @@
           c.setAttribute("cx", v.xy[0]); c.setAttribute("cy", v.xy[1]);
           t.setAttribute("x", v.xy[0]); t.setAttribute("y", v.xy[1]);
           t.setAttribute("transform", `translate(0, ${v.xy[1] * 2}) scale(1, -1)`);
+        });
+        planStationPos = {};
+        localStorage.removeItem("planStationPos");
+        STATIONS.forEach(st => {
+          const o = stationOriginXY(STATION_VALVE[st.deviceId]);
+          if (!o) return;
+          stationPos[st.deviceId] = [o.xy[0], o.xy[1]];
+          const g = document.querySelector(`.pl-station[data-station="${st.deviceId}"]`);
+          if (!g) return;
+          g.classList.toggle("approx", o.approx);
+          const c = g.querySelector("circle"), t = g.querySelector("text");
+          const ty = o.xy[1] - planVR * 2.2;
+          c.setAttribute("cx", o.xy[0]); c.setAttribute("cy", o.xy[1]);
+          t.setAttribute("x", o.xy[0]); t.setAttribute("y", ty);
+          t.setAttribute("transform", `translate(0, ${ty * 2}) scale(1, -1)`);
         });
       };
     }
