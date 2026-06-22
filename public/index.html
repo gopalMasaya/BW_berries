@@ -1472,7 +1472,7 @@
     (planData.plots || []).forEach(pl => {
       if (!pl.id) return;
       const t = el("text", { x: pl.c[0], y: pl.c[1], class: "pl-plotlabel Lg-labels", "font-size": fs,
-        transform: `translate(0, ${pl.c[1] * 2}) scale(1, -1)` }, secOf(pl.s));
+        transform: `translate(0, ${pl.c[1] * 2}) scale(1, -1)` }, ovOf(pl.s));
       t.textContent = pl.id;
     });
 
