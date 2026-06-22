@@ -1521,28 +1521,35 @@
       t.textContent = pl.id;
     });
 
-    // Station markers — placed at their controller-B valves (which live in s1).
+    // Station markers — placed at their STATION_VALVE valve (s1) or a saved
+    // drag-override. Draggable + persisted in position-edit mode, like valves.
     const gStations = el("g", { id: "gStations" }, ovGroups.s1);
     STATIONS.forEach(st => {
       const vid = STATION_VALVE[st.deviceId];
-      let v = (planData.valves || []).find(x => x.id === vid);
+      const override = planStationPos[st.deviceId];
       let approx = false, xy;
-      if (v){ xy = v.xy; }
+      if (override){ xy = [override[0], override[1]]; }     // user-dragged position wins
       else {
-        const pre = (vid || "").charAt(0);
-        const sib = (planData.valves || []).filter(x => x.id.charAt(0) === pre && x.s === "s1");
-        if (sib.length){
-          xy = [ sib.reduce((a,b)=>a+b.xy[0],0)/sib.length, sib.reduce((a,b)=>a+b.xy[1],0)/sib.length ];
-          approx = true;
-        }
+        const o = stationOriginXY(vid);
+        if (!o) return;
+        xy = o.xy; approx = o.approx;
       }
-      if (!xy) return;
+      stationPos[st.deviceId] = [xy[0], xy[1]];
       const g = el("g", { class: "pl-station" + (approx ? " approx" : ""), "data-station": st.deviceId }, gStations);
       el("circle", { cx: xy[0], cy: xy[1], r: vr * 1.4 }, g);
       const t = el("text", { x: xy[0], y: xy[1] - vr * 2.2, "font-size": fs,
         transform: `translate(0, ${(xy[1] - vr * 2.2) * 2}) scale(1, -1)` }, g);
       t.textContent = st.name + (approx ? " ~" : "");
-      g.addEventListener("click", (ev) => { ev.stopPropagation(); selectStation(st.deviceId, xy, approx, vid); });
+      g.addEventListener("click", (ev) => {
+        if (posEditMode) return;                            // in edit mode, click = drag, not select
+        ev.stopPropagation(); selectStation(st.deviceId, stationPos[st.deviceId], approx, vid);
+      });
+      g.addEventListener("mousedown", (ev) => {
+        if (!posEditMode) return;
+        ev.stopPropagation(); ev.preventDefault();          // suppress map pan while dragging a station
+        _dragStation = { deviceId: st.deviceId, circle: g.querySelector("circle"), text: g.querySelector("text") };
+        _dragLast = { x: ev.clientX, y: ev.clientY };
+      });
     });
 
     applySectionTransforms();
