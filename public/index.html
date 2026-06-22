@@ -1643,13 +1643,14 @@
       dragging = false; svg.classList.remove("grabbing");
     });
     window.addEventListener("mousemove", (e) => {
-      // Valve drag (edit mode) takes precedence over panning.
-      if (_dragValve){
+      // Valve/station drag (edit mode) takes precedence over panning.
+      if (_dragValve || _dragStation){
         const r = svg.getBoundingClientRect();
         const vbDx = (e.clientX - _dragLast.x) * (planVB.w / r.width);
         const vbDy = (e.clientY - _dragLast.y) * (planVB.h / r.height);
         _dragLast = { x: e.clientX, y: e.clientY };
-        moveValveBy(_dragValve, vbDx, vbDy);
+        if (_dragValve) moveValveBy(_dragValve, vbDx, vbDy);
+        else moveStationBy(_dragStation, vbDx, vbDy);
         return;
       }
       if (!dragging) return;
