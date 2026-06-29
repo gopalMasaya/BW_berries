@@ -1883,7 +1883,9 @@
         if (!v || !v.s1) return;
         geoRef = v.s1; geoRef2 = v.s2 || null;
         localStorage.setItem("planGeoRef", JSON.stringify({ s1: geoRef, s2: geoRef2 }));
-        if (mapOverlay) applyOverlay();
+        // Re-apply AND re-frame: the view may have been fitted to a stale transform
+        // (e.g. the auto-anchor) before this shared calibration arrived.
+        if (mapOverlay){ applyOverlay(); fitMapToPlan(); }
       });
     } catch (e){ console.warn("geoRef Firebase subscribe error:", e && e.message); }
   }
