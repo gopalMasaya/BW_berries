@@ -1706,6 +1706,7 @@
       }
     });
     svg.addEventListener("wheel", (e) => {
+      if (mapOverlay) return;                    // map owns zoom in overlay mode
       e.preventDefault();
       const r = svg.getBoundingClientRect();
       const mx = planVB.x + (e.clientX - r.left) / r.width * planVB.w;
