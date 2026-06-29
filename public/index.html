@@ -1995,8 +1995,13 @@
     exitGeoAlign();
     document.getElementById("map").classList.remove("overlay-mode");
     document.getElementById("planMapBtn").classList.remove("on");
+    // Restore the plain plan: clear per-section overlay matrices, re-flip the root,
+    // and put the CAD section transform back on s2.
+    const g = overlayGroups();
+    g.s1.forEach(n => n.removeAttribute("transform"));
     const root = document.getElementById("planRoot");
-    if (root) root.setAttribute("transform", planRootFlip);   // restore plain plan
+    if (root) root.setAttribute("transform", planRootFlip);
+    applySectionTransforms();
     setViewBox();
   }
   function exitGeoAlign(){
