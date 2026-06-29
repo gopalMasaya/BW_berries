@@ -934,7 +934,7 @@
   function initMap(centerLngLat){
     mapboxgl.accessToken = MAPBOX_TOKEN;
     map = new mapboxgl.Map({
-      container: "map",
+      container: "mapCanvas",
       style: "mapbox://styles/mapbox/satellite-streets-v12",
       center: centerLngLat,
       zoom: 16,
