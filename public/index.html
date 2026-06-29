@@ -2012,14 +2012,27 @@
     const wrap = document.getElementById("planWrap"); if (wrap) wrap.classList.remove("geo-grab");
     if (map && map.dragPan) map.dragPan.enable();
   }
-  // Geo-align (fine-tune) panel: drag to move, buttons to rotate/scale; saved to
-  // localStorage. Pivots around the plan origin (station 1) so it stays anchored.
+  // The geoRef the geo-align controls currently edit. s2 is lazily initialised to
+  // its current placement the first time it's selected, so it can be separated.
+  function activeGeo(){
+    ensureGeoRef();
+    if (geoAlignSec === "s2"){ if (!geoRef2) geoRef2 = autoGeoRef2(); return geoRef2; }
+    return geoRef;
+  }
+  // Geo-align (fine-tune) panel: pick a section, drag to move, buttons to
+  // rotate/scale. Each section pivots around its own origin. Saved to localStorage.
   function setupPlanGeo(){
     const btn = document.getElementById("planGeoBtn");
     const panel = document.getElementById("planGeo");
     if (!btn || !panel) return;
     const readout = document.getElementById("planGeoReadout");
-    const show = () => { if (geoRef) readout.textContent = `סקייל ${geoRef.scale.toFixed(2)} · ${geoRef.rot.toFixed(1)}°`; };
+    const secBtns = panel.querySelectorAll("button[data-sec]");
+    const show = () => {
+      const G = geoAlignSec === "s2" ? geoRef2 : geoRef;
+      const lbl = geoAlignSec === "s2" ? "רצועת A" : "אזור ממוספר";
+      secBtns.forEach(b => b.classList.toggle("on", b.dataset.sec === geoAlignSec));
+      readout.textContent = G ? `${lbl} · סקייל ${G.scale.toFixed(2)} · ${G.rot.toFixed(1)}°` : lbl;
+    };
     btn.onclick = () => {
       if (!mapOverlay) enableOverlay();          // fine-tune only makes sense over the map
       geoAlignMode = !geoAlignMode;
@@ -2029,17 +2042,22 @@
       if (map && map.dragPan){ geoAlignMode ? map.dragPan.disable() : map.dragPan.enable(); }
       ensureGeoRef(); show();
     };
+    secBtns.forEach(b => { b.onclick = () => { geoAlignSec = b.dataset.sec; activeGeo(); applyOverlay(); show(); }; });
     panel.querySelectorAll("button[data-rot]").forEach(b => {
-      b.onclick = () => { ensureGeoRef(); geoRef.rot += parseFloat(b.dataset.rot); applyOverlay(); show(); };
+      b.onclick = () => { const G = activeGeo(); if (G){ G.rot += parseFloat(b.dataset.rot); applyOverlay(); show(); } };
     });
     panel.querySelectorAll("button[data-scale]").forEach(b => {
-      b.onclick = () => { ensureGeoRef(); geoRef.scale *= parseFloat(b.dataset.scale); applyOverlay(); show(); };
+      b.onclick = () => { const G = activeGeo(); if (G){ G.scale *= parseFloat(b.dataset.scale); applyOverlay(); show(); } };
     });
-    document.getElementById("planGeoSave").onclick  = () => { saveGeoRef(); exitGeoAlign(); };
-    document.getElementById("planGeoReset").onclick = () => { geoRef = autoGeoRef(); applyOverlay(); show(); };
+    document.getElementById("planGeoSave").onclick  = () => { saveGeoRefs(); exitGeoAlign(); };
+    document.getElementById("planGeoReset").onclick = () => {
+      if (geoAlignSec === "s2") geoRef2 = autoGeoRef2();
+      else geoRef = autoGeoRef();
+      applyOverlay(); show();
+    };
     document.getElementById("planGeoDone").onclick  = () => exitGeoAlign();
 
-    // Drag the plan over the map (origin shift via unproject deltas).
+    // Drag the active section over the map (origin shift via unproject deltas).
     const wrap = document.getElementById("planWrap");
     let gDrag = null;
     wrap.addEventListener("mousedown", (e) => {
@@ -2053,9 +2071,9 @@
       if (!gDrag || !geoAlignMode || !map) return;
       const r = map.getContainer().getBoundingClientRect();
       const now = map.unproject([e.clientX - r.left, e.clientY - r.top]);
-      geoRef.lng0 += now.lng - gDrag.lng;
-      geoRef.lat0 += now.lat - gDrag.lat;
-      gDrag = now; applyOverlay();
+      const G = activeGeo();
+      if (G){ G.lng0 += now.lng - gDrag.lng; G.lat0 += now.lat - gDrag.lat; applyOverlay(); }
+      gDrag = now;
     });
     window.addEventListener("mouseup", () => { gDrag = null; });
     setupPlanGeo._show = show;
