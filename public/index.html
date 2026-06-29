@@ -389,7 +389,13 @@
     }
 
     /* ===== Field plan (interactive CAD viewer, replaces Mapbox in GIS view) ===== */
-    #planWrap{ position:absolute; inset:0; background:#0b1220; overflow:hidden; }
+    #planWrap{ position:relative; flex:1 1 auto; min-height:0; background:#0b1220; overflow:hidden; }
+
+    /* Collapsible satellite map below the field plan (toggled via plan controls). */
+    #mapBox{ position:relative; flex:0 0 0; height:0; overflow:hidden;
+      border-top:1px solid var(--border); transition:flex-basis 0.25s ease, height 0.25s ease; }
+    #map.map-open #mapBox{ flex:0 0 45%; height:45%; }
+    #mapCanvas{ position:absolute; inset:0; }
     #planSvg{ width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
     #planSvg.grabbing{ cursor:grabbing; }
     #planSvg .pl-row{ stroke:#3a7d44; stroke-width:0.6; fill:none; }
