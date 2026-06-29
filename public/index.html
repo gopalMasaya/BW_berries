@@ -1975,6 +1975,8 @@
       const ph = document.getElementById("planPosHint"); if (ph) ph.classList.remove("open"); }
     if (alignMode){ alignMode = false; document.getElementById("planAlignBtn").classList.remove("on");
       document.getElementById("planAlign").classList.remove("open"); }
+    // Matrices now live on the per-section groups, so neutralise the root flip.
+    document.getElementById("planRoot").removeAttribute("transform");
     if (!map) initMap([geoRef.lng0, geoRef.lat0]);
     if (!_overlayHooked && map){
       map.on("move", applyOverlay);
