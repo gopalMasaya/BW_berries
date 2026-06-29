@@ -1806,6 +1806,168 @@
     setViewBox();
   }
 
+  // ===============================
+  // MAP OVERLAY — georeference the CAD plan onto the satellite map.
+  // The plan is auto-anchored from the two stations (each has a known data XY in
+  // the plan AND a real lng/lat), giving a data→geo similarity transform. On every
+  // map move we sample that transform through the live Mapbox projection and stamp
+  // a data→screen affine on the plan's root <g>, so the plan tracks pan/zoom/rotate.
+  // A geo-align mode lets the user fine-tune (drag/rotate/scale), saved to storage.
+  // ===============================
+  const M_PER_DEG_LAT = 111320;
+  function loadGeoRef(){
+    try { const g = JSON.parse(localStorage.getItem("planGeoRef")); return (g && g.scale) ? g : null; }
+    catch (e){ return null; }
+  }
+  function saveGeoRef(){ if (geoRef) localStorage.setItem("planGeoRef", JSON.stringify(geoRef)); }
+  // Default data→geo transform, solved from the two stations' plan XY + lng/lat.
+  function autoGeoRef(){
+    const a = STATIONS[0], b = STATIONS[1];
+    const pa = stationPos[a.deviceId], pb = stationPos[b.deviceId];
+    if (!pa || !pb) return null;
+    const ddx = pb[0] - pa[0], ddy = pb[1] - pa[1];
+    const dlen = Math.hypot(ddx, ddy) || 1;
+    const mPerLng = M_PER_DEG_LAT * Math.cos(a.lat * Math.PI / 180);
+    const de = (b.lng - a.lng) * mPerLng, dn = (b.lat - a.lat) * M_PER_DEG_LAT;
+    const rot = Math.atan2(dn, de) - Math.atan2(ddy, ddx);
+    return { ox: pa[0], oy: pa[1], lng0: a.lng, lat0: a.lat,
+             scale: Math.hypot(de, dn) / dlen, rot: rot * 180 / Math.PI };
+  }
+  function ensureGeoRef(){ if (!geoRef) geoRef = loadGeoRef() || autoGeoRef(); return geoRef; }
+  function dataToGeo(x, y){
+    const G = geoRef;
+    const dx = x - G.ox, dy = y - G.oy;
+    const rad = G.rot * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+    const east  = G.scale * (dx * cos - dy * sin);
+    const north = G.scale * (dx * sin + dy * cos);
+    const mPerLng = M_PER_DEG_LAT * Math.cos(G.lat0 * Math.PI / 180);
+    return { lng: G.lng0 + east / mPerLng, lat: G.lat0 + north / M_PER_DEG_LAT };
+  }
+  // data→screen affine (matrix(a,b,c,d,e,f)) sampled at three points through the
+  // live projection, so map bearing/pitch are folded in too.
+  function overlayMatrix(){
+    const span = Math.max(planInitVB.w, planInitVB.h) || 1;
+    const ox = geoRef.ox, oy = geoRef.oy;
+    const p0 = map.project(dataToGeo(ox, oy));
+    const px = map.project(dataToGeo(ox + span, oy));
+    const py = map.project(dataToGeo(ox, oy + span));
+    const a = (px.x - p0.x) / span, b = (px.y - p0.y) / span;   // d/dx
+    const c = (py.x - p0.x) / span, d = (py.y - p0.y) / span;   // d/dy
+    const e = p0.x - a * ox - c * oy, f = p0.y - b * ox - d * oy;
+    return `matrix(${a},${b},${c},${d},${e},${f})`;
+  }
+  function applyOverlay(){
+    if (!mapOverlay || !map || !geoRef) return;
+    const root = document.getElementById("planRoot");
+    if (root) root.setAttribute("transform", overlayMatrix());
+  }
+  // In overlay mode the SVG user space = container CSS pixels (so map.project px
+  // map 1:1), so its viewBox must mirror the container size.
+  function syncOverlayViewBox(){
+    const r = document.getElementById("planWrap").getBoundingClientRect();
+    const svg = document.getElementById("planSvg");
+    svg.setAttribute("viewBox", `0 0 ${Math.max(1, r.width)} ${Math.max(1, r.height)}`);
+    svg.setAttribute("preserveAspectRatio", "none");
+  }
+  function fitMapToPlan(){
+    if (!map || !geoRef || !planData) return;
+    const [minX, minY, maxX, maxY] = planData.bbox;
+    const b = new mapboxgl.LngLatBounds();
+    [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]]
+      .forEach(c => { const g = dataToGeo(c[0], c[1]); b.extend([g.lng, g.lat]); });
+    map.fitBounds(b, { padding: 50, duration: 0 });
+  }
+  let _overlayHooked = false;
+  function enableOverlay(){
+    if (!ensureGeoRef()){ alert("לא ניתן למקם — חסר מיקום תחנות בתכנית."); return; }
+    mapOverlay = true;
+    document.getElementById("map").classList.add("overlay-mode");
+    document.getElementById("planMapBtn").classList.add("on");
+    // Pan/zoom + position-edit + section-align are driven by the map now.
+    if (posEditMode){ posEditMode = false; document.getElementById("planPosBtn").classList.remove("on");
+      document.getElementById("planSvg").classList.remove("posedit");
+      const ph = document.getElementById("planPosHint"); if (ph) ph.classList.remove("open"); }
+    if (alignMode){ alignMode = false; document.getElementById("planAlignBtn").classList.remove("on");
+      document.getElementById("planAlign").classList.remove("open"); }
+    if (!map) initMap([geoRef.lng0, geoRef.lat0]);
+    if (!_overlayHooked && map){
+      map.on("move", applyOverlay);
+      window.addEventListener("resize", () => { if (mapOverlay){ syncOverlayViewBox(); applyOverlay(); } });
+      _overlayHooked = true;
+    }
+    setTimeout(() => {
+      if (map) map.resize();
+      syncOverlayViewBox();
+      fitMapToPlan();
+      applyOverlay();
+    }, 80);
+  }
+  function disableOverlay(){
+    mapOverlay = false;
+    exitGeoAlign();
+    document.getElementById("map").classList.remove("overlay-mode");
+    document.getElementById("planMapBtn").classList.remove("on");
+    const root = document.getElementById("planRoot");
+    if (root) root.setAttribute("transform", planRootFlip);   // restore plain plan
+    setViewBox();
+  }
+  function exitGeoAlign(){
+    geoAlignMode = false;
+    const btn = document.getElementById("planGeoBtn"), panel = document.getElementById("planGeo");
+    if (btn) btn.classList.remove("on");
+    if (panel) panel.classList.remove("open");
+    const wrap = document.getElementById("planWrap"); if (wrap) wrap.classList.remove("geo-grab");
+    if (map && map.dragPan) map.dragPan.enable();
+  }
+  // Geo-align (fine-tune) panel: drag to move, buttons to rotate/scale; saved to
+  // localStorage. Pivots around the plan origin (station 1) so it stays anchored.
+  function setupPlanGeo(){
+    const btn = document.getElementById("planGeoBtn");
+    const panel = document.getElementById("planGeo");
+    if (!btn || !panel) return;
+    const readout = document.getElementById("planGeoReadout");
+    const show = () => { if (geoRef) readout.textContent = `סקייל ${geoRef.scale.toFixed(2)} · ${geoRef.rot.toFixed(1)}°`; };
+    btn.onclick = () => {
+      if (!mapOverlay) enableOverlay();          // fine-tune only makes sense over the map
+      geoAlignMode = !geoAlignMode;
+      btn.classList.toggle("on", geoAlignMode);
+      panel.classList.toggle("open", geoAlignMode);
+      document.getElementById("planWrap").classList.toggle("geo-grab", geoAlignMode);
+      if (map && map.dragPan){ geoAlignMode ? map.dragPan.disable() : map.dragPan.enable(); }
+      ensureGeoRef(); show();
+    };
+    panel.querySelectorAll("button[data-rot]").forEach(b => {
+      b.onclick = () => { ensureGeoRef(); geoRef.rot += parseFloat(b.dataset.rot); applyOverlay(); show(); };
+    });
+    panel.querySelectorAll("button[data-scale]").forEach(b => {
+      b.onclick = () => { ensureGeoRef(); geoRef.scale *= parseFloat(b.dataset.scale); applyOverlay(); show(); };
+    });
+    document.getElementById("planGeoSave").onclick  = () => { saveGeoRef(); exitGeoAlign(); };
+    document.getElementById("planGeoReset").onclick = () => { geoRef = autoGeoRef(); applyOverlay(); show(); };
+    document.getElementById("planGeoDone").onclick  = () => exitGeoAlign();
+
+    // Drag the plan over the map (origin shift via unproject deltas).
+    const wrap = document.getElementById("planWrap");
+    let gDrag = null;
+    wrap.addEventListener("mousedown", (e) => {
+      if (!geoAlignMode || !map) return;
+      if (e.target.closest("#planGeo, #planControls, #planLayers")) return;
+      e.preventDefault();
+      const r = map.getContainer().getBoundingClientRect();
+      gDrag = map.unproject([e.clientX - r.left, e.clientY - r.top]);
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!gDrag || !geoAlignMode || !map) return;
+      const r = map.getContainer().getBoundingClientRect();
+      const now = map.unproject([e.clientX - r.left, e.clientY - r.top]);
+      geoRef.lng0 += now.lng - gDrag.lng;
+      geoRef.lat0 += now.lat - gDrag.lat;
+      gDrag = now; applyOverlay();
+    });
+    window.addEventListener("mouseup", () => { gDrag = null; });
+    setupPlanGeo._show = show;
+  }
+
   function setupPlanLayerToggles(){
     // Toggle visibility by class via a single <style> rule — instant regardless
     // of how many thousands of elements each layer has.
