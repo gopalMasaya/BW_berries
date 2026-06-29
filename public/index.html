@@ -391,11 +391,34 @@
     /* ===== Field plan (interactive CAD viewer, replaces Mapbox in GIS view) ===== */
     #planWrap{ position:relative; flex:1 1 auto; min-height:0; background:#0b1220; overflow:hidden; }
 
-    /* Collapsible satellite map below the field plan (toggled via plan controls). */
-    #mapBox{ position:relative; flex:0 0 0; height:0; overflow:hidden;
-      border-top:1px solid var(--border); transition:flex-basis 0.25s ease, height 0.25s ease; }
-    #map.map-open #mapBox{ flex:0 0 45%; height:45%; }
+    /* Satellite map underlay — hidden until the plan is overlaid onto it. */
+    #mapBox{ position:relative; flex:0 0 0; height:0; overflow:hidden; }
     #mapCanvas{ position:absolute; inset:0; }
+
+    /* Overlay mode: map fills the GIS area, the georeferenced plan sits on top. */
+    #map.overlay-mode #mapBox{ position:absolute; inset:0; flex:none; height:auto; z-index:0; }
+    #map.overlay-mode #planWrap{ position:absolute; inset:0; z-index:1; background:transparent; pointer-events:none; }
+    #map.overlay-mode #planWrap.geo-grab{ pointer-events:auto; cursor:move; }
+    #map.overlay-mode #planSvg{ pointer-events:none; }
+    #map.overlay-mode #planSvg .pl-valve,
+    #map.overlay-mode #planSvg .pl-plot,
+    #map.overlay-mode #planSvg .pl-rowhit,
+    #map.overlay-mode #planSvg .pl-station{ pointer-events:all; }
+    #map.overlay-mode #planControls,
+    #map.overlay-mode #planLayers,
+    #map.overlay-mode #planAlign,
+    #map.overlay-mode #planGeo,
+    #map.overlay-mode #planInfo,
+    #map.overlay-mode #planPosHint{ pointer-events:auto; }
+
+    /* Geo-align fine-tune panel (mirrors #planAlign). */
+    #planGeo{ position:absolute; top:12px; left:58px; z-index:4; display:none;
+      background:rgba(15,26,46,0.96); border:1px solid var(--border); border-radius:12px;
+      padding:12px; color:var(--text); width:210px; box-shadow:0 12px 40px rgba(0,0,0,0.4); }
+    #planGeo.open{ display:block; }
+    #planGeo button{ padding:6px 8px; border-radius:8px; border:1px solid var(--border);
+      background:rgba(255,255,255,0.06); color:var(--text); cursor:pointer; font-size:13px; }
+    #planGeo button:hover{ background:rgba(74,163,255,0.25); }
     #planSvg{ width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
     #planSvg.grabbing{ cursor:grabbing; }
     #planSvg .pl-row{ stroke:#3a7d44; stroke-width:0.6; fill:none; }
