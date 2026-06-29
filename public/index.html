@@ -1983,6 +1983,7 @@
       readout.textContent = `Δx ${Math.round(t.dx||0)} · Δy ${Math.round(t.dy||0)} · ${(t.rot||0).toFixed(1)}°`;
     };
     btn.onclick = () => {
+      if (mapOverlay) return;              // disabled while the plan is georeferenced
       alignMode = !alignMode;
       btn.classList.toggle("on", alignMode);
       panel.classList.toggle("open", alignMode);
