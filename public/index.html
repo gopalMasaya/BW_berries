@@ -1484,7 +1484,8 @@
     setViewBox();
 
     // Flip Y (CAD is Y-up, SVG is Y-down) around the data's vertical span.
-    const root = el("g", { transform: `translate(0, ${minY + maxY}) scale(1, -1)` }, svg);
+    planRootFlip = `translate(0, ${minY + maxY}) scale(1, -1)`;
+    const root = el("g", { id: "planRoot", transform: planRootFlip }, svg);
     svg.innerHTML = "";
     svg.appendChild(root);
 
