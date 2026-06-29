@@ -2084,7 +2084,13 @@
     panel.querySelectorAll("button[data-scale]").forEach(b => {
       b.onclick = () => { const G = activeGeo(); if (G){ G.scale *= parseFloat(b.dataset.scale); applyOverlay(); show(); } };
     });
-    document.getElementById("planGeoSave").onclick  = () => { saveGeoRefs(); exitGeoAlign(); };
+    document.getElementById("planGeoSave").onclick  = () => {
+      readout.textContent = "שומר…";
+      Promise.resolve(saveGeoRefs()).then(ok => {
+        readout.textContent = ok ? "✓ נשמר ושותף לכל המכשירים" : "⚠ נשמר מקומית בלבד (שיתוף ל-Firebase נכשל)";
+        setTimeout(exitGeoAlign, 1300);
+      });
+    };
     document.getElementById("planGeoReset").onclick = () => {
       if (geoAlignSec === "s2") geoRef2 = autoGeoRef2();
       else geoRef = autoGeoRef();
