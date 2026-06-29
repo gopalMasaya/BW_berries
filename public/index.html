@@ -1657,6 +1657,7 @@
   }
 
   function setViewBox(){
+    if (mapOverlay) return;   // in overlay mode the map drives the view (pixel-space viewBox)
     document.getElementById("planSvg")
       .setAttribute("viewBox", `${planVB.x} ${planVB.y} ${planVB.w} ${planVB.h}`);
   }
