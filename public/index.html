@@ -1861,7 +1861,29 @@
     } catch (e){}
     return { s1: null, s2: null };
   }
-  function saveGeoRefs(){ localStorage.setItem("planGeoRef", JSON.stringify({ s1: geoRef, s2: geoRef2 })); }
+  const GEO_REF_PATH = "fieldPlan/geoRef";   // shared calibration in RTDB
+  function saveGeoRefs(){
+    const payload = { s1: geoRef || null, s2: geoRef2 || null };
+    localStorage.setItem("planGeoRef", JSON.stringify(payload));       // local cache / fallback
+    try {
+      database.ref(GEO_REF_PATH).set(payload)
+        .catch(e => console.warn("geoRef Firebase save failed (kept locally):", e && e.message));
+    } catch (e){ console.warn("geoRef Firebase save error:", e && e.message); }
+  }
+  // Live-sync the shared calibration from RTDB → all devices. Won't clobber an
+  // in-progress calibration on this device (geoAlignMode active).
+  function subscribeGeoRef(){
+    try {
+      database.ref(GEO_REF_PATH).on("value", snap => {
+        if (geoAlignMode) return;
+        const v = snap.val();
+        if (!v || !v.s1) return;
+        geoRef = v.s1; geoRef2 = v.s2 || null;
+        localStorage.setItem("planGeoRef", JSON.stringify({ s1: geoRef, s2: geoRef2 }));
+        if (mapOverlay) applyOverlay();
+      });
+    } catch (e){ console.warn("geoRef Firebase subscribe error:", e && e.message); }
+  }
   // Solve a data→geo similarity (translate+rotate+uniform scale) from two point
   // pairs: plan XY p1,p2 → real geo g1,g2.
   function deriveGeoRef(p1, p2, g1, g2){
