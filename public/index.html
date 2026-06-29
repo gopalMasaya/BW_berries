@@ -2046,7 +2046,11 @@
       panel.classList.toggle("open", geoAlignMode);
       document.getElementById("planWrap").classList.toggle("geo-grab", geoAlignMode);
       if (map && map.dragPan){ geoAlignMode ? map.dragPan.disable() : map.dragPan.enable(); }
-      ensureGeoRef(); show();
+      ensureGeoRef();
+      // Freeze A to its current placement so the two sections move independently
+      // (otherwise editing the numbered area would drag the A-strip with it).
+      if (geoAlignMode && !geoRef2){ geoRef2 = autoGeoRef2(); applyOverlay(); }
+      show();
     };
     secBtns.forEach(b => { b.onclick = () => { geoAlignSec = b.dataset.sec; activeGeo(); applyOverlay(); show(); }; });
     panel.querySelectorAll("button[data-rot]").forEach(b => {
