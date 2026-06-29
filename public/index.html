@@ -1447,6 +1447,10 @@
   let galconCtrls = null;     // galcon/controllers/<letter> -> {name,serial,configId}
   let SECTION_TF = {};        // { s2: {dx,dy,rot} } — manual alignment of section s2
   let alignMode = false;      // when true, dragging moves section s2 instead of panning
+  let planRootFlip = "";      // root <g> Y-flip transform (plain, non-overlay mode)
+  let mapOverlay = false;     // plan is georeferenced & drawn over the satellite map
+  let geoAlignMode = false;   // dragging fine-tunes the plan↔map georeference
+  let geoRef = null;          // { ox,oy, lng0,lat0, scale, rot } data→geo transform
 
   function el(tag, attrs, parent){
     const n = document.createElementNS(SVGNS, tag);
