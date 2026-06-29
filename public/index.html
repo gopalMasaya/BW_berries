@@ -565,6 +565,22 @@
           <button id="planAlignDone">סגור</button>
         </div>
       </div>
+      <div id="planGeo">
+        <div style="font-weight:bold;margin-bottom:4px;">🎯 כיול מיקום על המפה</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">גרור את התכנית להזזה. סיבוב / קנה־מידה:</div>
+        <div style="display:flex;gap:4px;margin-bottom:6px;">
+          <button data-rot="-1">⟲1°</button>
+          <button data-rot="1">⟳1°</button>
+          <button data-scale="0.99">־ קטן</button>
+          <button data-scale="1.01">+ גדול</button>
+        </div>
+        <div id="planGeoReadout" style="font-size:12px;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:6px;">
+          <button id="planGeoSave" style="background:rgba(43,213,118,0.25);">שמור</button>
+          <button id="planGeoReset">איפוס אוטומטי</button>
+          <button id="planGeoDone">סגור</button>
+        </div>
+      </div>
       <div id="planLayers">
         <label><input type="checkbox" id="lyrPlots" checked /> חלקות</label>
         <label><input type="checkbox" id="lyrRows" checked /> שורות</label>
