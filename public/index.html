@@ -1723,26 +1723,10 @@
     document.getElementById("planInfoClose").onclick = closePlanInfo;
     svg.addEventListener("click", () => { clearPlanSelection(); closePlanInfo(); });
 
-    // Collapsible satellite map below the plan — lazy-init Mapbox on first open.
+    // Satellite map underlay — overlay the georeferenced plan on/off (lazy-init).
     const mapBtn = document.getElementById("planMapBtn");
     if (mapBtn){
-      mapBtn.onclick = () => {
-        const mapEl = document.getElementById("map");
-        const open = !mapEl.classList.contains("map-open");
-        mapEl.classList.toggle("map-open", open);
-        mapBtn.classList.toggle("on", open);
-        if (open){
-          if (!map){
-            const center = [
-              (STATIONS[0].lng + STATIONS[1].lng) / 2,
-              (STATIONS[0].lat + STATIONS[1].lat) / 2
-            ];
-            initMap(center);
-          }
-          // Wait for the height transition to finish before resizing the canvas.
-          if (map) setTimeout(() => map.resize(), 300);
-        }
-      };
+      mapBtn.onclick = () => { mapOverlay ? disableOverlay() : enableOverlay(); };
     }
 
     // Position-edit mode: toggle dragging of valve markers.
