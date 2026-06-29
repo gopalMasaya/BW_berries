@@ -2011,6 +2011,9 @@
     if (!map) initMap([geoRef.lng0, geoRef.lat0]);
     if (!_overlayHooked && map){
       map.on("move", applyOverlay);
+      // Empty-area clicks fall through to the map in overlay mode, so use them to
+      // dismiss the plan info panel / selection (the SVG can't catch them here).
+      map.on("click", () => { if (mapOverlay && !geoAlignMode){ clearPlanSelection(); closePlanInfo(); } });
       window.addEventListener("resize", () => { if (mapOverlay){ syncOverlayViewBox(); applyOverlay(); } });
       _overlayHooked = true;
     }
