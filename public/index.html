@@ -1845,27 +1845,62 @@
   // A geo-align mode lets the user fine-tune (drag/rotate/scale), saved to storage.
   // ===============================
   const M_PER_DEG_LAT = 111320;
-  function loadGeoRef(){
-    try { const g = JSON.parse(localStorage.getItem("planGeoRef")); return (g && g.scale) ? g : null; }
-    catch (e){ return null; }
+  // localStorage holds { s1, s2 } (legacy: a flat s1-only object). s2 may be null,
+  // meaning the A-strip just follows s1 + SECTION_TF (the pre-per-section behaviour).
+  function loadGeoRefs(){
+    try {
+      const o = JSON.parse(localStorage.getItem("planGeoRef"));
+      if (o && o.s1) return { s1: o.s1, s2: o.s2 || null };
+      if (o && o.scale) return { s1: o, s2: null };      // legacy flat format
+    } catch (e){}
+    return { s1: null, s2: null };
   }
-  function saveGeoRef(){ if (geoRef) localStorage.setItem("planGeoRef", JSON.stringify(geoRef)); }
-  // Default data→geo transform, solved from the two stations' plan XY + lng/lat.
+  function saveGeoRefs(){ localStorage.setItem("planGeoRef", JSON.stringify({ s1: geoRef, s2: geoRef2 })); }
+  // Solve a data→geo similarity (translate+rotate+uniform scale) from two point
+  // pairs: plan XY p1,p2 → real geo g1,g2.
+  function deriveGeoRef(p1, p2, g1, g2){
+    const ddx = p2[0] - p1[0], ddy = p2[1] - p1[1];
+    const dlen = Math.hypot(ddx, ddy) || 1;
+    const mPerLng = M_PER_DEG_LAT * Math.cos(g1.lat * Math.PI / 180);
+    const de = (g2.lng - g1.lng) * mPerLng, dn = (g2.lat - g1.lat) * M_PER_DEG_LAT;
+    const rot = Math.atan2(dn, de) - Math.atan2(ddy, ddx);
+    return { ox: p1[0], oy: p1[1], lng0: g1.lng, lat0: g1.lat,
+             scale: Math.hypot(de, dn) / dlen, rot: rot * 180 / Math.PI };
+  }
+  // s1 default: anchored to the two stations (both live in s1).
   function autoGeoRef(){
     const a = STATIONS[0], b = STATIONS[1];
     const pa = stationPos[a.deviceId], pb = stationPos[b.deviceId];
     if (!pa || !pb) return null;
-    const ddx = pb[0] - pa[0], ddy = pb[1] - pa[1];
-    const dlen = Math.hypot(ddx, ddy) || 1;
-    const mPerLng = M_PER_DEG_LAT * Math.cos(a.lat * Math.PI / 180);
-    const de = (b.lng - a.lng) * mPerLng, dn = (b.lat - a.lat) * M_PER_DEG_LAT;
-    const rot = Math.atan2(dn, de) - Math.atan2(ddy, ddx);
-    return { ox: pa[0], oy: pa[1], lng0: a.lng, lat0: a.lat,
-             scale: Math.hypot(de, dn) / dlen, rot: rot * 180 / Math.PI };
+    return deriveGeoRef(pa, pb, { lng: a.lng, lat: a.lat }, { lng: b.lng, lat: b.lat });
   }
-  function ensureGeoRef(){ if (!geoRef) geoRef = loadGeoRef() || autoGeoRef(); return geoRef; }
-  function dataToGeo(x, y){
-    const G = geoRef;
+  // s2 default: reproduce the A-strip's CURRENT on-map placement (s1 transform ∘
+  // SECTION_TF) as a standalone transform on raw s2 coords, so it doesn't jump
+  // when the user first separates it — then they fine-tune from there.
+  function autoGeoRef2(){
+    if (!geoRef) return null;
+    const span = Math.max(planInitVB.w, planInitVB.h) || 1;
+    const c = secCenter("s2");
+    const P1 = [c[0], c[1]], P2 = [c[0] + span, c[1]];
+    const g1 = geoWith(geoRef, ...sectionToData(P1[0], P1[1], "s2"));
+    const g2 = geoWith(geoRef, ...sectionToData(P2[0], P2[1], "s2"));
+    return deriveGeoRef(P1, P2, g1, g2);
+  }
+  function ensureGeoRef(){
+    if (!geoRef){ const l = loadGeoRefs(); geoRef = l.s1 || autoGeoRef(); if (geoRef2 == null) geoRef2 = l.s2; }
+    return geoRef;
+  }
+  // Raw section coords → unified s1 data space (applies SECTION_TF for s2, no flip).
+  function sectionToData(x, y, sec){
+    if (sec !== "s2") return [x, y];
+    const t = SECTION_TF.s2 || { dx: 0, dy: 0, rot: 0 };
+    const [cx, cy] = secCenter("s2");
+    const rad = (t.rot || 0) * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+    const ox = x - cx, oy = y - cy;
+    return [cx + ox * cos - oy * sin + (t.dx || 0), cy + ox * sin + oy * cos + (t.dy || 0)];
+  }
+  // A section's own coords → geo, via its geoRef G.
+  function geoWith(G, x, y){
     const dx = x - G.ox, dy = y - G.oy;
     const rad = G.rot * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
     const east  = G.scale * (dx * cos - dy * sin);
@@ -1873,23 +1908,44 @@
     const mPerLng = M_PER_DEG_LAT * Math.cos(G.lat0 * Math.PI / 180);
     return { lng: G.lng0 + east / mPerLng, lat: G.lat0 + north / M_PER_DEG_LAT };
   }
-  // data→screen affine (matrix(a,b,c,d,e,f)) sampled at three points through the
-  // live projection, so map bearing/pitch are folded in too.
-  function overlayMatrix(){
+  function dataToGeo(x, y){ return geoWith(geoRef, x, y); }
+  // data→screen affine for transform G, sampled at three points through the live
+  // projection (so map bearing/pitch fold in too).
+  function matrixFor(G){
     const span = Math.max(planInitVB.w, planInitVB.h) || 1;
-    const ox = geoRef.ox, oy = geoRef.oy;
-    const p0 = map.project(dataToGeo(ox, oy));
-    const px = map.project(dataToGeo(ox + span, oy));
-    const py = map.project(dataToGeo(ox, oy + span));
+    const ox = G.ox, oy = G.oy;
+    const p0 = map.project(geoWith(G, ox, oy));
+    const px = map.project(geoWith(G, ox + span, oy));
+    const py = map.project(geoWith(G, ox, oy + span));
     const a = (px.x - p0.x) / span, b = (px.y - p0.y) / span;   // d/dx
     const c = (py.x - p0.x) / span, d = (py.y - p0.y) / span;   // d/dy
     const e = p0.x - a * ox - c * oy, f = p0.y - b * ox - d * oy;
     return `matrix(${a},${b},${c},${d},${e},${f})`;
   }
+  function overlayGroups(){
+    if (!_ovGroups) _ovGroups = {
+      s1: [...document.querySelectorAll('.pl-sec[data-sec="s1"]')],
+      s2: [...document.querySelectorAll('.pl-sec[data-sec="s2"]')],
+    };
+    return _ovGroups;
+  }
+  // Each section is mapped independently: s1 by geoRef on its groups; s2 by its
+  // own geoRef2 (on raw s2 coords) if set, else by s1's matrix composed with the
+  // CAD section transform.
   function applyOverlay(){
     if (!mapOverlay || !map || !geoRef) return;
-    const root = document.getElementById("planRoot");
-    if (root) root.setAttribute("transform", overlayMatrix());
+    const g = overlayGroups();
+    const M1 = matrixFor(geoRef);
+    g.s1.forEach(n => n.setAttribute("transform", M1));
+    if (geoRef2){
+      const M2 = matrixFor(geoRef2);
+      g.s2.forEach(n => n.setAttribute("transform", M2));
+    } else {
+      const t = SECTION_TF.s2 || { dx: 0, dy: 0, rot: 0 };
+      const [cx, cy] = secCenter("s2");
+      const tf = `${M1} translate(${t.dx || 0},${t.dy || 0}) rotate(${t.rot || 0}, ${cx}, ${cy})`;
+      g.s2.forEach(n => n.setAttribute("transform", tf));
+    }
   }
   // In overlay mode the SVG user space = container CSS pixels (so map.project px
   // map 1:1), so its viewBox must mirror the container size.
