@@ -1863,13 +1863,15 @@
     return { s1: null, s2: null };
   }
   const GEO_REF_PATH = "fieldPlan/geoRef";   // shared calibration in RTDB
+  // Returns a promise → true if the shared (Firebase) save succeeded, false if it
+  // only persisted locally (so the UI can tell the user whether sharing worked).
   function saveGeoRefs(){
     const payload = { s1: geoRef || null, s2: geoRef2 || null };
     localStorage.setItem("planGeoRef", JSON.stringify(payload));       // local cache / fallback
     try {
-      database.ref(GEO_REF_PATH).set(payload)
-        .catch(e => console.warn("geoRef Firebase save failed (kept locally):", e && e.message));
-    } catch (e){ console.warn("geoRef Firebase save error:", e && e.message); }
+      return database.ref(GEO_REF_PATH).set(payload).then(() => true)
+        .catch(e => { console.warn("geoRef Firebase save failed (kept locally):", e && e.message); return false; });
+    } catch (e){ console.warn("geoRef Firebase save error:", e && e.message); return Promise.resolve(false); }
   }
   // Live-sync the shared calibration from RTDB → all devices. Won't clobber an
   // in-progress calibration on this device (geoAlignMode active).
