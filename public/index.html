@@ -1671,7 +1671,7 @@
 
   function setupPlanInteractions(svg){
     let dragging = false, lastX = 0, lastY = 0;
-    svg.addEventListener("mousedown", (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; svg.classList.add("grabbing"); });
+    svg.addEventListener("mousedown", (e) => { if (mapOverlay) return; dragging = true; lastX = e.clientX; lastY = e.clientY; svg.classList.add("grabbing"); });
     window.addEventListener("mouseup", () => {
       if (_dragValve){ saveValvePos(_dragValve.i, valvePos[_dragValve.i]); _dragValve = null; }
       if (_dragStation){ saveStationPos(_dragStation.deviceId, stationPos[_dragStation.deviceId]); _dragStation = null; }
