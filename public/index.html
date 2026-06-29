@@ -1490,7 +1490,10 @@
   let planRootFlip = "";      // root <g> Y-flip transform (plain, non-overlay mode)
   let mapOverlay = false;     // plan is georeferenced & drawn over the satellite map
   let geoAlignMode = false;   // dragging fine-tunes the plan↔map georeference
-  let geoRef = null;          // { ox,oy, lng0,lat0, scale, rot } data→geo transform
+  let geoAlignSec = "s1";     // which section the geo-align controls edit
+  let geoRef = null;          // s1 data→geo transform { ox,oy, lng0,lat0, scale, rot }
+  let geoRef2 = null;         // s2 (A-strip) own data→geo transform; null → follows s1+SECTION_TF
+  let _ovGroups = null;       // cached per-section SVG groups for the overlay
 
   function el(tag, attrs, parent){
     const n = document.createElementNS(SVGNS, tag);
