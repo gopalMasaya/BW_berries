@@ -1990,11 +1990,24 @@
   }
   function fitMapToPlan(){
     if (!map || !geoRef || !planData) return;
-    const [minX, minY, maxX, maxY] = planData.bbox;
     const b = new mapboxgl.LngLatBounds();
-    [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]]
-      .forEach(c => { const g = dataToGeo(c[0], c[1]); b.extend([g.lng, g.lat]); });
-    map.fitBounds(b, { padding: 50, duration: 0 });
+    const addSec = (sec) => {
+      const s = planData.sections && planData.sections[sec];
+      const bb = s && s.bbox;
+      if (!bb) return;
+      [[bb[0], bb[1]], [bb[2], bb[1]], [bb[2], bb[3]], [bb[0], bb[3]]].forEach(c => {
+        let g;
+        if (sec === "s2") g = geoRef2 ? geoWith(geoRef2, c[0], c[1]) : geoWith(geoRef, ...sectionToData(c[0], c[1], "s2"));
+        else g = geoWith(geoRef, c[0], c[1]);
+        b.extend([g.lng, g.lat]);
+      });
+    };
+    addSec("s1"); addSec("s2");
+    if (b.isEmpty()){   // sections metadata missing → fall back to overall bbox
+      const [minX, minY, maxX, maxY] = planData.bbox;
+      [[minX, minY], [maxX, maxY]].forEach(c => { const g = dataToGeo(c[0], c[1]); b.extend([g.lng, g.lat]); });
+    }
+    if (!b.isEmpty()) map.fitBounds(b, { padding: 50, duration: 0 });
   }
   let _overlayHooked = false;
   function enableOverlay(){
