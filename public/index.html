@@ -255,17 +255,16 @@
     .station-square .sq-name{ font-size:20px; font-weight:bold; }
     .station-square .sq-sub{ font-size:13px; color:var(--muted); margin-top:4px; }
     .station-square .sq-metrics{
-      display:grid; gap:10px;
-      grid-template-columns:repeat(auto-fit, minmax(90px, 1fr));
+      display:flex; flex-wrap:wrap; gap:8px;
     }
     .sq-metric{
-      aspect-ratio:1/1; border-radius:14px; border:1px solid var(--border);
+      width:96px; height:74px; border-radius:12px; border:1px solid var(--border);
       background:rgba(255,255,255,0.04);
       display:flex; flex-direction:column; align-items:center; justify-content:center;
-      gap:2px; padding:6px; text-align:center;
+      gap:1px; padding:4px; text-align:center;
     }
-    .sq-metric .m-k{ font-size:11px; color:var(--muted); }
-    .sq-metric .m-v{ font-size:22px; font-weight:bold; color:var(--accent); line-height:1.1; }
+    .sq-metric .m-k{ font-size:11px; color:var(--muted); line-height:1.1; }
+    .sq-metric .m-v{ font-size:18px; font-weight:bold; color:var(--accent); line-height:1.1; }
     .sq-metric .m-u{ font-size:10px; color:var(--muted); }
     .station-square .sq-empty{ color:var(--muted); font-size:14px; padding:8px 0; }
     .station-square .sq-irrig{
