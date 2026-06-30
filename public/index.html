@@ -1555,8 +1555,11 @@
           <div class="sq-irrig-list">${rows}</div>`;
       }
 
-      // ── Chart: irrigation bars (per-reading L) + selected sensor line ──
-      buildSquareChart(deviceId, chartEl, readings, sensorKey, sensorLabel, multiDay);
+      // ── Chart data: stored on the square; built lazily when the chart is open ──
+      square._chartData = { readings, sensorKey, sensorLabel, multiDay };
+      if (chartEl && chartEl.style.display !== "none"){
+        buildSquareChart(deviceId, chartEl, readings, sensorKey, sensorLabel, multiDay);
+      }
     } catch(err){
       console.error("square data load", deviceId, err);
       irrigEl.innerHTML = `<div class="sq-irrig-head">💧 השקיות</div>
