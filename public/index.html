@@ -1342,6 +1342,66 @@
     });
   }
 
+  // Curated metrics shown inside each station square (only those present in the
+  // latest reading are rendered). Field keys match the Firebase sensor schema.
+  const SQUARE_FIELDS = [
+    { key:"ec",             label:"EC" },
+    { key:"ph1",            label:"pH" },
+    { key:"soil1_humidity", label:"לחות קרקע" },
+    { key:"soil1_temp",     label:"טמפ׳ קרקע" },
+    { key:"temp",           label:"טמפ׳ אוויר" },
+    { key:"scale1",         label:"משקל" },
+    { key:"voltage",        label:"מתח" }
+  ];
+
+  function renderSquaresView(){
+    const grid = document.getElementById("squaresGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    STATIONS.forEach(st => {
+      const latest = latestByDevice[st.deviceId];
+      const mins = latest ? ageMinutes(latest.tsISO) : Infinity;
+      const s = statusFromAge(mins);
+      const item = latest ? latest.item : null;
+
+      const metricsHtml = item
+        ? SQUARE_FIELDS
+            .filter(f => {
+              const v = parseFloat(item[f.key]);
+              return Number.isFinite(v);
+            })
+            .map(f => {
+              const v = parseFloat(item[f.key]);
+              return `
+                <div class="sq-metric">
+                  <div class="m-k">${f.label}</div>
+                  <div class="m-v">${v.toFixed(decimalsFor(f.key))}</div>
+                  <div class="m-u">${unitFor(f.key)}</div>
+                </div>`;
+            }).join("")
+        : "";
+
+      const square = document.createElement("div");
+      square.className = "station-square";
+      square.innerHTML = `
+        <div class="sq-head">
+          <div>
+            <div class="sq-name">${st.name}</div>
+            <div class="sq-sub">${st.deviceId} · עודכן: ${latest ? new Date(latest.tsISO).toLocaleString() : "—"}</div>
+          </div>
+          <div class="pill"><span class="dot ${s.cls}"></span>${s.label}</div>
+        </div>
+        ${metricsHtml
+          ? `<div class="sq-metrics">${metricsHtml}</div>`
+          : `<div class="sq-empty">אין נתוני חיישנים טעונים עדיין.</div>`}
+      `;
+
+      square.addEventListener("click", () => openDrawer(st.deviceId));
+      grid.appendChild(square);
+    });
+  }
+
   function openDrawer(deviceId){
     drawerDeviceId = deviceId;
     drawer.classList.add("open");
