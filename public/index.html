@@ -1677,9 +1677,11 @@
         <div class="sq-chart"><div class="sq-chart-empty">טוען גרף…</div></div>
       `;
 
-      // The header/metrics open the drawer; the chart area is interactive, so
-      // clicks there shouldn't trigger navigation.
-      square.querySelector(".sq-head").addEventListener("click", () => openDrawer(st.deviceId));
+      // Clicking the card opens the drawer, except over the interactive chart.
+      square.addEventListener("click", (e) => {
+        if (e.target.closest(".sq-chart")) return;
+        openDrawer(st.deviceId);
+      });
       grid.appendChild(square);
 
       // Irrigation events + chart load asynchronously per station for the range.
