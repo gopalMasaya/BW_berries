@@ -1356,6 +1356,126 @@
     { key:"voltage",        label:"מתח" }
   ];
 
+  // No water-in for this many minutes ⇒ the current irrigation has ended; the
+  // next flow afterwards starts a new irrigation.
+  const IRRIG_GAP_MIN = 15;
+
+  function fmtHM(d){
+    return d ? new Date(d).toLocaleTimeString("he-IL", { hour:"2-digit", minute:"2-digit" }) : "—";
+  }
+
+  // Resolve a reading's moment: prefer the server ISO timestamp, else parse the
+  // DDMMYYYY_HHMMSS tsKey.
+  function readingMoment(tsKey, item){
+    if (item && item.serverTimestamp) return new Date(item.serverTimestamp);
+    if (tsKey && tsKey.length >= 13){
+      const dd = tsKey.substring(0,2), mm = tsKey.substring(2,4), yyyy = tsKey.substring(4,8);
+      const hh = tsKey.substring(9,11) || "00", mi = tsKey.substring(11,13) || "00", ss = tsKey.substring(13,15) || "00";
+      return new Date(`${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}`);
+    }
+    return null;
+  }
+
+  // Fetch a station's readings in [fromDate,toDate], ascending, with the raw
+  // cumulative waterIn/waterOut pulse counters.
+  async function fetchWaterReadings(deviceId, fromDate, toDate){
+    const monthKeys = getMonthKeys(fromDate, toDate);
+    const out = [];
+    for (const mk of monthKeys){
+      const snap = await database.ref("berries/" + deviceId + "/" + mk).once("value");
+      const val = snap.val();
+      if (!val) continue;
+      Object.keys(val).forEach(tsKey => {
+        if (tsKey === "control") return;
+        const item = normalizeWaterFields(val[tsKey]);
+        const t = readingMoment(tsKey, item);
+        if (!t || isNaN(t.getTime()) || t < fromDate || t > toDate) return;
+        out.push({ time: t, waterIn: Number(item.waterIn) || 0, waterOut: Number(item.waterOut) || 0 });
+      });
+    }
+    out.sort((a,b) => a.time - b.time);
+    return out;
+  }
+
+  // Group readings into irrigation events. Flow counters are cumulative, so each
+  // reading is converted to its delta vs. the previous one (a drop ⇒ counter
+  // reset). A new event starts when water-in resumes after ≥ IRRIG_GAP_MIN with no
+  // water-in. Drainage trails the irrigation, so drain that arrives before the
+  // next event starts is attributed to the current event.
+  function segmentIrrigations(readings, gapMin){
+    const gapMs = (gapMin || IRRIG_GAP_MIN) * 60000;
+    let prevIn = null, prevOut = null, lastInTime = null, cur = null;
+    const events = [];
+    for (const r of readings){
+      let dIn = 0, dOut = 0;
+      if (prevIn !== null){
+        dIn  = r.waterIn  >= prevIn  ? r.waterIn  - prevIn  : r.waterIn;
+        dOut = r.waterOut >= prevOut ? r.waterOut - prevOut : r.waterOut;
+      }
+      prevIn = r.waterIn; prevOut = r.waterOut;
+
+      if (dIn > 0){
+        if (!cur || (lastInTime && (r.time - lastInTime) >= gapMs)){
+          cur = { startTime:r.time, endTime:r.time, pulsesIn:0, pulsesOut:0 };
+          events.push(cur);
+        }
+        cur.pulsesIn  += dIn;
+        cur.pulsesOut += dOut;
+        cur.endTime = r.time;
+        lastInTime = r.time;
+      } else if (cur && dOut > 0){
+        // drain tail of the current irrigation (drain ends after water-in stops)
+        cur.pulsesOut += dOut;
+        cur.endTime = r.time;
+      }
+    }
+    for (const e of events){
+      e.durationMin = Math.round((e.endTime - e.startTime) / 60000);
+      e.waterInL  = e.pulsesIn  * ML_PER_PULSE / 1000;
+      e.waterOutL = e.pulsesOut * ML_PER_PULSE / 1000;
+      e.drainPct  = e.pulsesIn > 0 ? (e.pulsesOut / e.pulsesIn) * 100 : null;
+    }
+    return events;
+  }
+
+  // Async-fill a station square's irrigation panel with today's irrigation events.
+  async function loadSquareIrrigation(deviceId, container){
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const to   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    try {
+      const readings = await fetchWaterReadings(deviceId, from, to);
+      const events = segmentIrrigations(readings, IRRIG_GAP_MIN);
+
+      if (!events.length){
+        container.innerHTML = `<div class="sq-irrig-head">💧 השקיות היום</div>
+          <div class="sq-irrig-empty">אין השקיות היום</div>`;
+        return;
+      }
+
+      let totIn = 0, totOut = 0;
+      events.forEach(e => { totIn += e.waterInL; totOut += e.waterOutL; });
+      const totDrain = totIn > 0 ? (totOut / totIn) * 100 : null;
+
+      const rows = events.slice().reverse().map(e => `
+        <div class="sq-irrig-row">
+          <span class="ir-time">${fmtHM(e.startTime)}–${fmtHM(e.endTime)}</span>
+          <span class="ir-in">💧 ${e.waterInL.toFixed(1)} ל׳</span>
+          <span class="ir-out">⬇️ ${e.waterOutL.toFixed(1)} ל׳</span>
+          <span class="ir-pct">${e.drainPct == null ? "—" : e.drainPct.toFixed(0) + "%"}</span>
+        </div>`).join("");
+
+      container.innerHTML = `
+        <div class="sq-irrig-head">💧 השקיות היום · ${events.length}</div>
+        <div class="sq-irrig-summary">השקיה ${totIn.toFixed(1)} ל׳ · נקז ${totOut.toFixed(1)} ל׳ · ${totDrain == null ? "—" : "נקז " + totDrain.toFixed(0) + "%"}</div>
+        <div class="sq-irrig-list">${rows}</div>`;
+    } catch(err){
+      console.error("square irrigation load", deviceId, err);
+      container.innerHTML = `<div class="sq-irrig-head">💧 השקיות היום</div>
+        <div class="sq-irrig-empty">שגיאה בטעינת השקיות</div>`;
+    }
+  }
+
   function renderSquaresView(){
     const grid = document.getElementById("squaresGrid");
     if (!grid) return;
