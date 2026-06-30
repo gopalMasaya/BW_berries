@@ -1584,12 +1584,15 @@
 
   // Group readings into irrigation events. Flow counters are cumulative, so each
   // reading is converted to its delta vs. the previous one (a drop ⇒ counter
-  // reset). A new event starts when water-in resumes after ≥ IRRIG_GAP_MIN with no
-  // water-in. Drainage trails the irrigation, so drain that arrives before the
-  // next event starts is attributed to the current event.
-  function segmentIrrigations(readings, gapMin){
+  // reset). A new event starts when the boundary channel resumes after ≥
+  // IRRIG_GAP_MIN with no flow on it. The other channel trailing within the event
+  // (e.g. drainage after water-in stops) is attributed to the current event.
+  // boundaryField: "in" (default, normal) or "out" (fallback when the inlet meter
+  // is stuck — detect cycles from the drainage meter instead).
+  function segmentIrrigations(readings, gapMin, boundaryField){
     const gapMs = (gapMin || IRRIG_GAP_MIN) * 60000;
-    let prevIn = null, prevOut = null, lastInTime = null, cur = null;
+    const byOut = boundaryField === "out";
+    let prevIn = null, prevOut = null, lastBoundaryTime = null, cur = null;
     const events = [];
     for (const r of readings){
       let dIn = 0, dOut = 0;
@@ -1599,17 +1602,21 @@
       }
       prevIn = r.waterIn; prevOut = r.waterOut;
 
-      if (dIn > 0){
-        if (!cur || (lastInTime && (r.time - lastInTime) >= gapMs)){
+      const dBoundary = byOut ? dOut : dIn;
+      const dTail     = byOut ? dIn  : dOut;
+
+      if (dBoundary > 0){
+        if (!cur || (lastBoundaryTime && (r.time - lastBoundaryTime) >= gapMs)){
           cur = { startTime:r.time, endTime:r.time, pulsesIn:0, pulsesOut:0 };
           events.push(cur);
         }
         cur.pulsesIn  += dIn;
         cur.pulsesOut += dOut;
         cur.endTime = r.time;
-        lastInTime = r.time;
-      } else if (cur && dOut > 0){
-        // drain tail of the current irrigation (drain ends after water-in stops)
+        lastBoundaryTime = r.time;
+      } else if (cur && dTail > 0){
+        // trailing flow on the other channel still belongs to the current event
+        cur.pulsesIn  += dIn;
         cur.pulsesOut += dOut;
         cur.endTime = r.time;
       }
