@@ -1661,26 +1661,66 @@
       const readings = await fetchWaterReadings(deviceId, from, to);
       const events = segmentIrrigations(readings, IRRIG_GAP_MIN);
 
-      // ── Irrigation panel ──
-      if (!events.length){
-        irrigEl.innerHTML = `<div class="sq-irrig-head">💧 השקיות · ${periodLabel}</div>
-          <div class="sq-irrig-empty">אין השקיות בטווח שנבחר</div>`;
-      } else {
-        let totIn = 0, totOut = 0;
-        events.forEach(e => { totIn += e.waterInL; totOut += e.waterOutL; });
-        const totDrain = totIn > 0 ? (totOut / totIn) * 100 : null;
-        const rows = events.slice().reverse().map(e => `
-          <div class="sq-irrig-row">
-            <span class="ir-time">${multiDay ? e.startTime.toLocaleDateString("he-IL") + " " : ""}${fmtHM(e.startTime)}–${fmtHM(e.endTime)}</span>
-            <span class="ir-in">💧 ${e.waterInL.toFixed(1)} ל׳</span>
-            <span class="ir-out">⬇️ ${e.waterOutL.toFixed(1)} ל׳</span>
-            <span class="ir-pct">${e.drainPct == null ? "—" : e.drainPct.toFixed(0) + "%"}</span>
-          </div>`).join("");
-        irrigEl.innerHTML = `
-          <div class="sq-irrig-head">💧 השקיות · ${periodLabel} · ${events.length}</div>
-          <div class="sq-irrig-summary">השקיה ${totIn.toFixed(1)} ל׳ · נקז ${totOut.toFixed(1)} ל׳ · ${totDrain == null ? "—" : "נקז " + totDrain.toFixed(0) + "%"}</div>
-          <div class="sq-irrig-list">${rows}</div>`;
+      // Detect a stuck inlet meter: water-in never changes across the range while
+      // drainage does → the irrigation flowmeter likely faulted (so no events).
+      let anyIn = false, anyOut = false, pIn = null, pOut = null;
+      for (const r of readings){
+        if (pIn !== null){
+          if ((r.waterIn  >= pIn  ? r.waterIn  - pIn  : r.waterIn)  > 0) anyIn = true;
+          if ((r.waterOut >= pOut ? r.waterOut - pOut : r.waterOut) > 0) anyOut = true;
+        }
+        pIn = r.waterIn; pOut = r.waterOut;
       }
+      const stuckInlet = !anyIn && anyOut;
+
+      // ── Irrigation panel: a toggle button (with summary) + an expandable table ──
+      let totIn = 0, totOut = 0;
+      events.forEach(e => { totIn += e.waterInL; totOut += e.waterOutL; });
+
+      const open = !!squaresIrrigExpanded[deviceId];
+      const btnLabel = events.length
+        ? `💧 השקיות · ${periodLabel} · ${events.length} · סה״כ ${totIn.toFixed(1)} ל׳`
+        : `💧 השקיות · ${periodLabel} · אין`;
+
+      const warnHtml = stuckInlet
+        ? `<div class="sq-irrig-warn">⚠️ מד כניסת המים (waterIn) לא מדווח שינוי בטווח — ייתכן תקוע. מוצג נקז בלבד.</div>`
+        : "";
+
+      let detailHtml;
+      if (events.length){
+        const bodyRows = events.map((e, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${multiDay ? e.startTime.toLocaleDateString("he-IL") + " " : ""}${fmtHM(e.startTime)}</td>
+            <td>${fmtHM(e.endTime)}</td>
+            <td>${e.durationMin}</td>
+            <td class="ir-in">${e.waterInL.toFixed(1)}</td>
+            <td class="ir-out">${e.waterOutL.toFixed(1)}</td>
+          </tr>`).join("");
+        detailHtml = `
+          <table class="sq-irrig-table">
+            <thead><tr><th>#</th><th>התחלה</th><th>סיום</th><th>משך (ד׳)</th><th>השקיה (ל׳)</th><th>נקז (ל׳)</th></tr></thead>
+            <tbody>${bodyRows}</tbody>
+            <tfoot><tr><td colspan="4">סה״כ</td><td class="ir-in">${totIn.toFixed(1)}</td><td class="ir-out">${totOut.toFixed(1)}</td></tr></tfoot>
+          </table>`;
+      } else {
+        detailHtml = `<div class="sq-irrig-empty">אין השקיות בטווח שנבחר</div>`;
+      }
+
+      irrigEl.innerHTML = `
+        <button class="sq-irrig-toggle" type="button">${btnLabel} <span class="caret">${open ? "▲" : "▼"}</span></button>
+        ${warnHtml}
+        <div class="sq-irrig-detail" style="display:${open ? "" : "none"};">${detailHtml}</div>`;
+
+      const irrigToggle = irrigEl.querySelector(".sq-irrig-toggle");
+      const irrigDetail = irrigEl.querySelector(".sq-irrig-detail");
+      irrigToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const opening = irrigDetail.style.display === "none";
+        squaresIrrigExpanded[deviceId] = opening;
+        irrigDetail.style.display = opening ? "" : "none";
+        irrigToggle.querySelector(".caret").textContent = opening ? "▲" : "▼";
+      });
 
       // ── Chart data: stored on the square; built lazily when the chart is open ──
       square._chartData = { readings, sensorKey, sensorLabel, multiDay };
