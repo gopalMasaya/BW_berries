@@ -1631,6 +1631,10 @@
   function renderSquaresView(){
     const grid = document.getElementById("squaresGrid");
     if (!grid) return;
+    initSquaresToolbar();
+
+    // Tear down existing charts before rebuilding the grid (avoid leaks).
+    Object.keys(squaresCharts).forEach(id => { squaresCharts[id].destroy(); delete squaresCharts[id]; });
     grid.innerHTML = "";
 
     STATIONS.forEach(st => {
