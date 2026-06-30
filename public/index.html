@@ -1677,10 +1677,8 @@
 
     try {
       const readings = await fetchWaterReadings(deviceId, from, to);
-      const events = segmentIrrigations(readings, IRRIG_GAP_MIN);
 
-      // Detect a stuck inlet meter: water-in never changes across the range while
-      // drainage does → the irrigation flowmeter likely faulted (so no events).
+      // Which flow channel is actually counting in this range?
       let anyIn = false, anyOut = false, pIn = null, pOut = null;
       for (const r of readings){
         if (pIn !== null){
@@ -1689,19 +1687,24 @@
         }
         pIn = r.waterIn; pOut = r.waterOut;
       }
+      // Normally segment by water-in (true irrigation meter). If the inlet meter is
+      // stuck (no in-deltas) but drainage is flowing, fall back to the drain meter
+      // so the day's watering cycles still show.
       const stuckInlet = !anyIn && anyOut;
+      const events = segmentIrrigations(readings, IRRIG_GAP_MIN, stuckInlet ? "out" : "in");
 
       // ── Irrigation panel: a toggle button (with summary) + an expandable table ──
       let totIn = 0, totOut = 0;
       events.forEach(e => { totIn += e.waterInL; totOut += e.waterOutL; });
+      const totMain = stuckInlet ? totOut : totIn; // headline volume
 
       const open = !!squaresIrrigExpanded[deviceId];
       const btnLabel = events.length
-        ? `💧 השקיות · ${periodLabel} · ${events.length} · סה״כ ${totIn.toFixed(1)} ל׳`
+        ? `💧 השקיות · ${periodLabel} · ${events.length} · סה״כ ${totMain.toFixed(1)} ל׳${stuckInlet ? " (נקז)" : ""}`
         : `💧 השקיות · ${periodLabel} · אין`;
 
       const warnHtml = stuckInlet
-        ? `<div class="sq-irrig-warn">⚠️ מד כניסת המים (waterIn) לא מדווח שינוי בטווח — ייתכן תקוע. מוצג נקז בלבד.</div>`
+        ? `<div class="sq-irrig-warn">⚠️ מד כניסת המים (waterIn) תקוע בטווח — המחזורים זוהו לפי הנקז (waterOut). כמות ההשקיה אינה נמדדת.</div>`
         : "";
 
       let detailHtml;
