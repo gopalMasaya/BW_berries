@@ -1593,9 +1593,11 @@
       sensor.push(Number.isFinite(sv) ? sv : null);
     }
 
+    const box = document.createElement("div");
+    box.className = "sq-chart-box";
     const canvas = document.createElement("canvas");
-    canvas.className = "sq-chart-canvas";
-    chartEl.appendChild(canvas);
+    box.appendChild(canvas);
+    chartEl.appendChild(box);
 
     const gridCol = "rgba(255,255,255,0.08)";
     const tickCol = "#a9b7d1";
