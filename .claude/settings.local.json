@@ -139,7 +139,9 @@
       "Bash(ls node_modules/socket.io-client)",
       "Bash(grep -q \"commUnit\" dryrun.log)",
       "Bash(break)",
-      "Bash(taskkill //F //IM node.exe)"
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(ls *firebase-adminsdk*.json)",
+      "Bash(ls functions/node_modules/firebase-admin)"
     ]
   },
   "hooks": {
