@@ -1424,12 +1424,11 @@
       .sort();
   }
 
-  // A finite value that almost certainly means a dead/disconnected sensor: 0 for
-  // humidity / EC / pH (those never legitimately read exactly 0 when working).
-  function isSuspectValue(k, v){
-    const l = k.toLowerCase();
-    return v === 0 && (l.includes("humidity") || l.includes("ec") || l.includes("ph"));
-  }
+  // Soil-fork probe fields (soil1_*/soil2_* and npk_*). These read only when the
+  // soil is wet (they derive their result from the water moisture), so a 0 value
+  // or a gap between readings is NORMAL — never flag them as faulty; just show the
+  // last measured value.
+  function isForkField(k){ return /^soil/.test(k) || /^npk/.test(k); }
 
   // Sensor lines selectable in the chart dropdown (preferred order, second
   // channels included). Only those present in data are meaningful.
