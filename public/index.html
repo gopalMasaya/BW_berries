@@ -1674,18 +1674,14 @@
       const item = latest ? latest.item : null;
 
       const metricsHtml = item
-        ? SQUARE_FIELDS
-            .filter(f => {
-              const v = parseFloat(item[f.key]);
-              return Number.isFinite(v);
-            })
-            .map(f => {
-              const v = parseFloat(item[f.key]);
+        ? squareMetricKeys(item)
+            .map(k => {
+              const v = parseFloat(item[k]);
               return `
                 <div class="sq-metric">
-                  <div class="m-k">${f.label}</div>
-                  <div class="m-v">${v.toFixed(decimalsFor(f.key))}</div>
-                  <div class="m-u">${unitFor(f.key)}</div>
+                  <div class="m-k">${labelFor(k)}</div>
+                  <div class="m-v">${v.toFixed(decimalsFor(k))}</div>
+                  <div class="m-u">${unitFor(k)}</div>
                 </div>`;
             }).join("")
         : "";
