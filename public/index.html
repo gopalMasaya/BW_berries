@@ -1673,14 +1673,17 @@
         ${metricsHtml
           ? `<div class="sq-metrics">${metricsHtml}</div>`
           : `<div class="sq-empty">אין נתוני חיישנים טעונים עדיין.</div>`}
-        <div class="sq-irrig"><div class="sq-irrig-head">💧 השקיות היום</div><div class="sq-irrig-empty">טוען…</div></div>
+        <div class="sq-irrig"><div class="sq-irrig-head">💧 השקיות</div><div class="sq-irrig-empty">טוען…</div></div>
+        <div class="sq-chart"><div class="sq-chart-empty">טוען גרף…</div></div>
       `;
 
-      square.addEventListener("click", () => openDrawer(st.deviceId));
+      // The header/metrics open the drawer; the chart area is interactive, so
+      // clicks there shouldn't trigger navigation.
+      square.querySelector(".sq-head").addEventListener("click", () => openDrawer(st.deviceId));
       grid.appendChild(square);
 
-      // Today's irrigation events load asynchronously per station.
-      loadSquareIrrigation(st.deviceId, square.querySelector(".sq-irrig"));
+      // Irrigation events + chart load asynchronously per station for the range.
+      loadSquareData(st.deviceId, square);
     });
   }
 
