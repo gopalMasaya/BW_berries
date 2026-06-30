@@ -3608,12 +3608,13 @@
     headerHtml += "<th>תאריך</th>";
     headerHtml += "<th>נקודת דגימה</th>";
     headerHtml += "<th>שעה</th>";
+    // Water columns sit immediately after the time column.
+    if (hasWaterIn)  headerHtml += "<th>מים נכנסים מצטבר<br>(L)</th>";
+    if (hasWaterOut) headerHtml += "<th>מים יוצאים מצטבר<br>(L)</th>";
     fields.forEach(f => {
       const unit = (FIELD_CALIBRATION[f] && FIELD_CALIBRATION[f].unit) || unitFor(f);
       headerHtml += "<th>" + fmtFieldName(f) + (unit ? "<br>(" + unit + ")" : "") + "</th>";
     });
-    if (hasWaterIn)  headerHtml += "<th>מים נכנסים מצטבר<br>(L)</th>";
-    if (hasWaterOut) headerHtml += "<th>מים יוצאים מצטבר<br>(L)</th>";
     headerHtml += "</tr>";
     head.innerHTML = headerHtml;
 
