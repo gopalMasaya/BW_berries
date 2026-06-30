@@ -1615,6 +1615,7 @@
   // ── Squares view: date range + sensor-line state ──
   const squaresCharts = {};            // deviceId → Chart instance (destroyed on re-render)
   const squaresExpanded = {};          // deviceId → bool: is the chart panel open
+  const squaresIrrigExpanded = {};     // deviceId → bool: is the irrigation list open
   let squaresInited = false;           // toolbar defaults populated once
 
   // Read the toolbar date range; defaults to today when empty.
