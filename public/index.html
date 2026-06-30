@@ -1529,8 +1529,8 @@
     squaresInited = true;
     const sel = document.getElementById("sqSensor");
     if (sel){
-      sel.innerHTML = SQUARE_FIELDS.map(f =>
-        `<option value="${f.key}">${f.label}</option>`).join("");
+      sel.innerHTML = SENSOR_FIELDS.map(k =>
+        `<option value="${k}">${labelFor(k)}</option>`).join("");
       sel.value = "soil1_humidity";
     }
     getSquaresRange(); // sets default dates
