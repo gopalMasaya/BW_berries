@@ -1483,42 +1483,149 @@
     return events;
   }
 
-  // Async-fill a station square's irrigation panel with today's irrigation events.
-  async function loadSquareIrrigation(deviceId, container){
-    const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    const to   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  // ── Squares view: date range + sensor-line state ──
+  const squaresCharts = {};            // deviceId → Chart instance (destroyed on re-render)
+  let squaresInited = false;           // toolbar defaults populated once
+
+  // Read the toolbar date range; defaults to today when empty.
+  function getSquaresRange(){
+    const fromEl = document.getElementById("sqFrom");
+    const toEl   = document.getElementById("sqTo");
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (fromEl && !fromEl.value) fromEl.value = todayStr;
+    if (toEl && !toEl.value) toEl.value = todayStr;
+    const from = new Date((fromEl ? fromEl.value : todayStr) + "T00:00:00");
+    const to   = new Date((toEl ? toEl.value : todayStr) + "T23:59:59");
+    return { from, to, multiDay: (to - from) > 36 * 3600 * 1000 };
+  }
+
+  // Populate the sensor-line dropdown (reuses the metric list) and wire controls — once.
+  function initSquaresToolbar(){
+    if (squaresInited) return;
+    squaresInited = true;
+    const sel = document.getElementById("sqSensor");
+    if (sel){
+      sel.innerHTML = SQUARE_FIELDS.map(f =>
+        `<option value="${f.key}">${f.label}</option>`).join("");
+      sel.value = "soil1_humidity";
+    }
+    getSquaresRange(); // sets default dates
+    document.getElementById("sqReload")?.addEventListener("click", renderSquaresView);
+    document.getElementById("sqSensor")?.addEventListener("change", renderSquaresView);
+  }
+
+  // Async-fill one station square's irrigation panel + sensor/irrigation chart for
+  // the selected date range.
+  async function loadSquareData(deviceId, square){
+    const irrigEl = square.querySelector(".sq-irrig");
+    const chartEl = square.querySelector(".sq-chart");
+    const { from, to, multiDay } = getSquaresRange();
+    const sensorKey = document.getElementById("sqSensor")?.value || "soil1_humidity";
+    const sensorLabel = (SQUARE_FIELDS.find(f => f.key === sensorKey) || {}).label || sensorKey;
+    const periodLabel = multiDay
+      ? `${from.toLocaleDateString("he-IL")}–${to.toLocaleDateString("he-IL")}`
+      : from.toLocaleDateString("he-IL");
+
     try {
       const readings = await fetchWaterReadings(deviceId, from, to);
       const events = segmentIrrigations(readings, IRRIG_GAP_MIN);
 
+      // ── Irrigation panel ──
       if (!events.length){
-        container.innerHTML = `<div class="sq-irrig-head">💧 השקיות היום</div>
-          <div class="sq-irrig-empty">אין השקיות היום</div>`;
-        return;
+        irrigEl.innerHTML = `<div class="sq-irrig-head">💧 השקיות · ${periodLabel}</div>
+          <div class="sq-irrig-empty">אין השקיות בטווח שנבחר</div>`;
+      } else {
+        let totIn = 0, totOut = 0;
+        events.forEach(e => { totIn += e.waterInL; totOut += e.waterOutL; });
+        const totDrain = totIn > 0 ? (totOut / totIn) * 100 : null;
+        const rows = events.slice().reverse().map(e => `
+          <div class="sq-irrig-row">
+            <span class="ir-time">${multiDay ? e.startTime.toLocaleDateString("he-IL") + " " : ""}${fmtHM(e.startTime)}–${fmtHM(e.endTime)}</span>
+            <span class="ir-in">💧 ${e.waterInL.toFixed(1)} ל׳</span>
+            <span class="ir-out">⬇️ ${e.waterOutL.toFixed(1)} ל׳</span>
+            <span class="ir-pct">${e.drainPct == null ? "—" : e.drainPct.toFixed(0) + "%"}</span>
+          </div>`).join("");
+        irrigEl.innerHTML = `
+          <div class="sq-irrig-head">💧 השקיות · ${periodLabel} · ${events.length}</div>
+          <div class="sq-irrig-summary">השקיה ${totIn.toFixed(1)} ל׳ · נקז ${totOut.toFixed(1)} ל׳ · ${totDrain == null ? "—" : "נקז " + totDrain.toFixed(0) + "%"}</div>
+          <div class="sq-irrig-list">${rows}</div>`;
       }
 
-      let totIn = 0, totOut = 0;
-      events.forEach(e => { totIn += e.waterInL; totOut += e.waterOutL; });
-      const totDrain = totIn > 0 ? (totOut / totIn) * 100 : null;
-
-      const rows = events.slice().reverse().map(e => `
-        <div class="sq-irrig-row">
-          <span class="ir-time">${fmtHM(e.startTime)}–${fmtHM(e.endTime)}</span>
-          <span class="ir-in">💧 ${e.waterInL.toFixed(1)} ל׳</span>
-          <span class="ir-out">⬇️ ${e.waterOutL.toFixed(1)} ל׳</span>
-          <span class="ir-pct">${e.drainPct == null ? "—" : e.drainPct.toFixed(0) + "%"}</span>
-        </div>`).join("");
-
-      container.innerHTML = `
-        <div class="sq-irrig-head">💧 השקיות היום · ${events.length}</div>
-        <div class="sq-irrig-summary">השקיה ${totIn.toFixed(1)} ל׳ · נקז ${totOut.toFixed(1)} ל׳ · ${totDrain == null ? "—" : "נקז " + totDrain.toFixed(0) + "%"}</div>
-        <div class="sq-irrig-list">${rows}</div>`;
+      // ── Chart: irrigation bars (per-reading L) + selected sensor line ──
+      buildSquareChart(deviceId, chartEl, readings, sensorKey, sensorLabel, multiDay);
     } catch(err){
-      console.error("square irrigation load", deviceId, err);
-      container.innerHTML = `<div class="sq-irrig-head">💧 השקיות היום</div>
-        <div class="sq-irrig-empty">שגיאה בטעינת השקיות</div>`;
+      console.error("square data load", deviceId, err);
+      irrigEl.innerHTML = `<div class="sq-irrig-head">💧 השקיות</div>
+        <div class="sq-irrig-empty">שגיאה בטעינת נתונים</div>`;
+      chartEl.innerHTML = `<div class="sq-chart-empty">—</div>`;
     }
+  }
+
+  // Build a per-square chart: per-reading irrigation/drain (L) bars on the left
+  // axis, the chosen sensor as a line on the right axis, over the readings range.
+  function buildSquareChart(deviceId, chartEl, readings, sensorKey, sensorLabel, multiDay){
+    if (squaresCharts[deviceId]){ squaresCharts[deviceId].destroy(); delete squaresCharts[deviceId]; }
+    chartEl.innerHTML = "";
+
+    if (!readings.length || typeof Chart === "undefined"){
+      chartEl.innerHTML = `<div class="sq-chart-empty">אין נתונים לגרף בטווח שנבחר</div>`;
+      return;
+    }
+
+    // Per-reading water deltas → litres (cumulative counters; a drop = reset).
+    let prevIn = null, prevOut = null;
+    const labels = [], inL = [], outL = [], sensor = [];
+    let anySensor = false;
+    for (const r of readings){
+      let dIn = 0, dOut = 0;
+      if (prevIn !== null){
+        dIn  = r.waterIn  >= prevIn  ? r.waterIn  - prevIn  : r.waterIn;
+        dOut = r.waterOut >= prevOut ? r.waterOut - prevOut : r.waterOut;
+      }
+      prevIn = r.waterIn; prevOut = r.waterOut;
+      labels.push(multiDay
+        ? r.time.toLocaleDateString("he-IL", { day:"2-digit", month:"2-digit" }) + " " + fmtHM(r.time)
+        : fmtHM(r.time));
+      inL.push(dIn  * ML_PER_PULSE / 1000);
+      outL.push(dOut * ML_PER_PULSE / 1000);
+      const sv = parseFloat(r.item ? r.item[sensorKey] : NaN);
+      if (Number.isFinite(sv)) anySensor = true;
+      sensor.push(Number.isFinite(sv) ? sv : null);
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.className = "sq-chart-canvas";
+    chartEl.appendChild(canvas);
+
+    const gridCol = "rgba(255,255,255,0.08)";
+    const tickCol = "#a9b7d1";
+    const datasets = [
+      { type:"bar", label:"השקיה (ל׳)", data:inL, yAxisID:"yWater",
+        backgroundColor:"rgba(74,163,255,0.7)", borderWidth:0, order:2 },
+      { type:"bar", label:"נקז (ל׳)", data:outL, yAxisID:"yWater",
+        backgroundColor:"rgba(255,176,32,0.7)", borderWidth:0, order:2 }
+    ];
+    if (anySensor){
+      datasets.push({ type:"line", label:sensorLabel, data:sensor, yAxisID:"ySensor",
+        borderColor:"#2bd576", backgroundColor:"#2bd576", borderWidth:2,
+        pointRadius:0, tension:0.3, spanGaps:true, order:1 });
+    }
+
+    squaresCharts[deviceId] = new Chart(canvas.getContext("2d"), {
+      data: { labels, datasets },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        interaction:{ mode:"index", intersect:false },
+        plugins:{ legend:{ labels:{ color:tickCol, boxWidth:12, font:{ size:11 } } } },
+        scales:{
+          x:{ ticks:{ color:tickCol, maxTicksLimit:8, font:{ size:10 } }, grid:{ color:gridCol } },
+          yWater:{ position:"left", beginAtZero:true, title:{ display:true, text:"ל׳", color:tickCol },
+                   ticks:{ color:tickCol, font:{ size:10 } }, grid:{ color:gridCol } },
+          ySensor:{ position:"right", display:anySensor, title:{ display:anySensor, text:sensorLabel, color:tickCol },
+                    ticks:{ color:tickCol, font:{ size:10 } }, grid:{ drawOnChartArea:false } }
+        }
+      }
+    });
   }
 
   function renderSquaresView(){
