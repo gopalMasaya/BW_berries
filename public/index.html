@@ -1545,7 +1545,7 @@
     const chartEl = square.querySelector(".sq-chart");
     const { from, to, multiDay } = getSquaresRange();
     const sensorKey = document.getElementById("sqSensor")?.value || "soil1_humidity";
-    const sensorLabel = (SQUARE_FIELDS.find(f => f.key === sensorKey) || {}).label || sensorKey;
+    const sensorLabel = labelFor(sensorKey);
     const periodLabel = multiDay
       ? `${from.toLocaleDateString("he-IL")}–${to.toLocaleDateString("he-IL")}`
       : from.toLocaleDateString("he-IL");
