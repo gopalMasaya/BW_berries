@@ -1435,7 +1435,7 @@
         const item = normalizeWaterFields(val[tsKey]);
         const t = readingMoment(tsKey, item);
         if (!t || isNaN(t.getTime()) || t < fromDate || t > toDate) return;
-        out.push({ time: t, waterIn: Number(item.waterIn) || 0, waterOut: Number(item.waterOut) || 0 });
+        out.push({ time: t, waterIn: Number(item.waterIn) || 0, waterOut: Number(item.waterOut) || 0, item });
       });
     }
     out.sort((a,b) => a.time - b.time);
