@@ -1756,20 +1756,6 @@
       const latest = latestByDevice[st.deviceId];
       const mins = latest ? ageMinutes(latest.tsISO) : Infinity;
       const s = statusFromAge(mins);
-      const item = latest ? latest.item : null;
-
-      const metricsHtml = item
-        ? squareMetricKeys(item)
-            .map(k => {
-              const v = parseFloat(item[k]);
-              return `
-                <div class="sq-metric">
-                  <div class="m-k">${labelFor(k)}</div>
-                  <div class="m-v">${v.toFixed(decimalsFor(k))}</div>
-                  <div class="m-u">${unitFor(k)}</div>
-                </div>`;
-            }).join("")
-        : "";
 
       const square = document.createElement("div");
       square.className = "station-square";
@@ -1781,13 +1767,14 @@
           </div>
           <div class="pill"><span class="dot ${s.cls}"></span>${s.label}</div>
         </div>
-        ${metricsHtml
-          ? `<div class="sq-metrics">${metricsHtml}</div>`
-          : `<div class="sq-empty">אין נתוני חיישנים טעונים עדיין.</div>`}
+        <div class="sq-metrics"><div class="sq-empty">טוען…</div></div>
         <div class="sq-irrig"><div class="sq-irrig-head">💧 השקיות</div><div class="sq-irrig-empty">טוען…</div></div>
         <button class="sq-chart-toggle" type="button">📈 הצג גרף</button>
         <div class="sq-chart" style="display:none;"></div>
       `;
+
+      // Metric tiles (incl. ⚠️ flags for sensors that stopped reporting) load async.
+      renderSquareMetrics(st.deviceId, square.querySelector(".sq-metrics"));
 
       // Clicking the card opens the drawer, except over the chart or its toggle.
       square.addEventListener("click", (e) => {
