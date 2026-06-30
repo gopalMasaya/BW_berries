@@ -1695,13 +1695,18 @@
         openDrawer(st.deviceId);
       });
 
-      // The chart is hidden by default and built lazily on first expand so it
-      // never takes up screen space (or render cost) until requested.
+      // The chart is built lazily on expand so it never takes up screen space (or
+      // render cost) until requested. Expanded state persists across re-renders.
       const toggleBtn = square.querySelector(".sq-chart-toggle");
       const chartBox = square.querySelector(".sq-chart");
+      if (squaresExpanded[st.deviceId]){
+        chartBox.style.display = "";
+        toggleBtn.textContent = "📉 הסתר גרף";
+      }
       toggleBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         const opening = chartBox.style.display === "none";
+        squaresExpanded[st.deviceId] = opening;
         if (opening){
           chartBox.style.display = "";
           toggleBtn.textContent = "📉 הסתר גרף";
