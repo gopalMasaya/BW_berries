@@ -1517,10 +1517,14 @@
         ${metricsHtml
           ? `<div class="sq-metrics">${metricsHtml}</div>`
           : `<div class="sq-empty">אין נתוני חיישנים טעונים עדיין.</div>`}
+        <div class="sq-irrig"><div class="sq-irrig-head">💧 השקיות היום</div><div class="sq-irrig-empty">טוען…</div></div>
       `;
 
       square.addEventListener("click", () => openDrawer(st.deviceId));
       grid.appendChild(square);
+
+      // Today's irrigation events load asynchronously per station.
+      loadSquareIrrigation(st.deviceId, square.querySelector(".sq-irrig"));
     });
   }
 
