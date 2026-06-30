@@ -1685,14 +1685,35 @@
         <div class="sq-chart" style="display:none;"></div>
       `;
 
-      // Clicking the card opens the drawer, except over the interactive chart.
+      // Clicking the card opens the drawer, except over the chart or its toggle.
       square.addEventListener("click", (e) => {
-        if (e.target.closest(".sq-chart")) return;
+        if (e.target.closest(".sq-chart") || e.target.closest(".sq-chart-toggle")) return;
         openDrawer(st.deviceId);
       });
+
+      // The chart is hidden by default and built lazily on first expand so it
+      // never takes up screen space (or render cost) until requested.
+      const toggleBtn = square.querySelector(".sq-chart-toggle");
+      const chartBox = square.querySelector(".sq-chart");
+      toggleBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const opening = chartBox.style.display === "none";
+        if (opening){
+          chartBox.style.display = "";
+          toggleBtn.textContent = "📉 הסתר גרף";
+          const d = square._chartData;
+          if (d) buildSquareChart(st.deviceId, chartBox, d.readings, d.sensorKey, d.sensorLabel, d.multiDay);
+          else chartBox.innerHTML = `<div class="sq-chart-empty">טוען…</div>`;
+        } else {
+          chartBox.style.display = "none";
+          toggleBtn.textContent = "📈 הצג גרף";
+          if (squaresCharts[st.deviceId]){ squaresCharts[st.deviceId].destroy(); delete squaresCharts[st.deviceId]; }
+        }
+      });
+
       grid.appendChild(square);
 
-      // Irrigation events + chart load asynchronously per station for the range.
+      // Irrigation events + chart data load asynchronously per station for the range.
       loadSquareData(st.deviceId, square);
     });
   }
