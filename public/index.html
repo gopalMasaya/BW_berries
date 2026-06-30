@@ -2759,16 +2759,18 @@
     const mapEl = document.getElementById("map");
     const chartEl = document.getElementById("chartView");
     const graphEl = document.getElementById("graphView");
+    const squaresEl = document.getElementById("squaresView");
     const drawerEl = document.getElementById("drawer");
     const leftPanel = document.getElementById("leftPanel");
 
     mapEl.classList.add("hidden");
     chartEl.classList.remove("active");
     graphEl.classList.remove("active");
+    squaresEl.classList.remove("active");
 
-    // Chart view is full-width with its own top toolbar, so the main left
-    // sidebar is hidden to give the table the entire width.
-    leftPanel.style.display = (view === "chart") ? "none" : "";
+    // Chart and Squares views are full-width with their own top toolbar, so the
+    // main left sidebar is hidden to give them the entire width.
+    leftPanel.style.display = (view === "chart" || view === "squares") ? "none" : "";
 
     if (view === "gis") {
       mapEl.classList.remove("hidden");
@@ -2785,6 +2787,11 @@
       drawerEl.style.display = "none";
       closeDrawer();
       loadGraphData();
+    } else if (view === "squares") {
+      squaresEl.classList.add("active");
+      // The drawer is shared with GIS — keep it available so a tile can open it.
+      drawerEl.style.display = "";
+      renderSquaresView();
     }
   }
 
