@@ -283,18 +283,29 @@
       display:flex; flex-direction:column; gap:8px;
     }
     .sq-irrig-head{ font-size:14px; font-weight:bold; }
-    .sq-irrig-summary{ font-size:13px; color:var(--muted); }
-    .sq-irrig-empty{ font-size:13px; color:var(--muted); }
-    .sq-irrig-list{ display:flex; flex-direction:column; gap:6px; }
-    .sq-irrig-row{
-      display:grid; grid-template-columns:auto 1fr 1fr auto; gap:8px; align-items:center;
-      font-size:13px; padding:6px 8px; border-radius:10px;
-      background:rgba(255,255,255,0.04); border:1px solid var(--border);
+    .sq-irrig-empty{ font-size:13px; color:var(--muted); padding:6px 2px; }
+    .sq-irrig-toggle{
+      width:100%; text-align:right; padding:9px 12px; border-radius:10px;
+      border:1px solid var(--border); background:rgba(74,163,255,0.10);
+      color:var(--text); cursor:pointer; font-size:14px; font-weight:700;
+      display:flex; justify-content:space-between; align-items:center; gap:8px;
     }
-    .sq-irrig-row .ir-time{ color:var(--muted); font-variant-numeric:tabular-nums; }
-    .sq-irrig-row .ir-in{ color:var(--accent); font-weight:600; }
-    .sq-irrig-row .ir-out{ color:var(--warn); font-weight:600; }
-    .sq-irrig-row .ir-pct{ color:var(--text); font-weight:bold; white-space:nowrap; }
+    .sq-irrig-toggle:hover{ background:rgba(74,163,255,0.18); }
+    .sq-irrig-toggle .caret{ color:var(--muted); font-size:12px; }
+    .sq-irrig-warn{
+      font-size:12.5px; color:var(--warn); padding:6px 10px; border-radius:8px;
+      background:rgba(255,176,32,0.10); border:1px solid rgba(255,176,32,0.5);
+    }
+    .sq-irrig-table{ width:100%; border-collapse:collapse; font-size:13px; }
+    .sq-irrig-table th, .sq-irrig-table td{
+      padding:6px 8px; text-align:center; border-bottom:1px solid var(--border);
+      font-variant-numeric:tabular-nums;
+    }
+    .sq-irrig-table thead th{ color:var(--muted); font-weight:700; font-size:12px; }
+    .sq-irrig-table tbody tr:hover td{ background:rgba(255,255,255,0.04); }
+    .sq-irrig-table tfoot td{ font-weight:800; border-top:2px solid var(--border); border-bottom:none; }
+    .sq-irrig-table .ir-in{ color:var(--accent); font-weight:700; }
+    .sq-irrig-table .ir-out{ color:var(--warn); font-weight:700; }
     .station-square .sq-chart{
       border-top:1px solid var(--border); padding-top:12px; margin-top:2px;
     }
