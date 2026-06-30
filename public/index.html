@@ -273,6 +273,10 @@
     .sq-metric.warn .m-k{ color:var(--warn); }
     .sq-metric.warn .m-v{ color:var(--warn); }
     .sq-metric.warn .m-u{ color:rgba(255,176,32,0.85); }
+    /* Fork (soil-probe) reading that's simply between wet measurements — neutral,
+       not a fault. */
+    .sq-metric.stale .m-v{ color:var(--muted); }
+    .sq-metric.stale .m-u{ color:rgba(74,163,255,0.85); }
     .station-square .sq-empty{ color:var(--muted); font-size:14px; padding:8px 0; }
     .station-square .sq-irrig{
       border-top:1px solid var(--border); padding-top:12px;
