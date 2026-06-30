@@ -288,8 +288,14 @@
     .station-square .sq-chart{
       border-top:1px solid var(--border); padding-top:12px; margin-top:2px;
     }
-    .sq-chart-box{ position:relative; height:180px; width:100%; }
+    .sq-chart-box{ position:relative; height:280px; width:100%; }
     .sq-chart-empty{ color:var(--muted); font-size:13px; padding:8px 0; }
+    .sq-chart-toggle{
+      align-self:flex-start; padding:8px 16px; border-radius:10px;
+      border:1px solid var(--border); background:rgba(255,255,255,0.06);
+      color:var(--text); cursor:pointer; font-size:13px; font-weight:600;
+    }
+    .sq-chart-toggle:hover{ background:rgba(255,255,255,0.12); }
     /* Toolbar date/sensor controls */
     #squaresToolbar .sq-ctrl{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
     #squaresToolbar .sq-ctrl label{ margin:0; font-size:13px; }
