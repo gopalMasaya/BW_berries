@@ -3670,15 +3670,6 @@
         bodyHtml += '<td class="' + cls + '">' + val + "</td>";
       });
 
-      if (hasWaterIn) {
-        const c = row.__cumWaterInL;
-        bodyHtml += "<td>" + (Number.isFinite(c) ? c.toFixed(2) : "0.00") + "</td>";
-      }
-      if (hasWaterOut) {
-        const c = row.__cumWaterOutL;
-        bodyHtml += "<td>" + (Number.isFinite(c) ? c.toFixed(2) : "0.00") + "</td>";
-      }
-
       bodyHtml += "</tr>";
     });
 
