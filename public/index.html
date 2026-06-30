@@ -804,7 +804,17 @@
         <button class="viewBtn" data-view="graphs">Graphs</button>
         <button class="viewBtn active" data-view="squares">ריבועים</button>
       </div>
-      <div class="sq-title">תצוגת ריבועים — מבט על על כל התחנות</div>
+      <div class="sq-ctrl">
+        <label>מ־</label>
+        <input type="date" id="sqFrom" />
+        <label>עד</label>
+        <input type="date" id="sqTo" />
+      </div>
+      <div class="sq-ctrl">
+        <label>חיישן בגרף</label>
+        <select id="sqSensor"></select>
+      </div>
+      <button class="sq-btn" id="sqReload">הצג</button>
     </div>
     <div id="squaresGrid"></div>
   </div>
