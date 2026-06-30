@@ -270,6 +270,23 @@
     .sq-metric .m-v{ font-size:22px; font-weight:bold; color:var(--accent); line-height:1.1; }
     .sq-metric .m-u{ font-size:10px; color:var(--muted); }
     .station-square .sq-empty{ color:var(--muted); font-size:14px; padding:8px 0; }
+    .station-square .sq-irrig{
+      border-top:1px solid var(--border); padding-top:12px;
+      display:flex; flex-direction:column; gap:8px;
+    }
+    .sq-irrig-head{ font-size:14px; font-weight:bold; }
+    .sq-irrig-summary{ font-size:13px; color:var(--muted); }
+    .sq-irrig-empty{ font-size:13px; color:var(--muted); }
+    .sq-irrig-list{ display:flex; flex-direction:column; gap:6px; }
+    .sq-irrig-row{
+      display:grid; grid-template-columns:auto 1fr 1fr auto; gap:8px; align-items:center;
+      font-size:13px; padding:6px 8px; border-radius:10px;
+      background:rgba(255,255,255,0.04); border:1px solid var(--border);
+    }
+    .sq-irrig-row .ir-time{ color:var(--muted); font-variant-numeric:tabular-nums; }
+    .sq-irrig-row .ir-in{ color:var(--accent); font-weight:600; }
+    .sq-irrig-row .ir-out{ color:var(--warn); font-weight:600; }
+    .sq-irrig-row .ir-pct{ color:var(--text); font-weight:bold; }
     @media (max-width:520px){
       #squaresGrid{ grid-template-columns:1fr; }
     }
