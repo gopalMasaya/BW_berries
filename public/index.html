@@ -237,9 +237,7 @@
     #squaresToolbar .sq-title{ color:var(--muted); font-size:15px; font-weight:600; }
     #squaresGrid{
       flex:1; overflow:auto; padding:18px; direction:rtl;
-      display:grid; gap:18px;
-      grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));
-      align-content:start;
+      display:flex; flex-direction:column; gap:18px;
     }
     .station-square{
       cursor:pointer; border-radius:18px; border:1px solid var(--border);
