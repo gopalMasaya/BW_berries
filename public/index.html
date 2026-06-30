@@ -1838,9 +1838,10 @@
       // Metric tiles (incl. ⚠️ flags for sensors that stopped reporting) load async.
       renderSquareMetrics(st.deviceId, square.querySelector(".sq-metrics"));
 
-      // Clicking the card opens the drawer, except over the chart or its toggle.
+      // Clicking the card opens the drawer, except over interactive areas
+      // (the chart, the chart toggle, or the irrigation panel/list).
       square.addEventListener("click", (e) => {
-        if (e.target.closest(".sq-chart") || e.target.closest(".sq-chart-toggle")) return;
+        if (e.target.closest(".sq-chart") || e.target.closest(".sq-chart-toggle") || e.target.closest(".sq-irrig")) return;
         openDrawer(st.deviceId);
       });
 
