@@ -1289,6 +1289,7 @@
       setStatus("Updated " + updatedCount + "/" + targets.length + " stations\n" + now.toLocaleString() + "\nNext refresh in 10 min", true);
 
       if (drawerDeviceId) renderDrawer(drawerDeviceId);
+      if (currentView === "squares") renderSquaresView();
 
     } catch(err){
       console.error(err);
