@@ -141,7 +141,8 @@
       "Bash(break)",
       "Bash(taskkill //F //IM node.exe)",
       "Bash(ls *firebase-adminsdk*.json)",
-      "Bash(ls functions/node_modules/firebase-admin)"
+      "Bash(ls functions/node_modules/firebase-admin)",
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Admin-Documents-js-coding-plantsTracker\\\\55680828-f7c8-4b40-8321-2d19b270defd\\\\scratchpad\\\\fields.js\")"
     ]
   },
   "hooks": {
