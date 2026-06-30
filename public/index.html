@@ -1693,6 +1693,13 @@
       const stuckInlet = !anyIn && anyOut;
       const events = segmentIrrigations(readings, IRRIG_GAP_MIN, stuckInlet ? "out" : "in");
 
+      // A stuck inlet flowmeter means the sensor is clogged → flag the card so it's
+      // visible at a glance (needs cleaning).
+      const flagsEl = square.querySelector(".sq-flags");
+      if (flagsEl) flagsEl.innerHTML = stuckInlet
+        ? `<span class="sq-badge-clog" title="מד הספיקה של ההשקיה לא סופר — כנראה סתום. יש לנקות את החיישן.">🚱 מד מים סתום — לניקוי</span>`
+        : "";
+
       // ── Irrigation panel: a toggle button (with summary) + an expandable table ──
       let totIn = 0, totOut = 0;
       events.forEach(e => { totIn += e.waterInL; totOut += e.waterOutL; });
