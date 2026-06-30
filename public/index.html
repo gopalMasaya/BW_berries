@@ -1297,6 +1297,7 @@
       refreshStationsSource();
       renderStationList();
       if (drawerDeviceId) renderDrawer(drawerDeviceId);
+      if (currentView === "squares") renderSquaresView();
       setStatus("Fetch failed: " + err.message, false);
     }
   }
