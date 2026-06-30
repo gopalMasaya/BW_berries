@@ -1390,16 +1390,38 @@
     });
   }
 
-  // Curated metrics shown inside each station square (only those present in the
-  // latest reading are rendered). Field keys match the Firebase sensor schema.
-  const SQUARE_FIELDS = [
-    { key:"ec",             label:"EC" },
-    { key:"ph1",            label:"pH" },
-    { key:"soil1_humidity", label:"לחות קרקע" },
-    { key:"soil1_temp",     label:"טמפ׳ קרקע" },
-    { key:"temp",           label:"טמפ׳ אוויר" },
-    { key:"scale1",         label:"משקל" },
-    { key:"voltage",        label:"מתח" }
+  // Friendly Hebrew labels for known sensor fields; anything else falls back to
+  // fmtFieldName(). Field keys match the Firebase sensor schema.
+  const FIELD_LABELS = {
+    ec:"EC", ec2:"EC2", ph1:"pH", ph2:"pH2",
+    soil1_humidity:"לחות קרקע 1", soil1_temp:"טמפ׳ קרקע 1", soil1_ec:"EC קרקע 1",
+    soil2_humidity:"לחות קרקע 2", soil2_temp:"טמפ׳ קרקע 2", soil2_ec:"EC קרקע 2",
+    temp:"טמפ׳ אוויר", scale1:"משקל", voltage:"מתח"
+  };
+  function labelFor(k){ return FIELD_LABELS[k] || fmtFieldName(k); }
+
+  // Fields never shown as metric tiles: metadata, diagnostics, position, and the
+  // water counters (which have their own irrigation panel).
+  const SQUARE_SKIP = new Set([
+    "stationId","serverTimestamp","time","deviceId","sortKey",
+    "waterIn","water_in","WaterIn","waterOut","water_out","WaterOut",
+    "uptime","apiFails","modemFails","gps_lat","gps_lng"
+  ]);
+
+  // Numeric sensor keys present in a reading, sorted, for the metric tiles.
+  function squareMetricKeys(item){
+    if (!item) return [];
+    return Object.keys(item)
+      .filter(k => !SQUARE_SKIP.has(k) && !k.toLowerCase().includes("timestamp"))
+      .filter(k => Number.isFinite(parseFloat(item[k])))
+      .sort();
+  }
+
+  // Sensor lines selectable in the chart dropdown (preferred order, second
+  // channels included). Only those present in data are meaningful.
+  const SENSOR_FIELDS = [
+    "soil1_humidity","soil2_humidity","ec","ec2","ph1","ph2",
+    "soil1_temp","soil2_temp","soil1_ec","soil2_ec","temp","scale1","voltage"
   ];
 
   // No water-in for this many minutes ⇒ the current irrigation has ended; the
