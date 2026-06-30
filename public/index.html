@@ -1489,21 +1489,32 @@
 
     const tiles = keys.map(k => {
       const liveV = item ? parseFloat(item[k]) : NaN;
-      const liveOk = Number.isFinite(liveV) && !isSuspectValue(k, liveV);
-      if (liveOk){
+      const h = history[k];
+
+      // Valid value in the current reading → normal tile.
+      if (Number.isFinite(liveV)){
         return `<div class="sq-metric">
           <div class="m-k">${labelFor(k)}</div>
           <div class="m-v">${liveV.toFixed(decimalsFor(k))}</div>
           <div class="m-u">${unitFor(k)}</div>
         </div>`;
       }
-      // Stale or suspect → warning tile with last-known value + when last seen.
-      const h = history[k];
-      const showV = Number.isFinite(liveV) ? liveV : (h ? h.lastValue : null);
-      const vStr = showV == null ? "—" : Number(showV).toFixed(decimalsFor(k));
-      const sub = Number.isFinite(liveV)
-        ? "ערך חשוד"
-        : (h && h.lastSeen ? "מאז " + h.lastSeen.toLocaleDateString("he-IL") : "אין דיווח");
+
+      // Not in the current reading.
+      if (isForkField(k)){
+        // Reading only-when-wet is expected → show last measured value, not a fault.
+        if (!h) return "";
+        const since = h.lastSeen ? h.lastSeen.toLocaleDateString("he-IL") : "";
+        return `<div class="sq-metric stale" title="חיישן מזלג — מודד רק כשהאדמה רטובה. מדידה אחרונה: ${since}">
+          <div class="m-k">${labelFor(k)}</div>
+          <div class="m-v">${Number(h.lastValue).toFixed(decimalsFor(k))}</div>
+          <div class="m-u">💧 ${since}</div>
+        </div>`;
+      }
+
+      // A non-fork sensor that stopped reporting → genuine attention needed.
+      const vStr = h ? Number(h.lastValue).toFixed(decimalsFor(k)) : "—";
+      const sub = h && h.lastSeen ? "מאז " + h.lastSeen.toLocaleDateString("he-IL") : "אין דיווח";
       return `<div class="sq-metric warn" title="חיישן לא תקין — לבדוק">
         <div class="m-k">⚠️ ${labelFor(k)}</div>
         <div class="m-v">${vStr}</div>
@@ -1511,7 +1522,7 @@
       </div>`;
     });
 
-    container.innerHTML = tiles.length ? tiles.join("")
+    container.innerHTML = tiles.filter(Boolean).length ? tiles.join("")
       : `<div class="sq-empty">אין נתוני חיישנים</div>`;
   }
 
