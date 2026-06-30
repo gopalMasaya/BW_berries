@@ -1614,6 +1614,7 @@
     }
 
     squaresCharts[deviceId] = new Chart(canvas.getContext("2d"), {
+      type: "bar",
       data: { labels, datasets },
       options: {
         responsive:true, maintainAspectRatio:false,
