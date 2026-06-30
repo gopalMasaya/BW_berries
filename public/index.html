@@ -1701,6 +1701,7 @@
       const chartBox = square.querySelector(".sq-chart");
       if (squaresExpanded[st.deviceId]){
         chartBox.style.display = "";
+        chartBox.innerHTML = `<div class="sq-chart-empty">טוען גרף…</div>`;
         toggleBtn.textContent = "📉 הסתר גרף";
       }
       toggleBtn.addEventListener("click", (e) => {
