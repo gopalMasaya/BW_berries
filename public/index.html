@@ -1705,7 +1705,8 @@
     const irrigEl = square.querySelector(".sq-irrig");
     const chartEl = square.querySelector(".sq-chart");
     const { from, to, multiDay } = getSquaresRange();
-    const sensorKey = document.getElementById("sqSensor")?.value || "soil1_humidity";
+    // Per-square sensor override (from clicking a metric tile) wins over the global dropdown.
+    const sensorKey = squaresSensorSel[deviceId] || document.getElementById("sqSensor")?.value || "soil1_humidity";
     const sensorLabel = labelFor(sensorKey);
     const periodLabel = multiDay
       ? `${from.toLocaleDateString("he-IL")}–${to.toLocaleDateString("he-IL")}`
