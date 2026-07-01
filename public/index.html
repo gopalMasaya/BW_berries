@@ -239,8 +239,13 @@
       padding:12px 16px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;
       border-bottom:1px solid var(--border); background:#f4f6fa;
     }
-    /* Nav buttons on the light toolbar: readable inactive state, orange when active */
-    #squaresView .viewBtn{ background:#ffffff; color:var(--muted); }
+    /* Nav buttons on the light toolbar: readable inactive state, orange when active.
+       Give them horizontal padding + no-wrap so labels like "תצוגה ראשית" don't cram. */
+    #squaresToolbar .ct-viewnav{ margin-inline-end:8px; }
+    #squaresView .viewBtn{
+      background:#ffffff; color:var(--muted);
+      flex:0 0 auto; padding:8px 16px; font-size:14px; white-space:nowrap;
+    }
     #squaresView .viewBtn.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
     /* Status pill sits on a white card — give it a light fill instead of the dark-theme tint */
     #squaresView .pill{ background:#f4f6fa; }
