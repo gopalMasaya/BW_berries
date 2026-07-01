@@ -1567,6 +1567,13 @@
 
     container.innerHTML = tiles.filter(Boolean).length ? tiles.join("")
       : `<div class="sq-empty">אין נתוני חיישנים</div>`;
+
+    // Re-highlight the tile whose data is currently plotted (survives re-renders).
+    const selField = squaresSensorSel[deviceId];
+    if (selField){
+      const selTile = container.querySelector(`.sq-metric[data-field="${selField}"]`);
+      if (selTile) selTile.classList.add("sel");
+    }
   }
 
   // No water-in for this many minutes ⇒ the current irrigation has ended; the
