@@ -1558,7 +1558,7 @@
       // A non-fork sensor that stopped reporting → genuine attention needed.
       const vStr = h ? Number(h.lastValue).toFixed(decimalsFor(k)) : "—";
       const sub = h && h.lastSeen ? "מאז " + h.lastSeen.toLocaleDateString("he-IL") : "אין דיווח";
-      return `<div class="sq-metric warn" title="חיישן לא תקין — לבדוק">
+      return `<div class="sq-metric warn" data-field="${k}" title="חיישן לא תקין — לבדוק. לחץ להצגת גרף">
         <div class="m-k">⚠️ ${labelFor(k)}</div>
         <div class="m-v">${vStr}</div>
         <div class="m-u">${sub}</div>
