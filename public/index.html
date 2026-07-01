@@ -278,10 +278,19 @@
     }
     .sq-metric{
       width:96px; height:74px; border-radius:12px; border:1px solid var(--border);
-      background:#f4f6fa;
+      background:#f4f6fa; cursor:pointer;
       display:flex; flex-direction:column; align-items:center; justify-content:center;
       gap:1px; padding:4px; text-align:center;
+      transition:border-color .12s, box-shadow .12s, background .12s;
     }
+    .sq-metric:hover{ border-color:var(--accent); }
+    /* The metric whose data is currently plotted in the chart */
+    .sq-metric.sel{
+      border-color:var(--accent);
+      box-shadow:0 0 0 2px rgba(255,122,24,0.30);
+      background:rgba(255,122,24,0.07);
+    }
+    .sq-metric.sel .m-v{ color:var(--accent); }
     .sq-metric .m-k{ font-size:11px; color:var(--muted); line-height:1.1; }
     .sq-metric .m-v{ font-size:18px; font-weight:bold; color:var(--text); line-height:1.1; }
     .sq-metric .m-u{ font-size:10px; color:var(--muted); }
