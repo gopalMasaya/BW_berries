@@ -1812,10 +1812,10 @@
 
   // Open a station square's chart focused on ONE field: the irrigation (drip) +
   // drain bars stay as context, and the clicked field is drawn as the sensor line.
-  // Triggered by clicking a metric tile. If the field has no readings in the
-  // selected range (soil-probe sensors report only intermittently), the lookback
-  // is widened automatically to find its history.
-  async function showSquareSensorChart(deviceId, square, field){
+  // Triggered by clicking a metric tile. Always uses the range selected in the
+  // toolbar (consistent axis for every field); the sensor line simply appears only
+  // if that field has readings in the range.
+  function showSquareSensorChart(deviceId, square, field){
     squaresSensorSel[deviceId] = field;
     squaresExpanded[deviceId] = true;
     const label = labelFor(field);
@@ -1832,30 +1832,9 @@
     if (toggleBtn) toggleBtn.textContent = "📉 הסתר גרף";
     chartBox.scrollIntoView({ behavior:"smooth", block:"nearest" });
 
-    // Always draw the irrigation (drip) + drain graph for the selected range first,
-    // with the clicked field as the sensor line. The water graph must ALWAYS show
-    // (even if this field has no data), so the irrigation context never disappears.
     const d = square._chartData;
     if (d) buildSquareChart(deviceId, chartBox, d.readings, field, label, d.multiDay);
     else   chartBox.innerHTML = `<div class="sq-chart-empty">טוען…</div>`;
-
-    // If the field has no reading in the selected range (soil-probe sensors report
-    // only intermittently), widen the lookback up to 60 days JUST to add its line —
-    // the water graph already on screen stays until (and unless) we find history.
-    const hasNow = d && d.readings.some(r => Number.isFinite(parseFloat(r.item && r.item[field])));
-    if (d && !hasNow){
-      try {
-        const to = new Date();
-        const from = new Date(); from.setDate(from.getDate() - 60);
-        const readings = await fetchWaterReadings(deviceId, from, to);
-        if (squaresSensorSel[deviceId] !== field) return; // superseded by a newer click
-        const has = readings.some(r => Number.isFinite(parseFloat(r.item && r.item[field])));
-        if (has) buildSquareChart(deviceId, chartBox, readings, field, label, true);
-        // else: keep the selected-range water graph already shown.
-      } catch(e){
-        console.error("sensor history", deviceId, field, e);
-      }
-    }
   }
 
   // Build a per-square chart: per-reading irrigation/drain (L) bars on the left
