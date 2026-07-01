@@ -1819,8 +1819,13 @@
     if (toggleBtn) toggleBtn.textContent = "📉 הסתר גרף";
 
     const d = square._chartData;
-    if (d) buildSquareChart(deviceId, chartBox, d.readings, field, labelFor(field), d.multiDay);
-    else chartBox.innerHTML = `<div class="sq-chart-empty">טוען…</div>`;
+    if (d){
+      // Persist the choice so reopening via the toggle button keeps this field.
+      d.sensorKey = field; d.sensorLabel = labelFor(field);
+      buildSquareChart(deviceId, chartBox, d.readings, field, labelFor(field), d.multiDay);
+    } else {
+      chartBox.innerHTML = `<div class="sq-chart-empty">טוען…</div>`;
+    }
     chartBox.scrollIntoView({ behavior:"smooth", block:"nearest" });
   }
 
