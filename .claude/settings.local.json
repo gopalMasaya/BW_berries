@@ -145,7 +145,14 @@
       "Bash(node \"C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Admin-Documents-js-coding-plantsTracker\\\\55680828-f7c8-4b40-8321-2d19b270defd\\\\scratchpad\\\\fields.js\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Admin-Documents-js-coding-plantsTracker\\\\55680828-f7c8-4b40-8321-2d19b270defd\\\\scratchpad\\\\water_dump.js\")",
       "Bash(node \"C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Admin-Documents-js-coding-plantsTracker\\\\55680828-f7c8-4b40-8321-2d19b270defd\\\\scratchpad\\\\waterin_hist.js\")",
-      "Bash(node \"C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Admin-Documents-js-coding-plantsTracker\\\\55680828-f7c8-4b40-8321-2d19b270defd\\\\scratchpad\\\\today_water.js\")"
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Admin-Documents-js-coding-plantsTracker\\\\55680828-f7c8-4b40-8321-2d19b270defd\\\\scratchpad\\\\today_water.js\")",
+      "Bash(node -e \"console.log\\(new Date\\(\\).toISOString\\(\\)\\)\")",
+      "Bash(node -e \"const d=new Date\\(\\);console.log\\(String\\(d.getMonth\\(\\)+1\\).padStart\\(2,'0'\\)+d.getFullYear\\(\\)\\)\")",
+      "Bash(firebase database:get \"/berries/station1\" --shallow)",
+      "Bash(firebase database:get /berries/station1 --shallow)",
+      "Bash(MSYS_NO_PATHCONV=1 firebase database:get /berries/station1 --shallow)",
+      "Bash(MSYS_NO_PATHCONV=1 firebase database:get /berries/station1/072026 --order-by-key --limit-to-last 2)",
+      "Bash(MSYS_NO_PATHCONV=1 firebase database:get /berries/station1/072026 --order-by-key --limit-to-last 20)"
     ]
   },
   "hooks": {

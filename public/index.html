@@ -1963,6 +1963,10 @@
         if (opening){
           chartBox.style.display = "";
           toggleBtn.textContent = "📉 הסתר גרף";
+          // The toggle button shows the water view (drip vs drain); clear any
+          // per-tile sensor selection so we're back in water mode.
+          delete squaresSensorSel[st.deviceId];
+          square.querySelectorAll(".sq-metric.sel").forEach(t => t.classList.remove("sel"));
           const d = square._chartData;
           if (d) buildSquareChart(st.deviceId, chartBox, d.readings, d.sensorKey, d.sensorLabel, d.multiDay);
           else chartBox.innerHTML = `<div class="sq-chart-empty">טוען…</div>`;
