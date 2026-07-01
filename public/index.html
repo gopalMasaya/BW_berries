@@ -1805,10 +1805,11 @@
     }
   }
 
-  // Open a station square's chart and plot ONE field's own graph (a dedicated
-  // line chart of just that sensor). Triggered by clicking a metric tile. If the
-  // field has no readings in the selected range (soil-probe sensors report only
-  // intermittently), the lookback is widened automatically to find its history.
+  // Open a station square's chart focused on ONE field: the irrigation (drip) +
+  // drain bars stay as context, and the clicked field is drawn as the sensor line.
+  // Triggered by clicking a metric tile. If the field has no readings in the
+  // selected range (soil-probe sensors report only intermittently), the lookback
+  // is widened automatically to find its history.
   async function showSquareSensorChart(deviceId, square, field){
     squaresSensorSel[deviceId] = field;
     squaresExpanded[deviceId] = true;
@@ -1826,10 +1827,11 @@
     if (toggleBtn) toggleBtn.textContent = "📉 הסתר גרף";
     chartBox.scrollIntoView({ behavior:"smooth", block:"nearest" });
 
+    // If the field already has data in the selected range, plot it (with water bars).
     const d = square._chartData;
     const hasNow = d && d.readings.some(r => Number.isFinite(parseFloat(r.item && r.item[field])));
     if (d && hasNow){
-      buildSensorChart(deviceId, chartBox, d.readings, field, label, d.multiDay);
+      buildSquareChart(deviceId, chartBox, d.readings, field, label, d.multiDay);
       return;
     }
 
@@ -1841,60 +1843,16 @@
       const from = new Date(); from.setDate(from.getDate() - 60);
       const readings = await fetchWaterReadings(deviceId, from, to);
       if (squaresSensorSel[deviceId] !== field) return; // superseded by a newer click
-      buildSensorChart(deviceId, chartBox, readings, field, label, true);
+      const has = readings.some(r => Number.isFinite(parseFloat(r.item && r.item[field])));
+      if (!has){
+        chartBox.innerHTML = `<div class="sq-chart-empty">אין נתוני ${label} ב-60 הימים האחרונים</div>`;
+        return;
+      }
+      buildSquareChart(deviceId, chartBox, readings, field, label, true);
     } catch(e){
       console.error("sensor history", deviceId, field, e);
       chartBox.innerHTML = `<div class="sq-chart-empty">שגיאה בטעינת נתוני ${label}</div>`;
     }
-  }
-
-  // A dedicated single-sensor line chart (orange), plotting only the readings that
-  // actually contain the field so intermittent probes still render a clean line.
-  function buildSensorChart(deviceId, chartEl, readings, field, label, multiDay){
-    if (squaresCharts[deviceId]){ squaresCharts[deviceId].destroy(); delete squaresCharts[deviceId]; }
-    chartEl.innerHTML = "";
-
-    const labels = [], vals = [];
-    for (const r of readings){
-      const v = parseFloat(r.item ? r.item[field] : NaN);
-      if (!Number.isFinite(v)) continue;
-      labels.push(multiDay
-        ? r.time.toLocaleDateString("he-IL", { day:"2-digit", month:"2-digit" }) + " " + fmtHM(r.time)
-        : fmtHM(r.time));
-      vals.push(v);
-    }
-
-    if (!vals.length || typeof Chart === "undefined"){
-      chartEl.innerHTML = `<div class="sq-chart-empty">אין נתוני ${label} ב-60 הימים האחרונים</div>`;
-      return;
-    }
-
-    const box = document.createElement("div");
-    box.className = "sq-chart-box";
-    const canvas = document.createElement("canvas");
-    box.appendChild(canvas);
-    chartEl.appendChild(box);
-
-    const gridCol = "rgba(0,0,0,0.08)";
-    const tickCol = "#5a6472";
-    squaresCharts[deviceId] = new Chart(canvas.getContext("2d"), {
-      type: "line",
-      data: { labels, datasets: [{
-        label, data: vals,
-        borderColor: "#ff7a18", backgroundColor: "rgba(255,122,24,0.12)",
-        borderWidth: 2, pointRadius: 2, tension: 0.3, fill: true, spanGaps: true
-      }]},
-      options: {
-        responsive:true, maintainAspectRatio:false,
-        interaction:{ mode:"index", intersect:false },
-        plugins:{ legend:{ labels:{ color:tickCol, boxWidth:12, font:{ size:11 } } } },
-        scales:{
-          x:{ ticks:{ color:tickCol, maxTicksLimit:8, font:{ size:10 } }, grid:{ color:gridCol } },
-          y:{ title:{ display:true, text:label, color:tickCol },
-              ticks:{ color:tickCol, font:{ size:10 } }, grid:{ color:gridCol } }
-        }
-      }
-    });
   }
 
   // Build a per-square chart: per-reading irrigation/drain (L) bars on the left
