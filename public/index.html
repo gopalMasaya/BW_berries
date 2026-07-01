@@ -1800,6 +1800,30 @@
     }
   }
 
+  // Open a station square's chart and plot a specific field as the sensor line.
+  // Triggered by clicking one of the metric tiles. The irrigation (drip/drain)
+  // bars stay as context; only the line switches to the clicked field.
+  function showSquareSensorChart(deviceId, square, field){
+    squaresSensorSel[deviceId] = field;
+    squaresExpanded[deviceId] = true;
+
+    // Highlight the active tile (clear any previous selection on this card).
+    square.querySelectorAll(".sq-metric.sel").forEach(t => t.classList.remove("sel"));
+    const tile = square.querySelector(`.sq-metric[data-field="${field}"]`);
+    if (tile) tile.classList.add("sel");
+
+    const chartBox  = square.querySelector(".sq-chart");
+    const toggleBtn = square.querySelector(".sq-chart-toggle");
+    if (!chartBox) return;
+    chartBox.style.display = "";
+    if (toggleBtn) toggleBtn.textContent = "📉 הסתר גרף";
+
+    const d = square._chartData;
+    if (d) buildSquareChart(deviceId, chartBox, d.readings, field, labelFor(field), d.multiDay);
+    else chartBox.innerHTML = `<div class="sq-chart-empty">טוען…</div>`;
+    chartBox.scrollIntoView({ behavior:"smooth", block:"nearest" });
+  }
+
   // Build a per-square chart: per-reading irrigation/drain (L) bars on the left
   // axis, the chosen sensor as a line on the right axis, over the readings range.
   function buildSquareChart(deviceId, chartEl, readings, sensorKey, sensorLabel, multiDay){
