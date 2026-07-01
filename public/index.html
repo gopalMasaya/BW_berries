@@ -1907,6 +1907,13 @@
       // Clicking the card opens the drawer, except over interactive areas
       // (the chart, the chart toggle, or the irrigation panel/list).
       square.addEventListener("click", (e) => {
+        // Clicking a metric tile opens the chart plotting that specific field.
+        const metricTile = e.target.closest(".sq-metric");
+        if (metricTile && metricTile.dataset.field){
+          e.stopPropagation();
+          showSquareSensorChart(st.deviceId, square, metricTile.dataset.field);
+          return;
+        }
         if (e.target.closest(".sq-chart") || e.target.closest(".sq-chart-toggle") || e.target.closest(".sq-irrig")) return;
         openDrawer(st.deviceId);
       });
