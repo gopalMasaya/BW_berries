@@ -153,7 +153,8 @@
       "Bash(MSYS_NO_PATHCONV=1 firebase database:get /berries/station1 --shallow)",
       "Bash(MSYS_NO_PATHCONV=1 firebase database:get /berries/station1/072026 --order-by-key --limit-to-last 2)",
       "Bash(MSYS_NO_PATHCONV=1 firebase database:get /berries/station1/072026 --order-by-key --limit-to-last 20)",
-      "Bash(node -e \"const fs=require\\('fs'\\);const h=fs.readFileSync\\('public/index.html','utf8'\\);const m=[...h.matchAll\\(/<script>\\([\\\\s\\\\S]*?\\)<\\\\/script>/g\\)];let ok=true;m.forEach\\(\\(s,i\\)=>{try{new Function\\(s[1]\\);}catch\\(e\\){if\\(!/import|export/.test\\(e.message\\)\\){ok=false;console.log\\('script',i,e.message\\);}}}\\);console.log\\(ok?'inline scripts parse OK':'errors above'\\);\")"
+      "Bash(node -e \"const fs=require\\('fs'\\);const h=fs.readFileSync\\('public/index.html','utf8'\\);const m=[...h.matchAll\\(/<script>\\([\\\\s\\\\S]*?\\)<\\\\/script>/g\\)];let ok=true;m.forEach\\(\\(s,i\\)=>{try{new Function\\(s[1]\\);}catch\\(e\\){if\\(!/import|export/.test\\(e.message\\)\\){ok=false;console.log\\('script',i,e.message\\);}}}\\);console.log\\(ok?'inline scripts parse OK':'errors above'\\);\")",
+      "Bash(git diff *)"
     ]
   },
   "hooks": {

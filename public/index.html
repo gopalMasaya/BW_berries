@@ -231,6 +231,12 @@
       --muted:#5a6472;
       --border:rgba(0,0,0,0.12);
       --accent:#ff7a18;
+      /* Re-declare `color` here so it resolves against THIS view's --text override.
+         `color:var(--text)` is only set on <body> (dark theme), so plain-text
+         descendants that don't set their own color (e.g. the irrigation table's
+         start/end/duration cells) would otherwise inherit the dark-theme light
+         color and render unreadable on this white background. */
+      color:var(--text);
       flex:1; height:100%; display:none; flex-direction:column; overflow:hidden;
       background:#ffffff; min-width:0;
     }
