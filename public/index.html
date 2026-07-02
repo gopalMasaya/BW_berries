@@ -4300,7 +4300,7 @@
     });
     if (!labels) labels = [];
 
-    const hasAnyData = datasets.some(ds => ds.data.some(v => v !== null));
+    const hasAnyData = anyReal;
     const emptyEl = document.getElementById("graphEmpty");
     if (!hasAnyData) {
       const tried = cfg.fields.map(f => f.candidates.join(" / ")).join(", ");
