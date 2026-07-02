@@ -4245,6 +4245,7 @@
     const NUM_BARS = 50;
 
     let labels;
+    let anyReal = false;
     const datasets = cfg.fields.map(f => {
       const key = resolveField(f.candidates);
       let data;
@@ -4271,6 +4272,11 @@
           return num;
         });
       }
+      // Zero-fill leading/trailing gaps so disconnected sensors stay continuous.
+      // Track whether this series had ANY real reading, so an all-empty graph
+      // still shows the "No data" message rather than a flat line of zeros.
+      if (data.some(isRealVal)) anyReal = true;
+      data = zeroFillOutsideActive(data);
       const labelText = key && key !== f.label ? f.label + " (" + key + ")" : f.label;
       const base = {
         label: labelText,
