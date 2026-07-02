@@ -4199,6 +4199,24 @@
     });
   }
 
+  // Make a value series continuous for disconnected sensors: any missing reading
+  // that falls OUTSIDE the sensor's active window — before its first real reading
+  // or after its last (e.g. a sensor whose last data point is weeks ago) — is
+  // treated as 0 so the line keeps going instead of stopping. Gaps INSIDE the
+  // active window stay null so spanGaps can bridge them, avoiding 0-value zigzags
+  // on interleaved rows that belong to a different station.
+  const isRealVal = v => v !== null && v !== undefined && Number.isFinite(v);
+  function zeroFillOutsideActive(values) {
+    let first = -1, last = -1;
+    for (let i = 0; i < values.length; i++) {
+      if (isRealVal(values[i])) { if (first === -1) first = i; last = i; }
+    }
+    return values.map((v, i) => {
+      if (isRealVal(v)) return v;
+      return (i < first || i > last) ? 0 : null;
+    });
+  }
+
   function renderGraph() {
     const cfg = GRAPH_CONFIGS[currentGraphIndex];
     document.getElementById("graphTitle").textContent =
