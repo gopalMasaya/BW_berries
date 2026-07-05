@@ -1523,6 +1523,18 @@
     return fields;
   }
 
+  // Soil-EC probes (soil1_ec/soil2_ec) report in µS/cm; the main ("תצוגה ראשית"
+  // / Squares) view shows them in dS/m (÷1000). Unlike the ec/ec2 inline probes
+  // these are a different sensor and need no ×2 K-factor fix.
+  const SOIL_EC_FIELDS = new Set(["soil1_ec", "soil2_ec"]);
+  function sqTransform(field, raw){ return SOIL_EC_FIELDS.has(field) ? raw / 1000 : raw; }
+  function sqDecimals(field){ return SOIL_EC_FIELDS.has(field) ? 2 : decimalsFor(field); }
+  function sqUnit(field){ return SOIL_EC_FIELDS.has(field) ? "dS/m" : unitFor(field); }
+  function sqFormat(field, raw){
+    const n = sqTransform(field, raw);
+    return Number.isFinite(n) ? n.toFixed(sqDecimals(field)) : "—";
+  }
+
   // Render a station's metric tiles: valid current readings first, then any
   // sensor that recently reported but is now missing / suspect, flagged ⚠️.
   async function renderSquareMetrics(deviceId, container){
