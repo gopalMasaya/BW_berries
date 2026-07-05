@@ -1573,7 +1573,7 @@
         const since = h.lastSeen ? h.lastSeen.toLocaleDateString("he-IL") : "";
         return `<div class="sq-metric stale" data-field="${k}" title="חיישן מזלג — מודד רק כשהאדמה רטובה. מדידה אחרונה: ${since}. לחץ להצגת גרף">
           <div class="m-k">${labelFor(k)}</div>
-          <div class="m-v">${Number(h.lastValue).toFixed(decimalsFor(k))}</div>
+          <div class="m-v">${sqFormat(k, Number(h.lastValue))}</div>
           <div class="m-u">💧 ${since}</div>
         </div>`;
       }
