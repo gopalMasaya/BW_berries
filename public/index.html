@@ -1889,7 +1889,7 @@
       outL.push(dOut * ML_PER_PULSE / 1000);
       const sv = parseFloat(r.item ? r.item[sensorKey] : NaN);
       if (Number.isFinite(sv)) anySensor = true;
-      sensor.push(Number.isFinite(sv) ? sv : null);
+      sensor.push(Number.isFinite(sv) ? sqTransform(sensorKey, sv) : null);
     }
 
     const box = document.createElement("div");
