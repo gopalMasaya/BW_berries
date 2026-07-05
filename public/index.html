@@ -1561,8 +1561,8 @@
       if (Number.isFinite(liveV)){
         return `<div class="sq-metric" data-field="${k}" title="הצג גרף של ${labelFor(k)}">
           <div class="m-k">${labelFor(k)}</div>
-          <div class="m-v">${liveV.toFixed(decimalsFor(k))}</div>
-          <div class="m-u">${unitFor(k)}</div>
+          <div class="m-v">${sqFormat(k, liveV)}</div>
+          <div class="m-u">${sqUnit(k)}</div>
         </div>`;
       }
 
