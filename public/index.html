@@ -1906,10 +1906,11 @@
       { type:"bar", label:"נקז (ל׳)", data:outL, yAxisID:"yWater",
         backgroundColor:"rgba(255,176,32,0.7)", borderWidth:0, order:2 }
     ];
+    const sensorAxisLabel = SOIL_EC_FIELDS.has(sensorKey) ? sensorLabel + " (dS/m)" : sensorLabel;
     if (anySensor){
       // Continue the sensor line as 0 past its last reading (disconnected sensor)
       // so it doesn't stop mid-chart; interior gaps stay null (spanGaps bridges).
-      datasets.push({ type:"line", label:sensorLabel, data:zeroFillOutsideActive(sensor), yAxisID:"ySensor",
+      datasets.push({ type:"line", label:sensorAxisLabel, data:zeroFillOutsideActive(sensor), yAxisID:"ySensor",
         borderColor:"#2bd576", backgroundColor:"#2bd576", borderWidth:2,
         pointRadius:0, tension:0.3, spanGaps:true, order:1 });
     }
