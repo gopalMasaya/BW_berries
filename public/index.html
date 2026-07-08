@@ -1043,9 +1043,16 @@
   // ===============================
   // AUTH
   // ===============================
+  // Only this account may edit (and thus globally publish) marker positions.
+  const POSITION_EDITOR_EMAIL = "bcreativeground@gmail.com";
   auth.onAuthStateChanged(user => {
     if (user) {
       document.getElementById("app").style.display = "flex";
+      // The position-edit (✏️) button is owner-only — its edits are global.
+      const posBtn = document.getElementById("planPosBtn");
+      if (posBtn && (user.email || "").toLowerCase() === POSITION_EDITOR_EMAIL) {
+        posBtn.style.display = "";
+      }
       // Check user role for manager features
       database.ref("users/" + user.uid).once("value").then(snap => {
         const profile = snap.val();
