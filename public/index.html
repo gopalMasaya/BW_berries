@@ -3351,7 +3351,7 @@
       <div class="gl-field"><label>שלב גידול</label><select id="glStage">${glOptions(GL_STAGES, planting?.stage, true)}</select></div>
       <div class="gl-field"><label>מספר עציצים / צמחים</label><input id="glPlantCount" type="number" min="0" value="${planting?.plantCount??""}"></div>
       <div class="gl-field"><label>תאריך שתילה</label><input id="glPlantDate" type="date" value="${glEsc(planting?.plantingDate||"")}"></div>
-      <div class="gl-field"><label>נפח עציץ (ליטר)</label><select id="glPotVol">${glOptions(GL_POT_VOLUMES, planting?.potVolumeL, true)}</select></div>
+      <div class="gl-field"><label>נפח עציץ (ליטר)</label><input id="glPotVol" type="number" min="0" step="0.5" list="glPotVolList" value="${planting?.potVolumeL??""}"><datalist id="glPotVolList">${GL_POT_VOLUMES.map(v=>`<option value="${v}">`).join("")}</datalist></div>
       <div class="gl-field"><label>סוג עציץ</label><select id="glPotType">${glOptions(GL_POT_TYPES, planting?.potType, true)}</select></div>
       <div class="gl-field"><label>סוג מבנה</label><select id="glStructure">${glOptions(GL_STRUCTURES, planting?.structureType, true)}</select></div>
       <div class="gl-field"><label>אחוז הצללה (%)</label><input id="glShading" type="number" min="0" max="100" value="${planting?.shadingPct??""}"></div>
