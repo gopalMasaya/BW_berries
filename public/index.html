@@ -3528,6 +3528,9 @@
     // Chart and Squares views are full-width with their own top toolbar, so the
     // main left sidebar is hidden to give them the entire width.
     leftPanel.style.display = (view === "chart" || view === "squares") ? "none" : "";
+    // The collapse/reopen handle only applies to views that use the left panel.
+    const panelToggle = document.getElementById("panelToggle");
+    if (panelToggle) panelToggle.style.display = (view === "chart" || view === "squares") ? "none" : "";
 
     if (view === "gis") {
       mapEl.classList.remove("hidden");
