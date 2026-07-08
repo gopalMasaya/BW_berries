@@ -2228,13 +2228,51 @@
     planValvePos[i] = [xy[0], xy[1]];
     localStorage.setItem("planValvePos", JSON.stringify(planValvePos));
   }
+  // Station positions are SHARED across all users (persisted in RTDB), unlike
+  // valve positions which stay per-browser. localStorage is a fast cache/fallback.
+  const STATION_POS_PATH = "fieldPlan/stationPos";
   function loadStationPos(){
     try { planStationPos = JSON.parse(localStorage.getItem("planStationPos")) || {}; }
     catch (e) { planStationPos = {}; }
   }
   function saveStationPos(deviceId, xy){
     planStationPos[deviceId] = [xy[0], xy[1]];
-    localStorage.setItem("planStationPos", JSON.stringify(planStationPos));
+    localStorage.setItem("planStationPos", JSON.stringify(planStationPos));   // local cache
+    try {
+      database.ref(STATION_POS_PATH + "/" + deviceId).set([xy[0], xy[1]])
+        .catch(e => console.warn("stationPos Firebase save failed (kept locally):", e && e.message));
+    } catch (e){ console.warn("stationPos Firebase save error:", e && e.message); }
+  }
+  // Reposition an already-drawn station marker (circle + label) from stationPos.
+  function applyStationMarker(deviceId){
+    const xy = stationPos[deviceId];
+    if (!xy) return;
+    const g = document.querySelector(`.pl-station[data-station="${deviceId}"]`);
+    if (!g) return;
+    const c = g.querySelector("circle"), t = g.querySelector("text");
+    const ty = xy[1] - planVR * 2.2;
+    c.setAttribute("cx", xy[0]); c.setAttribute("cy", xy[1]);
+    t.setAttribute("x", xy[0]); t.setAttribute("y", ty);
+    t.setAttribute("transform", `translate(0, ${ty * 2}) scale(1, -1)`);
+  }
+  // Live-sync the shared station positions from RTDB → all devices. Won't clobber
+  // an in-progress drag on this device (position-edit mode active).
+  function subscribeStationPos(){
+    try {
+      database.ref(STATION_POS_PATH).on("value", snap => {
+        if (posEditMode) return;               // don't yank markers while user is editing
+        const v = snap.val();
+        if (!v) return;
+        Object.keys(v).forEach(deviceId => {
+          const xy = v[deviceId];
+          if (!xy || xy.length < 2) return;
+          planStationPos[deviceId] = [xy[0], xy[1]];
+          stationPos[deviceId] = [xy[0], xy[1]];
+          applyStationMarker(deviceId);
+        });
+        localStorage.setItem("planStationPos", JSON.stringify(planStationPos));
+      });
+    } catch (e){ console.warn("stationPos Firebase subscribe error:", e && e.message); }
   }
   // Default (un-dragged) position of a station: its STATION_VALVE valve, or the
   // centroid of that controller's s1 valves if the exact valve isn't in the CAD.
