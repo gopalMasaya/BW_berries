@@ -3178,6 +3178,322 @@
   }
   function closePlanInfo(){ document.getElementById("planInfo").classList.remove("open"); }
 
+  // ===============================
+  // GROWTH LOG (farm crop diary) — bridges to the qrcode project (song-cd1cd).
+  // Two surfaces per plot: a crop/plot record (plantingByStation) + an event
+  // diary (tasksByDate / teamTasks). Constants mirror qrcode/public/planting.mjs
+  // and tasks.mjs so the data we write is readable by the farm app.
+  // ===============================
+  const GL_CROP_TYPES = [
+    { key:"אוכמניות", label:"אוכמניות", icon:"🫐" },
+    { key:"פטל",      label:"פטל",      icon:"🍇" },
+    { key:"אוסנה",    label:"אוסנה",    icon:"🍒" },
+  ];
+  const GL_TYPE_TO_CROP = { BB:"אוכמניות", RB:"פטל", os:"אוסנה", OS:"אוסנה" };
+  const GL_VARIETIES_BY_CROP = {
+    "אוכמניות":["1905","1907","1908","Colibri","Titan","Titan Y","Haven S","Haven C","Biloxi","Biloxi C","Biloxi N","Och","Rabel"],
+    "פטל":["119","Kwanza","Clarita","MariCarmen","Amalya","Louis","Shani","Sarfina","Adilita","Mothers","esyroc"],
+    "אוסנה":["osna","Amanda","dana"],
+  };
+  const GL_STAGES = ["וגטטיבית","פריחה","ניבה"];
+  const GL_DRIPPER = [2,4,8];
+  const GL_SUBSTRATE = ["33","40","50","80","115"];
+  const GL_POT_TYPES = ["שקית","גוויטה","עציץ פלסטיק","אדנית","קרקע"];
+  const GL_STRUCTURES = ["בית רשת","מנהרה","חממה","פתוח"];
+  const GL_POT_VOLUMES = [5,10,15,20,25,30,40,50,60,70];
+  const GL_TASK_CATEGORIES = [
+    { key:"routine", label:"עבודות שוטפות", icon:"🌿", subs:["הדליה","גיזום","קיטום","הורדת עלים","הורדת ענפי צד","טיפול ידני בעשבייה","ניקוי עשבים","ניקוי ופינוי גזם","הדברה ידני","תליית מלכודות","פיזור דבורים"] },
+    { key:"maintenance", label:"תחזוקה", icon:"🔧", subs:["תיקון טפטפות","תיקון צנרת","שטיפת שלוחות","ניקוי מערכת איסוף נקז"] },
+    { key:"setup", label:"הקמה", icon:"🏗️", subs:["פריסת טפטפות","פריסת/קיפול רשתות","שתילה","נילון כללי"] },
+    { key:"operations", label:"תיפעול", icon:"⚙️", subs:["ריסוס טרקטור","ריסוס ידני","מילוי דליים","אריזה","עבודות שוטפות כללי"] },
+    { key:"water", label:"מים", icon:"💧", subs:["בדיקת נקז/טפטפת","תיקוני השקיה"] },
+  ];
+  const GL_HARVEST = { key:"harvest", label:"קבלת סחורה מהשטח", icon:"📦" };
+  // code -> catalog entry, for seeding sensible defaults on a fresh plot.
+  const GL_CATALOG = {
+    A01:{type:"BB",variety:"1905"},A02:{type:"BB",variety:"Colibri"},A03:{type:"BB",variety:"Titan Y"},A04:{type:"BB",variety:"Och"},A05:{type:"BB",variety:"Titan"},A06:{type:"BB",variety:"Haven S"},A07:{type:"BB",variety:"Haven C"},A08:{type:"BB",variety:"Biloxi"},A09:{type:"BB",variety:"Titan"},A10:{type:"BB",variety:"Haven S"},A11:{type:"BB",variety:"Rabel"},A12:{type:"BB",variety:"Biloxi C"},A13:{type:"BB",variety:"Biloxi N"},
+    B01:{type:"RB",variety:"119"},B02:{type:"RB",variety:"Kwanza"},B03:{type:"RB",variety:"Clarita"},B04:{type:"RB",variety:"Clarita"},B05:{type:"RB",variety:"Clarita"},B06:{type:"RB",variety:"Clarita"},B07:{type:"os",variety:"osna"},B08:{type:"os",variety:"osna"},B09:{type:"os",variety:"osna"},B10:{type:"os",variety:"osna"},B11:{type:"RB",variety:"MariCarmen"},B12:{type:"RB",variety:"MariCarmen"},B13:{type:"RB",variety:"Amalya"},B14:{type:"RB",variety:"Amalya"},B15:{type:"RB",variety:"Louis"},B16:{type:"RB",variety:"Clarita"},B17:{type:"RB",variety:"Amalya"},B18:{type:"RB",variety:"Amalya"},
+    C01:{type:"os",variety:"Amanda"},C02:{type:"os",variety:"dana"},C03:{type:"RB",variety:"esyroc"},C04:{type:"RB",variety:"Clarita"},C05:{type:"RB",variety:"Clarita"},C06:{type:"RB",variety:"Clarita"},C19:{type:"RB",variety:"Shani"},C20:{type:"RB",variety:"Shani"},C21:{type:"RB",variety:"119"},C22:{type:"RB",variety:"Sarfina"},C23:{type:"RB",variety:"Adilita"},C24:{type:"RB",variety:"Mothers"},
+    D01:{type:"BB",variety:"1908"},D02:{type:"BB",variety:"1908"},D03:{type:"BB",variety:"1908"},D04:{type:"BB",variety:"1908"},D05:{type:"BB",variety:"1908"},D06:{type:"BB",variety:"1908"},D07:{type:"BB",variety:"1908"},D08:{type:"BB",variety:"1908"},D20:{type:"BB",variety:"1908"},D21:{type:"BB",variety:"1908"},D22:{type:"BB",variety:"1908"},D23:{type:"BB",variety:"1908"},
+  };
+
+  function glEsc(s){ return String(s==null?"":s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+  function glNumOrNull(v){ const n = parseFloat(v); return (v==="" || v==null || isNaN(n)) ? null : n; }
+  function glTodayStr(){ const d=new Date(), p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+  function glFormatDateHe(s){ const m=String(s||"").match(/^(\d{4})-(\d{2})-(\d{2})/); return m?`${m[3]}/${m[2]}/${m[1]}`:String(s||""); }
+  function glStationGroupKey(full){ const p=String(full||"").split("."); return p[0]?(p[0]+"."+(p[1]||"S01")).toUpperCase():""; }
+  function glCat(key){ return GL_TASK_CATEGORIES.find(c=>c.key===key) || (key==="harvest"?GL_HARVEST:null); }
+  function glCurrentUser(){
+    const u = auth.currentUser;
+    return { uid:(u&&u.uid)||"gis", name:(u&&(u.displayName||u.phoneNumber||u.email))||"GIS (מפה)" };
+  }
+  // Map a plantsTracker plot code (e.g. "B7", "A36") to the qrcode station keys.
+  // Number is zero-padded to 2 digits; section defaults to S01 (multi-section
+  // D-plots collapse to S01 in this first step).
+  function qrStationKeysFor(plantsCode){
+    const m = /^([A-Da-d])0*(\d{1,3})$/.exec(plantsCode || "");
+    if (!m) return null;
+    const code = m[1].toUpperCase() + String(parseInt(m[2],10)).padStart(2,"0");
+    return { code, section:"S01", underscore:`${code}_S01`, dotted:`${code}.S01` };
+  }
+
+  // Session cache of the whole diary tree (read is a full-tree scan; keep it cheap
+  // across plot clicks). Invalidated after we write a new entry.
+  let _qrDiaryCache = null;
+  function qrLoadDiaryRaw(){
+    if (_qrDiaryCache) return _qrDiaryCache;
+    _qrDiaryCache = Promise.all([
+      qrDb.ref("tasksByDate").once("value").then(s=>s.val()||{}),
+      qrDb.ref("teamTasks").once("value").then(s=>s.val()||{}),
+    ]).then(([tasks, team]) => ({ tasks, team }))
+      .catch(e => { _qrDiaryCache = null; throw e; });
+    return _qrDiaryCache;
+  }
+  function qrCollectDiary(raw, dotted){
+    const out = [];
+    for (const date in raw.tasks){
+      const day = raw.tasks[date] || {};
+      for (const id in day){
+        const rec = day[id];
+        const key = rec.startStationKey || glStationGroupKey(rec.startStation || "");
+        if (key === dotted) out.push({ id, date, ...rec });
+      }
+    }
+    for (const id in raw.team){
+      const rec = raw.team[id];
+      if ((rec.stationKey || glStationGroupKey(rec.station || "")) === dotted)
+        out.push({ id, open:true, date:(rec.startDate || (rec.startTime||"").slice(0,10)), ...rec });
+    }
+    out.sort((a,b)=> String(b.startTime||b.createdAt||"").localeCompare(String(a.startTime||a.createdAt||"")));
+    return out;
+  }
+
+  // ---- writes to the qrcode project (mirror planting.mjs / tasks.mjs) ----
+  async function qrSavePlanting(underscore, currentFields, newFields){
+    const now = new Date().toISOString();
+    const updates = {};
+    if (currentFields && Object.keys(currentFields).length){
+      const archRef = qrDb.ref(`plantingArchiveByStation/${underscore}`).push();
+      updates[`plantingArchiveByStation/${underscore}/${archRef.key}`] = { ...currentFields, archivedAt: now };
+    }
+    updates[`plantingByStation/${underscore}`] = { ...newFields, updatedAt: now };
+    await qrDb.ref().update(updates);
+  }
+  async function qrAddDiaryEntry({ date, station, category, categoryLabel, subcategory, notes }){
+    const me = glCurrentUser();
+    const workers = { [me.uid]: me.name };
+    const stamp = `${date}T08:00:00.000Z`;
+    const gk = glStationGroupKey(station || "");
+    const record = {
+      workerUid: me.uid, workerName: me.name, workerSerial:"",
+      workers, workerNames: me.name, isTeam:false,
+      category: category||"", categoryLabel: categoryLabel||"", subcategory: subcategory||"",
+      startStation: station||"", startStationKey: gk, startTime: stamp,
+      endStation: station||"", endStationKey: gk, endTime: stamp,
+      status:"done", quantity:null, unit:null, crates:null, kg:null,
+      notes: notes||"", backdated:true,
+      createdByUid: me.uid, createdByName: me.name, createdAt: new Date().toISOString(),
+    };
+    const r = qrDb.ref(`tasksByDate/${date}`).push();
+    await r.set(record);
+    _qrDiaryCache = null;   // force refresh on next open
+  }
+
+  // ---- growth-log tab loader + renderer ----
+  async function loadGrowthLog(plantsCode){
+    const panel = document.querySelector('#planInfoBody .pi-panel[data-panel="growth"]');
+    if (!panel) return;
+    const keys = qrStationKeysFor(plantsCode);
+    if (!keys){ panel.innerHTML = '<div class="gl-empty">אין מיפוי חלקה לקוד זה.</div>'; return; }
+    panel.innerHTML = '<div class="pi-sub">מתחבר ליומן הגידול…</div>';
+    try { await ensureQrAuth(); }
+    catch (e){
+      panel.innerHTML = `<div class="pi-note">לא ניתן להתחבר ליומן הגידול (${glEsc(e.code||e.message)}).<br>` +
+        `יש להפעיל "Anonymous" ב-Authentication של הפרויקט song-cd1cd.</div>`;
+      return;
+    }
+    try {
+      const [plantSnap, archSnap, raw] = await Promise.all([
+        qrDb.ref(`plantingByStation/${keys.underscore}`).once("value"),
+        qrDb.ref(`plantingArchiveByStation/${keys.underscore}`).once("value"),
+        qrLoadDiaryRaw(),
+      ]);
+      const planting = plantSnap.val() || null;
+      const archive = archSnap.val() || {};
+      const diary = qrCollectDiary(raw, keys.dotted);
+      renderGrowthLogPanel(panel, plantsCode, keys, planting, archive, diary);
+    } catch (e){
+      panel.innerHTML = `<div class="pi-note">שגיאה בטעינת יומן הגידול: ${glEsc(e.message)}</div>`;
+    }
+  }
+
+  function glOptions(list, sel, withBlank){
+    let h = withBlank ? `<option value="">—</option>` : "";
+    h += list.map(o => {
+      const val = (typeof o==="object") ? o.key : o;
+      const lab = (typeof o==="object") ? (o.icon?`${o.icon} ${o.label}`:o.label) : o;
+      return `<option value="${glEsc(val)}" ${String(val)===String(sel==null?"":sel)?"selected":""}>${glEsc(lab)}</option>`;
+    }).join("");
+    return h;
+  }
+
+  function renderGrowthLogPanel(panel, plantsCode, keys, planting, archive, diary){
+    const cat = GL_CATALOG[keys.code] || {};
+    const seedCrop = planting?.cropType || GL_TYPE_TO_CROP[cat.type] || "";
+    const zones = (planting?.varietyZones && planting.varietyZones.length)
+      ? planting.varietyZones.map(z => ({ variety:z.variety||"", gamlonFrom:z.gamlonFrom??"", gamlonTo:z.gamlonTo??"" }))
+      : [{ variety: planting?.variety || cat.variety || "", gamlonFrom:"", gamlonTo:"" }];
+    const archCount = archive ? Object.keys(archive).length : 0;
+
+    const cropSel = `<select id="glCrop">${glOptions(GL_CROP_TYPES, seedCrop, true)}</select>`;
+    const fields = `
+      <div class="gl-field"><label>סוג גידול</label>${cropSel}</div>
+      <div class="gl-field"><label>שלב גידול</label><select id="glStage">${glOptions(GL_STAGES, planting?.stage, true)}</select></div>
+      <div class="gl-field"><label>מספר עציצים / צמחים</label><input id="glPlantCount" type="number" min="0" value="${planting?.plantCount??""}"></div>
+      <div class="gl-field"><label>תאריך שתילה</label><input id="glPlantDate" type="date" value="${glEsc(planting?.plantingDate||"")}"></div>
+      <div class="gl-field"><label>נפח עציץ (ליטר)</label><select id="glPotVol">${glOptions(GL_POT_VOLUMES, planting?.potVolumeL, true)}</select></div>
+      <div class="gl-field"><label>סוג עציץ</label><select id="glPotType">${glOptions(GL_POT_TYPES, planting?.potType, true)}</select></div>
+      <div class="gl-field"><label>סוג מבנה</label><select id="glStructure">${glOptions(GL_STRUCTURES, planting?.structureType, true)}</select></div>
+      <div class="gl-field"><label>אחוז הצללה (%)</label><input id="glShading" type="number" min="0" max="100" value="${planting?.shadingPct??""}"></div>
+      <div class="gl-field"><label>סוג מצע</label><select id="glSubstrate">${glOptions(GL_SUBSTRATE, planting?.substrateType, true)}</select></div>
+      <div class="gl-field"><label>ספיקת טפטפות (ל/ש)</label><select id="glDripper">${glOptions(GL_DRIPPER, planting?.dripperFlowLh, true)}</select></div>
+      <div class="gl-field full"><label>זנים ומיקום גמלונים</label><div class="gl-zones" id="glZones"></div>
+        <button class="pi-editbtn" id="glAddZone" style="margin-top:6px;align-self:flex-start;">➕ הוסף זן</button></div>
+      <div class="gl-field full"><label>הערות</label><textarea id="glNotes" rows="2">${glEsc(planting?.notes||"")}</textarea></div>
+    `;
+
+    const updated = planting?.updatedAt ? `עודכן: ${new Date(planting.updatedAt).toLocaleString("he-IL")}` : "טרם נשמרו נתוני חלקה";
+    const diaryHtml = diary.length ? diary.map(glEntryHtml).join("")
+      : '<div class="gl-empty">אין עדיין פעולות רשומות לחלקה זו.</div>';
+
+    panel.innerHTML = `
+      <div class="gl-sec">
+        <h5>🌱 נתוני חלקה — ${glEsc(keys.code)}.${glEsc(keys.section)}</h5>
+        <div class="pi-sub">${glEsc(updated)}</div>
+        <div class="gl-form">${fields}</div>
+        <div class="pi-edit-btns"><button class="pi-editbtn save" id="glSavePlant">💾 שמור נתוני חלקה</button>
+          <span id="glSaveMsg" class="pi-sub" style="align-self:center;"></span></div>
+        ${archCount ? `<details class="gl-arch"><summary>📚 גידולים קודמים (${archCount})</summary>${glArchiveHtml(archive)}</details>` : ""}
+      </div>
+      <div class="gl-sec">
+        <h5>📋 פעולות שבוצעו באזור</h5>
+        <details class="gl-arch" id="glAddWrap"><summary>➕ הוסף פעולה ליומן</summary>
+          <div class="gl-form" style="margin-top:8px;">
+            <div class="gl-field"><label>תאריך</label><input id="glEntDate" type="date" value="${glTodayStr()}"></div>
+            <div class="gl-field"><label>קטגוריה</label><select id="glEntCat">${glOptions(GL_TASK_CATEGORIES, "", true)}</select></div>
+            <div class="gl-field"><label>פעולה</label><select id="glEntSub"><option value="">—</option></select></div>
+            <div class="gl-field full"><label>הערות</label><textarea id="glEntNotes" rows="2"></textarea></div>
+          </div>
+          <div class="pi-edit-btns"><button class="pi-editbtn save" id="glAddEntry">➕ רשום פעולה</button>
+            <span id="glAddMsg" class="pi-sub" style="align-self:center;"></span></div>
+        </details>
+        <div class="gl-diary" id="glDiary" style="margin-top:10px;">${diaryHtml}</div>
+      </div>`;
+
+    // ---- wire the planting form (variety-zone repeater) ----
+    const zonesEl = panel.querySelector("#glZones");
+    const varsFor = () => GL_VARIETIES_BY_CROP[panel.querySelector("#glCrop").value] || [].concat(...Object.values(GL_VARIETIES_BY_CROP));
+    function renderZones(){
+      const opts = varsFor();
+      zonesEl.innerHTML = zones.map((z,i) => `
+        <div class="gl-zone-row" data-i="${i}">
+          <select class="glZVar">${glOptions(opts, z.variety, true)}</select>
+          <input class="glZFrom" type="number" min="0" placeholder="גמלון מ-" value="${z.gamlonFrom??""}">
+          <input class="glZTo" type="number" min="0" placeholder="עד" value="${z.gamlonTo??""}">
+          <button class="pi-editbtn glZDel" title="הסר">🗑️</button>
+        </div>`).join("");
+      zonesEl.querySelectorAll(".gl-zone-row").forEach(row => {
+        const i = +row.getAttribute("data-i");
+        row.querySelector(".glZVar").onchange = e => zones[i].variety = e.target.value;
+        row.querySelector(".glZFrom").oninput = e => zones[i].gamlonFrom = e.target.value;
+        row.querySelector(".glZTo").oninput = e => zones[i].gamlonTo = e.target.value;
+        row.querySelector(".glZDel").onclick = () => { zones.splice(i,1); if(!zones.length) zones.push({variety:"",gamlonFrom:"",gamlonTo:""}); renderZones(); };
+      });
+    }
+    renderZones();
+    panel.querySelector("#glCrop").onchange = renderZones;   // variety list follows crop
+    panel.querySelector("#glAddZone").onclick = () => { zones.push({variety:"",gamlonFrom:"",gamlonTo:""}); renderZones(); };
+
+    panel.querySelector("#glSavePlant").onclick = async () => {
+      const msg = panel.querySelector("#glSaveMsg");
+      const cleanZones = zones.filter(z => z.variety).map(z => ({
+        variety:z.variety, gamlonFrom: glNumOrNull(z.gamlonFrom), gamlonTo: glNumOrNull(z.gamlonTo) }));
+      const varietyStr = [...new Set(cleanZones.map(z=>z.variety))].join(", ");
+      const newFields = {
+        cropType: panel.querySelector("#glCrop").value || "",
+        variety: varietyStr,
+        varietyZones: cleanZones,
+        stage: panel.querySelector("#glStage").value || "",
+        plantCount: glNumOrNull(panel.querySelector("#glPlantCount").value),
+        plantingDate: panel.querySelector("#glPlantDate").value || null,
+        potVolumeL: glNumOrNull(panel.querySelector("#glPotVol").value),
+        potType: panel.querySelector("#glPotType").value || "",
+        structureType: panel.querySelector("#glStructure").value || "",
+        substrateType: panel.querySelector("#glSubstrate").value || "",
+        dripperFlowLh: glNumOrNull(panel.querySelector("#glDripper").value),
+        shadingPct: glNumOrNull(panel.querySelector("#glShading").value),
+        notes: panel.querySelector("#glNotes").value || "",
+        plantingYear: null,
+      };
+      msg.textContent = "שומר…";
+      try {
+        await qrSavePlanting(keys.underscore, planting || {}, newFields);
+        loadGrowthLog(plantsCode);   // reload with fresh record + archive
+      } catch (e){ msg.textContent = "שגיאה: " + (e.code||e.message); }
+    };
+
+    // ---- wire the add-diary-entry form ----
+    const catSel = panel.querySelector("#glEntCat"), subSel = panel.querySelector("#glEntSub");
+    catSel.onchange = () => {
+      const c = glCat(catSel.value);
+      subSel.innerHTML = `<option value="">—</option>` + (c && c.subs ? glOptions(c.subs, "") : "");
+    };
+    panel.querySelector("#glAddEntry").onclick = async () => {
+      const msg = panel.querySelector("#glAddMsg");
+      const c = glCat(catSel.value);
+      if (!c){ msg.textContent = "בחר קטגוריה"; return; }
+      msg.textContent = "רושם…";
+      try {
+        await qrAddDiaryEntry({
+          date: panel.querySelector("#glEntDate").value || glTodayStr(),
+          station: `${keys.code}.${keys.section}`,
+          category: c.key, categoryLabel: c.label,
+          subcategory: subSel.value || "",
+          notes: panel.querySelector("#glEntNotes").value || "",
+        });
+        loadGrowthLog(plantsCode);
+      } catch (e){ msg.textContent = "שגיאה: " + (e.code||e.message); }
+    };
+  }
+
+  function glEntryHtml(e){
+    const c = glCat(e.category);
+    const icon = c ? c.icon : "📝";
+    const title = e.subcategory || (c?c.label:e.categoryLabel) || "פעולה";
+    const workers = e.workerNames || e.workerName || (e.workers?Object.values(e.workers).join(", "):"");
+    const n = e.workers ? Object.keys(e.workers).length : 1;
+    const open = e.open || e.status==="open" || e.status==="active";
+    const dateHe = glFormatDateHe(e.date || (e.startTime||"").slice(0,10));
+    const notes = e.notes ? `<div class="gl-entry-meta">📝 ${glEsc(e.notes)}</div>` : "";
+    const qty = (e.quantity!=null) ? ` · ${glEsc(e.quantity)} ${glEsc(e.unit||"")}` : "";
+    const crates = (e.crates!=null) ? ` · ${glEsc(e.crates)} ארגזים` : "";
+    return `<div class="gl-entry ${open?"open":""}">
+      <div class="gl-entry-h"><b>${icon} ${glEsc(title)}</b>${open?'<span class="gl-badge open">פעילה</span>':`<span class="gl-badge">${glEsc(dateHe)}</span>`}</div>
+      <div class="gl-entry-meta">👥 ${glEsc(workers||"—")}${n>1?` (${n})`:""}${qty}${crates}</div>
+      ${notes}
+    </div>`;
+  }
+
+  function glArchiveHtml(archive){
+    const items = Object.values(archive).sort((a,b)=>String(b.archivedAt||"").localeCompare(String(a.archivedAt||"")));
+    return items.map(a => `<div class="gl-entry" style="margin-top:6px;">
+      <div class="gl-entry-h"><b>${glEsc(a.cropType||"")} · ${glEsc(a.variety||"")}</b>
+        <span class="gl-badge">${glEsc(glFormatDateHe((a.archivedAt||"").slice(0,10)))}</span></div>
+      <div class="gl-entry-meta">${a.plantingDate?("שתילה: "+glFormatDateHe(a.plantingDate)+" · "):""}${a.plantCount?("צמחים: "+glEsc(a.plantCount)):""}</div>
+      ${a.notes?`<div class="gl-entry-meta">📝 ${glEsc(a.notes)}</div>`:""}
+    </div>`).join("");
+  }
+
   // Per-controller fertigation snapshots from REST /dosing?serial=. Cached per
   // letter; resolving one re-renders the open valve panel (live overlay arrives
   // separately via galcon/live/<letter>).
