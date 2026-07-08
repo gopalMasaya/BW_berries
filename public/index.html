@@ -3797,7 +3797,7 @@
         if (expected != null && vol != null){
           const gap = vol - expected, within = Math.abs(gap) <= expected * 0.05;
           const col = within ? "var(--good,#4ade80)" : (gap < 0 ? "#f87171" : "#fbbf24");
-          gapCell = `<div><span>פער</span><b style="color:${col}">${gap>0?"+":""}${gap.toFixed(2)} m³</b></div>`;
+          gapCell = `<div><span>פער</span><b style="color:${col}">${gap>0?"+":""}${fmtVolL(gap)}</b></div>`;
         }
         list += `<div class="pi-irr">
           <div class="pi-irr-h"><b>🕒 ${_gTime(v.DateTimeStartValve)}–${_gTime(v.DateTimeStopValve)}</b><span class="pi-irr-c">מחזור ${v._cycle}</span></div>
