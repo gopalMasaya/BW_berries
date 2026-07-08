@@ -975,6 +975,36 @@
   const database = firebase.database();
   const auth = firebase.auth();
 
+  // ---- Second Firebase project: the farm "growth log" app (song-cd1cd) ----
+  // Step 1 toward merging the two projects: read/write the crop diary + planting
+  // records that live in the separate qrcode/farm app. Its DB rules only require
+  // auth != null, so we sign in anonymously (a separate, isolated auth session
+  // from the main plantstracker login). Needs the Anonymous provider enabled in
+  // the song-cd1cd Firebase console.
+  const QRCODE_CONFIG = {
+    apiKey: "AIzaSyBurfVKNSyFTQBJM8_8wb0WttZ3_HqhYMc",
+    authDomain: "song-cd1cd.firebaseapp.com",
+    databaseURL: "https://song-cd1cd-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "song-cd1cd",
+    storageBucket: "song-cd1cd.firebasestorage.app",
+    messagingSenderId: "476281861666",
+    appId: "1:476281861666:web:df05a4e0ee65d160ebfc7b",
+    measurementId: "G-LR6J8522W7"
+  };
+  const qrApp = firebase.initializeApp(QRCODE_CONFIG, "qrcode");
+  const qrDb = qrApp.database();
+  const qrAuth = qrApp.auth();
+  let _qrAuthPromise = null;
+  // Lazily sign in (anonymously) to the growth-log project the first time the
+  // user opens that tab. Cached; retried on failure.
+  function ensureQrAuth(){
+    if (qrAuth.currentUser) return Promise.resolve(qrAuth.currentUser);
+    if (_qrAuthPromise) return _qrAuthPromise;
+    _qrAuthPromise = qrAuth.signInAnonymously().then(c => c.user)
+      .catch(e => { _qrAuthPromise = null; throw e; });
+    return _qrAuthPromise;
+  }
+
   const MAPBOX_TOKEN = "pk.eyJ1IjoiZ29wYWxtYXNheWEiLCJhIjoiY201MnVpMnl4MjkxNjJqc2Y1cnV0cTRyZCJ9.hTkz0YvubzEiZmtxQBRh-g";
 
   const SENTINEL_INSTANCE_ID = "c7ceb3b2-2ebd-4fca-a562-f48c4e51e73d";
