@@ -2834,7 +2834,6 @@
     if (!ensureGeoRef()){ alert("לא ניתן למקם — חסר מיקום תחנות בתכנית."); return; }
     mapOverlay = true;
     document.getElementById("map").classList.add("overlay-mode");
-    document.getElementById("planMapBtn").classList.add("on");
     // Pan/zoom + position-edit + section-align are driven by the map now.
     if (posEditMode){ posEditMode = false; document.getElementById("planPosBtn").classList.remove("on");
       document.getElementById("planSvg").classList.remove("posedit");
