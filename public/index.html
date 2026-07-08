@@ -681,6 +681,41 @@
       border-radius:9px; border:1px solid var(--border); background:rgba(0,0,0,0.25); color:var(--text); }
     #planInfo .pi-edit-btns{ display:flex; gap:6px; margin-top:8px; }
     #planInfo h5{ margin:14px 0 6px 0; font-size:18px; color:var(--text); }
+
+    /* Tabbed panel (נתונים / יומן גידול) inside the station/valve info window. */
+    #planInfo .pi-tabs{ display:flex; gap:6px; margin:4px 0 14px 0; border-bottom:1px solid var(--border); }
+    #planInfo .pi-tab{ font:inherit; font-size:16px; cursor:pointer; padding:9px 16px; border:none;
+      border-bottom:3px solid transparent; background:none; color:var(--muted); border-radius:8px 8px 0 0; }
+    #planInfo .pi-tab:hover{ color:var(--text); background:rgba(255,255,255,0.04); }
+    #planInfo .pi-tab.active{ color:var(--accent); border-bottom-color:var(--accent); font-weight:bold; }
+    #planInfo .pi-panel[hidden]{ display:none; }
+
+    /* Growth-log tab (crop record form + event diary). */
+    #planInfo .gl-sec{ margin-bottom:18px; }
+    #planInfo .gl-form{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; }
+    #planInfo .gl-field{ display:flex; flex-direction:column; gap:4px; }
+    #planInfo .gl-field label{ font-size:13px; color:var(--muted); margin:0; }
+    #planInfo .gl-field input, #planInfo .gl-field select, #planInfo .gl-field textarea{
+      width:100%; box-sizing:border-box; font:inherit; font-size:15px; padding:8px 10px;
+      border-radius:9px; border:1px solid var(--border); background:rgba(0,0,0,0.25); color:var(--text); }
+    #planInfo .gl-field.full{ grid-column:1 / -1; }
+    #planInfo .gl-zones{ grid-column:1 / -1; display:flex; flex-direction:column; gap:6px; }
+    #planInfo .gl-zone-row{ display:flex; gap:6px; align-items:center; }
+    #planInfo .gl-zone-row select{ flex:2; }
+    #planInfo .gl-zone-row input{ flex:1; min-width:0; }
+    #planInfo .gl-zone-row button{ flex:0 0 auto; padding:6px 10px; }
+    #planInfo .gl-diary{ display:flex; flex-direction:column; gap:8px; }
+    #planInfo .gl-entry{ border:1px solid var(--border); border-radius:11px; padding:10px 12px; background:rgba(255,255,255,0.03); }
+    #planInfo .gl-entry-h{ display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:16px; }
+    #planInfo .gl-entry-h b{ font-weight:700; }
+    #planInfo .gl-entry-meta{ font-size:13px; color:var(--muted); margin-top:3px; }
+    #planInfo .gl-entry.open{ border-color:rgba(43,213,118,0.5); background:rgba(43,213,118,0.08); }
+    #planInfo .gl-badge{ font-size:12px; color:var(--muted); background:rgba(255,255,255,0.06); padding:2px 9px; border-radius:999px; }
+    #planInfo .gl-badge.open{ color:#7be6a6; background:rgba(43,213,118,0.16); }
+    #planInfo .gl-empty{ font-size:14px; color:var(--muted); padding:8px 0; }
+    #planInfo .gl-kv{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; margin-top:8px; }
+    #planInfo .gl-kv .pi-k{ font-size:13px; } #planInfo .gl-kv .pi-v{ font-size:16px; }
+    #planInfo .gl-arch summary{ cursor:pointer; color:var(--muted); font-size:14px; margin-top:6px; }
   </style>
 </head>
 
