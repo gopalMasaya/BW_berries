@@ -2641,6 +2641,8 @@
         });
         planStationPos = {};
         localStorage.removeItem("planStationPos");
+        try { database.ref(STATION_POS_PATH).remove(); }   // shared reset for all users
+        catch (e){ console.warn("stationPos Firebase reset error:", e && e.message); }
         STATIONS.forEach(st => {
           const o = stationOriginXY(STATION_VALVE[st.deviceId]);
           if (!o) return;
