@@ -3603,8 +3603,8 @@
     let h = '<h5>השקיה אחרונה</h5><div class="pi-grid">';
     if (i.stop || i.time) h += piCard("זמן סיום", (i.stop || i.time));
     if (i.durationMin != null) h += piCard("משך (דק׳)", i.durationMin);
-    if (i.volumeM3 != null) h += piCard("מים (m³)", i.volumeM3);
-    if (i.flowRateM3h != null) h += piCard("ספיקה (m³/h)", i.flowRateM3h);
+    if (i.volumeM3 != null) h += piCard("מים", fmtVolL(i.volumeM3));
+    if (i.flowRateM3h != null) h += piCard("ספיקה", fmtFlowL(i.flowRateM3h));
     if (i.ec != null) h += piCard("EC", i.ec);
     if (i.ph != null) h += piCard("pH", i.ph);
     h += '</div>';
