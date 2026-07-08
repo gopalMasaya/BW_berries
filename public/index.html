@@ -40,7 +40,27 @@
       background: linear-gradient(180deg, var(--panel), var(--panel2));
       border-right: 1px solid var(--border);
       display:flex; flex-direction:column; z-index:3;
+      transition: width .25s ease;
     }
+    /* Collapsed: panel shrinks to zero so it frees the whole screen for the map. */
+    #app.panel-collapsed #leftPanel{
+      width:0; min-width:0; border-right:none; overflow:hidden;
+    }
+    /* Header collapse button ("‹") and the mid-edge reopen handle ("›"). */
+    #panelCollapse{
+      padding:4px 9px; border-radius:8px; border:1px solid var(--border);
+      background:rgba(255,255,255,0.06); color:var(--text); cursor:pointer;
+      font-size:16px; line-height:1; white-space:nowrap;
+    }
+    #panelToggle{
+      position:absolute; top:50%; left:0; transform:translateY(-50%);
+      z-index:6; display:none;
+      padding:14px 6px; border:1px solid var(--border); border-left:none;
+      border-radius:0 10px 10px 0;
+      background:rgba(15,26,46,0.96); color:var(--text);
+      cursor:pointer; font-size:18px; line-height:1;
+    }
+    #app.panel-collapsed #panelToggle{ display:block; }
     #leftHeader{ padding:16px 16px 10px 16px; border-bottom: 1px solid var(--border); }
     #leftHeader h2{ margin:0 0 6px 0; font-size:16px; }
     #leftHeader .sub{ color:var(--muted); font-size:14px; }
