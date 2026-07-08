@@ -3851,7 +3851,8 @@
       (cards.length ? "" : '<div class="pi-sub">אין נתוני חיישנים טעונים עדיין.</div>') +
       (valveName ? `<div class="pi-sub" style="margin-top:8px">ברז Galcon: ${valveName} · ${g.ctrlName}</div>` : "") +
       '<div id="stIrrToday" class="pi-sub" style="margin-top:8px">💧 טוען השקיות היום…</div>' +
-      (approx ? `<div class="pi-note">הברז ${vid} לא תויג בתכנית ה-CAD — הסמן ממוקם בקירוב באזור בקר B. לחיצה על הברז הנכון בתכנית תאפשר מיקום מדויק.</div>` : ""));
+      (approx ? `<div class="pi-note">הברז ${vid} לא תויג בתכנית ה-CAD — הסמן ממוקם בקירוב באזור בקר B. לחיצה על הברז הנכון בתכנית תאפשר מיקום מדויק.</div>` : ""),
+      qrStationKeysFor(effectiveValveId(vid)) ? effectiveValveId(vid) : null);
 
     fillStationIrr(vid, seq);   // pull today's irrigations into the placeholder
   }
