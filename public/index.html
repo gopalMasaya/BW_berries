@@ -3803,8 +3803,8 @@
           <div class="pi-irr-h"><b>🕒 ${_gTime(v.DateTimeStartValve)}–${_gTime(v.DateTimeStopValve)}</b><span class="pi-irr-c">מחזור ${v._cycle}</span></div>
           <div class="pi-irr-grid">
             <div><span>⏱ משך</span><b>${_gFmt(v.DurationValve)} דק׳</b></div>
-            <div><span>🚿 ספיקה</span><b>${_gFmt(v.FlowRateM3h)} m³/h</b></div>
-            <div><span>💧 נפח</span><b>${_gFmt(v.VolumeM3Valve, 2)} m³</b></div>
+            <div><span>🚿 ספיקה</span><b>${fmtFlowL(v.FlowRateM3h)}</b></div>
+            <div><span>💧 נפח</span><b>${fmtVolL(v.VolumeM3Valve)}</b></div>
             ${actualPct != null ? `<div><span>בפועל</span><b>${actualPct}%</b></div>` : ""}
             ${pctCfg != null ? `<div><span>מתוכנן</span><b>${pctCfg}%</b></div>` : ""}
             ${gapCell}
