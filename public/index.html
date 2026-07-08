@@ -3133,17 +3133,48 @@
   }
 
   // ---- info panel ----
-  function openPlanInfo(title, sub, cards, extraHtml){
-    const body = document.getElementById("planInfoBody");
-    let html = `<div class="pi-title">${title}</div><div class="pi-sub">${sub || ""}</div>`;
+  // Inner HTML for the "data" content: a cards grid + any extra markup.
+  function piDataHtml(cards, extraHtml){
+    let html = "";
     if (cards && cards.length){
       html += '<div class="pi-grid">';
       cards.forEach(([k, v]) => { html += `<div class="pi-card"><div class="pi-k">${k}</div><div class="pi-v">${v}</div></div>`; });
       html += '</div>';
     }
     if (extraHtml) html += extraHtml;
+    return html;
+  }
+  // Open the info window. When `growthCode` (a plot code like "B7") is given, the
+  // body is split into two tabs: "נתונים" (the passed cards/extra) and "יומן גידול"
+  // (the farm growth log, lazily loaded from the qrcode project).
+  function openPlanInfo(title, sub, cards, extraHtml, growthCode){
+    const body = document.getElementById("planInfoBody");
+    const dataHtml = piDataHtml(cards, extraHtml);
+    let html = `<div class="pi-title">${title}</div><div class="pi-sub">${sub || ""}</div>`;
+    if (growthCode){
+      html += `<div class="pi-tabs">
+        <button class="pi-tab active" data-tab="data">📊 נתונים</button>
+        <button class="pi-tab" data-tab="growth">🌱 יומן גידול</button>
+      </div>`;
+      html += `<div class="pi-panel" data-panel="data">${dataHtml}</div>`;
+      html += `<div class="pi-panel" data-panel="growth" hidden><div class="pi-sub">בחר בלשונית כדי לטעון…</div></div>`;
+    } else {
+      html += dataHtml;
+    }
     body.innerHTML = html;
     document.getElementById("planInfo").classList.add("open");
+    if (growthCode) wirePlanInfoTabs(growthCode);
+  }
+  function wirePlanInfoTabs(growthCode){
+    const body = document.getElementById("planInfoBody");
+    const tabs = body.querySelectorAll(".pi-tab");
+    const panels = body.querySelectorAll(".pi-panel");
+    let loaded = false;
+    tabs.forEach(btn => btn.onclick = () => {
+      tabs.forEach(b => b.classList.toggle("active", b === btn));
+      panels.forEach(p => p.hidden = (p.getAttribute("data-panel") !== btn.dataset.tab));
+      if (btn.dataset.tab === "growth" && !loaded){ loaded = true; loadGrowthLog(growthCode); }
+    });
   }
   function closePlanInfo(){ document.getElementById("planInfo").classList.remove("open"); }
 
