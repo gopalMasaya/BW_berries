@@ -3535,8 +3535,13 @@
     if (view === "gis") {
       mapEl.classList.remove("hidden");
       drawerEl.style.display = "";
-      if (map) map.resize();
-      if (mapOverlay) setTimeout(() => { syncOverlayViewBox(); applyOverlay(); }, 60);
+      // GIS always shows the satellite map underlay — enable it on first entry.
+      if (!mapOverlay && planData){
+        enableOverlay();
+      } else {
+        if (map) map.resize();
+        if (mapOverlay) setTimeout(() => { syncOverlayViewBox(); applyOverlay(); }, 60);
+      }
     } else if (view === "chart") {
       chartEl.classList.add("active");
       drawerEl.style.display = "none";
