@@ -3778,7 +3778,7 @@
     const pctFor = (cycle, program) => (methodMap && cycle != null && program != null) ? methodMap[`${cycle}|${program}`] : null;
 
     let h = `<h5>💧 השקיות היום (${date})</h5>`;
-    if (baseInfo) h += `<div class="pi-sub">תוכנית ${prog} · ${baseInfo.name || ""} · מנה 100% = ${baseM3} m³${cyclePerDay ? ` · ${cyclePerDay} מחזורים/יום` : ""}</div>`;
+    if (baseInfo) h += `<div class="pi-sub">תוכנית ${prog} · ${baseInfo.name || ""} · מנה 100% = ${fmtVolL(baseM3)}${cyclePerDay ? ` · ${cyclePerDay} מחזורים/יום` : ""}</div>`;
 
     if (!events.length){
       h += '<div class="pi-sub" style="margin-top:6px">אין השקיות שהסתיימו היום.</div>';
