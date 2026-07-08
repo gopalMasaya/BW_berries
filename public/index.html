@@ -3815,9 +3815,9 @@
       const avgFlow = nFlow ? totFlow / nFlow : null;
       h += `<div class="pi-grid" style="margin-top:8px">
         ${piCard("השקיות היום", events.length)}
-        ${piCard("סה״כ מים", totVol.toFixed(2) + " m³")}
+        ${piCard("סה״כ מים", fmtVolL(totVol))}
         ${piCard("משך כולל", _gFmt(totDur) + " דק׳")}
-        ${piCard("ספיקה ממוצעת", _gFmt(avgFlow) + " m³/h")}
+        ${piCard("ספיקה ממוצעת", fmtFlowL(avgFlow))}
       </div>` + list;
 
       // Next irrigation = next cycle of the program (Galcon exposes no clock time).
