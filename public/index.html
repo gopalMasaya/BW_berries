@@ -1064,6 +1064,23 @@
 
   document.getElementById("logoutBtn").addEventListener("click", () => { auth.signOut(); });
 
+  // Collapse / reopen the left panel so it doesn't take fixed screen space.
+  (function setupPanelCollapse(){
+    const app = document.getElementById("app");
+    const setCollapsed = (c) => {
+      app.classList.toggle("panel-collapsed", c);
+      // Give the map its new width once the transition settles.
+      setTimeout(() => {
+        if (typeof map !== "undefined" && map && map.resize) map.resize();
+        if (typeof mapOverlay !== "undefined" && mapOverlay){ syncOverlayViewBox(); applyOverlay(); }
+      }, 280);
+    };
+    const cBtn = document.getElementById("panelCollapse");
+    const tBtn = document.getElementById("panelToggle");
+    if (cBtn) cBtn.addEventListener("click", () => setCollapsed(true));
+    if (tBtn) tBtn.addEventListener("click", () => setCollapsed(false));
+  })();
+
   // ===============================
   // HELPERS
   // ===============================
