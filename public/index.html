@@ -3576,6 +3576,26 @@
 
   function piCard(k, v){ return `<div class="pi-card"><div class="pi-k">${k}</div><div class="pi-v">${v}</div></div>`; }
 
+  // Water is stored/returned by Galcon in m³, but m³ is unintuitive for users —
+  // show it in liters (1 m³ = 1000 L), dropping to milliliters for sub-liter
+  // values. Thousands are grouped for readability (13.20 m³ → "13,200 ליטר").
+  function _trimNum(n, dp){ return Number(Number(n).toFixed(dp)).toString(); }
+  function _grpThousands(nStr){
+    const p = String(nStr).split(".");
+    p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return p.join(".");
+  }
+  function fmtVolL(m3){
+    if (m3 == null || m3 === "" || isNaN(Number(m3))) return "—";
+    const L = Number(m3) * 1000;
+    if (Math.abs(L) < 1) return _trimNum(L * 1000, 1) + " מ״ל";     // < 1 L → milliliters
+    return _grpThousands(_trimNum(L, 1)) + " ליטר";
+  }
+  function fmtFlowL(m3h){
+    if (m3h == null || m3h === "" || isNaN(Number(m3h))) return "—";
+    return _grpThousands(_trimNum(Number(m3h) * 1000, 0)) + " ליטר/שעה";
+  }
+
   // Last finished-irrigation block for a valve (from galcon/valves/.../lastIrr).
   function valveIrrHtml(rec){
     if (!rec || !rec.lastIrr) return '<div class="pi-sub" style="margin-top:8px">אין נתוני השקיה אחרונה.</div>';
