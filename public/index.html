@@ -2596,11 +2596,8 @@
     document.getElementById("planInfoClose").onclick = closePlanInfo;
     svg.addEventListener("click", () => { clearPlanSelection(); closePlanInfo(); });
 
-    // Satellite map underlay — overlay the georeferenced plan on/off (lazy-init).
-    const mapBtn = document.getElementById("planMapBtn");
-    if (mapBtn){
-      mapBtn.onclick = () => { mapOverlay ? disableOverlay() : enableOverlay(); };
-    }
+    // Satellite map underlay is now always on in GIS (auto-enabled on view entry),
+    // so there is no manual show/hide toggle button.
 
     // Position-edit mode: toggle dragging of valve markers.
     const posBtn = document.getElementById("planPosBtn");
