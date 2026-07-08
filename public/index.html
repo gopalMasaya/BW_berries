@@ -3825,7 +3825,7 @@
         if (events.length < cyclePerDay){
           const nextCycle = events.length + 1;
           const nextPct = pctFor(nextCycle, prog);
-          const nextVol = (baseM3 != null && nextPct != null) ? (baseM3 * nextPct / 100).toFixed(2) + " m³" : null;
+          const nextVol = (baseM3 != null && nextPct != null) ? fmtVolL(baseM3 * nextPct / 100) : null;
           h += `<div class="pi-next">➡️ השקיה הבאה: מחזור ${nextCycle} מתוך ${cyclePerDay}${nextPct != null ? ` · מנה ${nextPct}%` : ""}${nextVol ? ` (≈ ${nextVol})` : ""}</div>`;
         } else {
           h += `<div class="pi-next">✅ הסתיימו כל ${cyclePerDay} המחזורים להיום.</div>`;
