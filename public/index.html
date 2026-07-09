@@ -4051,7 +4051,7 @@
 
       Object.keys(val).forEach(tsKey => {
         if (tsKey === "control") return;
-        const item = normalizeWaterFields(val[tsKey]);
+        const item = normalizeReading(val[tsKey], deviceId);
 
         let tsISO = null;
         if (item.serverTimestamp) {
