@@ -1466,7 +1466,7 @@
         }
 
         const tsKey = Object.keys(val)[0];
-        const item = normalizeWaterFields(val[tsKey]);
+        const item = normalizeReading(val[tsKey], deviceId);
 
         // Extract timestamp from serverTimestamp (ISO string) or build from tsKey
         let tsISO = null;
