@@ -1239,11 +1239,11 @@
     return out;
   }
 
-  // TEMPORARY — station1's inline pH probes (ph1/ph2) are faulty. Until they are
-  // replaced, mirror the soil-pH probes onto those fields so every view keeps
-  // showing a usable pH. Empty this map to go back to the raw probe values.
-  // The Galcon comparison page (galcon.html) deliberately stays on raw ph1/ph2.
-  const PH_FALLBACK = { station1: { ph1: "soil1_ph", ph2: "soil2_ph" } };
+  // TEMPORARY — station1's soil-pH probes are faulty (frozen at 7.8 since
+  // 06/07/2026). Until they are replaced, mirror the working inline pH probes
+  // onto the soil-pH fields so those views keep showing a usable pH.
+  // Empty this map to go back to the raw probe values.
+  const PH_FALLBACK = { station1: { soil1_ph: "ph1", soil2_ph: "ph2" } };
   function applyPhFallback(item, deviceId){
     const map = PH_FALLBACK[deviceId];
     if (!map || !item || typeof item !== "object") return item;

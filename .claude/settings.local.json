@@ -165,7 +165,8 @@
       "Bash(node --check C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/2bdb95d8-623c-4290-a40f-5c6ef503620c/scratchpad/app.js)",
       "Bash(node \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/a8bcd3c5-878f-453f-9364-cc6acaab5e45/scratchpad/chk.js\")",
       "Bash(node \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/a8bcd3c5-878f-453f-9364-cc6acaab5e45/scratchpad/verify.js\")",
-      "Bash(node \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/a8bcd3c5-878f-453f-9364-cc6acaab5e45/scratchpad/stale.js\")"
+      "Bash(node \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/a8bcd3c5-878f-453f-9364-cc6acaab5e45/scratchpad/stale.js\")",
+      "Bash(node \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/a8bcd3c5-878f-453f-9364-cc6acaab5e45/scratchpad/timeline.js\")"
     ]
   },
   "hooks": {
