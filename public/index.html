@@ -1239,6 +1239,27 @@
     return out;
   }
 
+  // TEMPORARY — station1's inline pH probes (ph1/ph2) are faulty. Until they are
+  // replaced, mirror the soil-pH probes onto those fields so every view keeps
+  // showing a usable pH. Empty this map to go back to the raw probe values.
+  // The Galcon comparison page (galcon.html) deliberately stays on raw ph1/ph2.
+  const PH_FALLBACK = { station1: { ph1: "soil1_ph", ph2: "soil2_ph" } };
+  function applyPhFallback(item, deviceId){
+    const map = PH_FALLBACK[deviceId];
+    if (!map || !item || typeof item !== "object") return item;
+    const out = { ...item };
+    Object.keys(map).forEach(target => {
+      const src = item[map[target]];
+      if (src !== undefined && src !== null && src !== "") out[target] = src;
+    });
+    return out;
+  }
+
+  // Every Firebase read of a reading goes through here.
+  function normalizeReading(item, deviceId){
+    return applyPhFallback(normalizeWaterFields(item), deviceId);
+  }
+
   function ageMinutes(iso){
     if (!iso) return Infinity;
     const ms = Date.now() - new Date(iso).getTime();
