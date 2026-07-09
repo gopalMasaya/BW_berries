@@ -1639,7 +1639,7 @@
       if (!val) continue;
       Object.keys(val).forEach(tsKey => {
         if (tsKey === "control") return;
-        const item = val[tsKey];
+        const item = applyPhFallback(val[tsKey], deviceId);
         if (!item || typeof item !== "object") return;
         const t = readingMoment(tsKey, item);
         if (!t || isNaN(t.getTime())) return;
