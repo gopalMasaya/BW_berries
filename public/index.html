@@ -1762,7 +1762,7 @@
       if (!val) continue;
       Object.keys(val).forEach(tsKey => {
         if (tsKey === "control") return;
-        const item = normalizeWaterFields(val[tsKey]);
+        const item = normalizeReading(val[tsKey], deviceId);
         const t = readingMoment(tsKey, item);
         if (!t || isNaN(t.getTime()) || t < fromDate || t > toDate) return;
         out.push({ time: t, waterIn: Number(item.waterIn) || 0, waterOut: Number(item.waterOut) || 0, item });
