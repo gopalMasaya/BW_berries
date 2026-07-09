@@ -1241,16 +1241,26 @@
 
   // TEMPORARY — station1's soil-pH probes are faulty (frozen at 7.8 since
   // 06/07/2026). Until they are replaced, mirror the working inline pH probes
-  // onto the soil-pH fields so those views keep showing a usable pH.
-  // Empty this map to go back to the raw probe values.
+  // onto the soil-pH fields so those views keep showing a usable pH. The soil-pH
+  // fields carry the probe reading as-is; ph1/ph2 are then shown 10% above it.
+  // To restore normal behaviour, empty BOTH maps below — nothing else to undo.
+  // galcon.html reads ph1/ph2 straight from the DB and stays unscaled on purpose.
   const PH_FALLBACK = { station1: { soil1_ph: "ph1", soil2_ph: "ph2" } };
+  const PH_SCALE    = { station1: { ph1: 1.1, ph2: 1.1 } };
   function applyPhFallback(item, deviceId){
     const map = PH_FALLBACK[deviceId];
-    if (!map || !item || typeof item !== "object") return item;
+    const scale = PH_SCALE[deviceId];
+    if ((!map && !scale) || !item || typeof item !== "object") return item;
     const out = { ...item };
-    Object.keys(map).forEach(target => {
+    // Both loops read from `item`, so the mirrored soil value keeps the raw
+    // reading regardless of whether ph1/ph2 are scaled afterwards.
+    if (map) Object.keys(map).forEach(target => {
       const src = item[map[target]];
       if (src !== undefined && src !== null && src !== "") out[target] = src;
+    });
+    if (scale) Object.keys(scale).forEach(f => {
+      const v = parseFloat(item[f]);
+      if (Number.isFinite(v)) out[f] = v * scale[f];
     });
     return out;
   }
