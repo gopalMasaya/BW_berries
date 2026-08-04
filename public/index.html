@@ -1993,20 +1993,34 @@
 
       let detailHtml;
       if (events.length){
-        const bodyRows = events.map((e, i) => `
-          <tr>
-            <td>${i + 1}</td>
+        const bodyRows = events.map((e, i) => {
+          const ec = pickIrrigSensor(e.samples, IRRIG_EC_FIELDS);
+          const ph = pickIrrigSensor(e.samples, IRRIG_PH_FIELDS);
+          const samplesHtml = (e.samples || []).map(s => `
+            <div class="ir-sample">
+              <span class="ir-sample-t">${fmtHM(s.time)}</span>
+              <span class="ir-sample-v">${irrigSampleChips(s)}</span>
+            </div>`).join("");
+          return `
+          <tr class="ir-row" data-idx="${i}" title="לחץ להצגת כל נקודות הדגימה בהשקיה">
+            <td class="ir-idx">${i + 1}<span class="ir-caret">▼</span></td>
             <td>${multiDay ? e.startTime.toLocaleDateString("he-IL") + " " : ""}${fmtHM(e.startTime)}</td>
             <td>${fmtHM(e.endTime)}</td>
             <td>${e.durationMin}</td>
-            <td class="ir-in">${e.waterInL.toFixed(1)}</td>
-            <td class="ir-out">${e.waterOutL.toFixed(1)}</td>
-          </tr>`).join("");
+            <td class="ir-in">${e.waterInL.toFixed(3)}</td>
+            <td class="ir-out">${e.waterOutL.toFixed(3)}</td>
+            ${irrigSensorCell(ec)}
+            ${irrigSensorCell(ph)}
+          </tr>
+          <tr class="ir-samples" data-idx="${i}" style="display:none;">
+            <td colspan="8">${samplesHtml || "—"}</td>
+          </tr>`;
+        }).join("");
         detailHtml = `
           <table class="sq-irrig-table">
-            <thead><tr><th>#</th><th>התחלה</th><th>סיום</th><th>משך (ד׳)</th><th>טפטפת (ל׳)</th><th>נקז (ל׳)</th></tr></thead>
+            <thead><tr><th>#</th><th>התחלה</th><th>סיום</th><th>משך (ד׳)</th><th>טפטפת (ל׳)</th><th>נקז (ל׳)</th><th>EC</th><th>pH</th></tr></thead>
             <tbody>${bodyRows}</tbody>
-            <tfoot><tr><td colspan="4">סה״כ</td><td class="ir-in">${totIn.toFixed(1)}</td><td class="ir-out">${totOut.toFixed(1)}</td></tr></tfoot>
+            <tfoot><tr><td colspan="4">סה״כ</td><td class="ir-in">${totIn.toFixed(3)}</td><td class="ir-out">${totOut.toFixed(3)}</td><td colspan="2"></td></tr></tfoot>
           </table>`;
       } else {
         detailHtml = `<div class="sq-irrig-empty">אין השקיות בטווח שנבחר</div>`;
