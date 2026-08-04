@@ -2013,17 +2013,21 @@
             <td class="ir-out">${e.waterOutL.toFixed(3)}</td>
             ${irrigSensorCell(ec)}
             ${irrigSensorCell(ph)}
+            ${irrigSensorCell(hu1)}
+            ${irrigSensorCell(hu2)}
           </tr>
           <tr class="ir-samples" data-idx="${i}" style="display:none;">
-            <td colspan="8">${samplesHtml || "—"}</td>
+            <td colspan="10">${samplesHtml || "—"}</td>
           </tr>`;
         }).join("");
         detailHtml = `
+          <div class="sq-irrig-scroll">
           <table class="sq-irrig-table">
-            <thead><tr><th>#</th><th>התחלה</th><th>סיום</th><th>משך (ד׳)</th><th>טפטפת (ל׳)</th><th>נקז (ל׳)</th><th>EC</th><th>pH</th></tr></thead>
+            <thead><tr><th>#</th><th>התחלה</th><th>סיום</th><th>משך (ד׳)</th><th>טפטפת (ל׳)</th><th>נקז (ל׳)</th><th>EC</th><th>pH</th><th>לחות 1</th><th>לחות 2</th></tr></thead>
             <tbody>${bodyRows}</tbody>
-            <tfoot><tr><td colspan="4">סה״כ</td><td class="ir-in">${totIn.toFixed(3)}</td><td class="ir-out">${totOut.toFixed(3)}</td><td colspan="2"></td></tr></tfoot>
-          </table>`;
+            <tfoot><tr><td colspan="4">סה״כ</td><td class="ir-in">${totIn.toFixed(3)}</td><td class="ir-out">${totOut.toFixed(3)}</td><td colspan="4"></td></tr></tfoot>
+          </table>
+          </div>`;
       } else {
         detailHtml = `<div class="sq-irrig-empty">אין השקיות בטווח שנבחר</div>`;
       }
