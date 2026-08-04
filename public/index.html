@@ -1830,18 +1830,22 @@
 
       if (dBoundary > 0){
         if (!cur || (lastBoundaryTime && (r.time - lastBoundaryTime) >= gapMs)){
-          cur = { startTime:r.time, endTime:r.time, pulsesIn:0, pulsesOut:0 };
+          cur = { startTime:r.time, endTime:r.time, pulsesIn:0, pulsesOut:0, samples:[] };
           events.push(cur);
         }
         cur.pulsesIn  += dIn;
         cur.pulsesOut += dOut;
         cur.endTime = r.time;
+        // keep the whole reading so the sensor values (EC/pH/…) measured at this
+        // exact moment can be shown next to the irrigation
+        cur.samples.push({ time:r.time, item:r.item, dIn, dOut });
         lastBoundaryTime = r.time;
       } else if (cur && dTail > 0){
         // trailing flow on the other channel still belongs to the current event
         cur.pulsesIn  += dIn;
         cur.pulsesOut += dOut;
         cur.endTime = r.time;
+        cur.samples.push({ time:r.time, item:r.item, dIn, dOut });
       }
     }
     for (const e of events){
