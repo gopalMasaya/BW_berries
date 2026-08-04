@@ -355,9 +355,13 @@
       font-size:12.5px; color:var(--warn); padding:6px 10px; border-radius:8px;
       background:rgba(255,176,32,0.10); border:1px solid rgba(255,176,32,0.5);
     }
+    /* 10 columns (water + EC/pH/humidity) can outgrow a narrow card — let the
+       table scroll sideways instead of squashing. */
+    .sq-irrig-scroll{ overflow-x:auto; }
     .sq-irrig-table{ width:100%; border-collapse:collapse; font-size:13px; }
     .sq-irrig-table th, .sq-irrig-table td{
-      padding:6px 8px; text-align:center; border-bottom:1px solid var(--border);
+      padding:6px 6px; text-align:center; border-bottom:1px solid var(--border);
+      white-space:nowrap;
       font-variant-numeric:tabular-nums;
     }
     .sq-irrig-table thead th{ color:var(--muted); font-weight:700; font-size:12px; }
