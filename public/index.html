@@ -365,6 +365,29 @@
     .sq-irrig-table tfoot td{ font-weight:800; border-top:2px solid var(--border); border-bottom:none; }
     .sq-irrig-table .ir-in{ color:var(--accent); font-weight:700; }
     .sq-irrig-table .ir-out{ color:var(--warn); font-weight:700; }
+    /* Sensor snapshot per irrigation: EC/pH columns on the row, full per-reading
+       values in the expandable detail row below it. */
+    .sq-irrig-table tbody tr.ir-row{ cursor:pointer; }
+    .sq-irrig-table td.ir-sensor{ font-weight:600; }
+    .sq-irrig-table td.ir-idx .ir-caret{ color:var(--muted); font-size:10px; margin-inline-start:3px; }
+    .sq-irrig-table tr.ir-samples > td{
+      background:rgba(0,0,0,0.02); text-align:right; padding:8px 10px;
+    }
+    .ir-sample{
+      display:flex; gap:8px; align-items:baseline; flex-wrap:wrap;
+      padding:4px 0; border-bottom:1px dashed var(--border);
+    }
+    .ir-sample:last-child{ border-bottom:none; }
+    .ir-sample-t{ font-weight:700; font-size:12px; min-width:44px; font-variant-numeric:tabular-nums; }
+    .ir-chip{
+      display:inline-block; font-size:11.5px; color:var(--muted);
+      background:#f4f6fa; border:1px solid var(--border); border-radius:6px;
+      padding:2px 6px; margin-inline-end:4px; margin-bottom:3px; white-space:nowrap;
+      font-variant-numeric:tabular-nums;
+    }
+    .ir-chip b{ color:var(--text); font-weight:700; }
+    .ir-chip.w-in b{ color:var(--accent); }
+    .ir-chip.w-out b{ color:var(--warn); }
     .station-square .sq-chart{
       border-top:1px solid var(--border); padding-top:12px; margin-top:2px;
     }

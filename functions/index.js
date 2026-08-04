@@ -338,20 +338,49 @@ function fmtAppDate(d) {
 // warm instance. Matches on the full serial or on a trailing fragment (e.g.
 // "000169") so callers can pass either form.
 const configIdBySerial = {};
-async function getConfigIdForSerial(serial) {
-  const s = String(serial || "").trim();
-  if (!s) throw new Error("serial required");
-  if (configIdBySerial[s]) return configIdBySerial[s];
+let controllerList = null; // [{serial, configId}], cached per warm instance
+async function listControllers() {
+  if (controllerList) return controllerList;
   const proj = await appGet("/controllers-dashboard/user-projects");
   const projectId = proj.json.body.activeProjectID;
   const ctrls = await appGet(
       `/project/${projectId}/controllers-dashboard?page=1&step=50`);
   const list = (ctrls.json.body && ctrls.json.body.controllers) || [];
-  const found = list.find((c) => String(c.serialNumber || "").trim() === s) ||
-                list.find((c) => String(c.serialNumber || "").includes(s));
+  controllerList = list.map((c) => ({
+    serial: String(c.serialNumber || "").trim(),
+    configId: c.configID,
+  }));
+  for (const c of controllerList) configIdBySerial[c.serial] = c.configId;
+  return controllerList;
+}
+
+async function getConfigIdForSerial(serial) {
+  const s = String(serial || "").trim();
+  if (!s) throw new Error("serial required");
+  if (configIdBySerial[s]) return configIdBySerial[s];
+  const list = await listControllers();
+  const found = list.find((c) => c.serial === s) ||
+                list.find((c) => c.serial.includes(s));
   if (!found) throw new Error("controller not found: " + s);
-  configIdBySerial[s] = found.configID;
-  return found.configID;
+  configIdBySerial[s] = found.configId;
+  return found.configId;
+}
+
+// The controllers report wall-clock time in Israel local time, and the app API
+// expects its from/to query in that same local time — but Cloud Functions run in
+// UTC, so every conversion here is pinned to Asia/Jerusalem explicitly.
+const IL_FMT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Jerusalem",
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+});
+// epoch ms → "YYYY-MM-DDTHH:mm:ss" Israel wall time (the shape the report's
+// `new Date(...)` parses as local time, matching the old external-api strings).
+function ilStamp(ms) {
+  if (ms == null) return null;
+  const p = {};
+  for (const part of IL_FMT.formatToParts(ms)) p[part.type] = part.value;
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`;
 }
 
 const galconApp = express();
@@ -440,6 +469,92 @@ galconApp.get("/overview", async (req, res) => {
   }
 });
 
+// Finished-irrigation events.
+//
+// These used to come from /external-api/get-valve-finish-irrigation-info, but on
+// 2026-07 that endpoint started answering HTTP 402 "This key has been expired,
+// please contact Galcon" — which surfaced to the report as a 500. The same raw
+// controller log is available through the app API as log type 5
+// (FinishIrrigation), so that is the source now. Verified row-for-row against the
+// last data the external-api produced (2026-06-14, controller C): identical stop
+// times, programs, volumes, durations, EC and pH — and the app API even fills in
+// flow rates the external endpoint sometimes reported as 0.
+//
+// Field shape below is kept EXACTLY as the external-api version emitted it, so
+// the qrCode report needs no change. Differences worth knowing:
+//   • the log carries a single EC/pH per event (ecLast/phLast) rather than
+//     min/med/max, so all three are set to that one value;
+//   • the log timestamps the END of the irrigation, so the start is derived as
+//     stop − duration;
+//   • one event can open several valves together (program with valveA..valveE),
+//     and the log meters the group as a whole. The external-api used to report a
+//     per-valve figure; it split the group's water and flow in proportion to each
+//     valve's nominalFlow, so that is reproduced here — verified against the last
+//     external data (2026-06-14, controller A): program 4 metered 21.49 m³ over
+//     valves 4/8/9 (nominalFlow 15/24.4/18) and the external-api reported
+//     5.6/9.2/6.7 m³ and 14.3/23.3/17.2 m³/h, which is exactly this split.
+//     ValveCount/ValveGroup are carried along so a consumer can still tell the
+//     event was shared.
+const LOG_TYPE_FINISH_IRRIGATION = 5;
+
+async function fetchFinishIrrigation(configId, fromLocal, toLocal) {
+  const r = await appGet(
+      `/config/${configId}/log-types/${LOG_TYPE_FINISH_IRRIGATION}/logs` +
+      `?from=${encodeURIComponent(fromLocal)}&to=${encodeURIComponent(toLocal)}`);
+  if (r.status !== 200) {
+    throw new Error(`galileo app HTTP ${r.status}: ${String(r.text).slice(0, 200)}`);
+  }
+  const body = (r.json && r.json.body) || {};
+  return Array.isArray(body) ? body : (body.items || []);
+}
+
+// valve number → nominalFlow (m³/h), per controller. Cached per warm instance;
+// this is setup data that only changes when the grower re-plumbs a valve.
+const nominalFlowByConfig = {};
+async function getNominalFlows(configId) {
+  if (nominalFlowByConfig[configId]) return nominalFlowByConfig[configId];
+  const r = await appGet(`/config/${configId}/element-group/valve-setup`);
+  const body = (r.json && r.json.body) || {};
+  const items = Array.isArray(body) ? body : (body.items || []);
+  const map = {};
+  for (const v of items) {
+    if (v && v.number != null) map[v.number] = Number(v.nominalFlow) || 0;
+  }
+  nominalFlowByConfig[configId] = map;
+  return map;
+}
+
+// Share of the group's water that belongs to each valve. Falls back to an even
+// split when the controller has no nominalFlow for the valves involved, so a
+// missing setup value degrades to "divide by N" rather than to zero.
+function valveShares(group, nominalFlows) {
+  const flows = group.map((n) => Number(nominalFlows[n]) || 0);
+  const total = flows.reduce((a, b) => a + b, 0);
+  if (!(total > 0)) return group.map(() => 1 / group.length);
+  return flows.map((f) => f / total);
+}
+
+// Flow rate for one valve of an event.
+//   • single-valve event — the log's measureFlow IS that valve's flow, and it
+//     reproduces the old external-api value closely, so use it as-is.
+//   • multi-valve event — measureFlow is a line-level reading that does not
+//     divide cleanly (on controller D it ran ~2× the per-valve figure even after
+//     splitting), so derive the average flow from the valve's own share of the
+//     water instead: volume ÷ hours.
+// Scored against the last external-api data (2026-06-14, 45 valves): this
+// hybrid averages 0.49 m³/h off, versus 0.81 for split-measureFlow and 1.10 for
+// always-derived.
+function valveFlow(groupSize, measureFlow, valveVolume, durationMin) {
+  if (groupSize === 1) {
+    const f = Number(measureFlow);
+    return isNaN(f) ? null : f;
+  }
+  if (!(durationMin > 0)) return null;
+  return valveVolume / (durationMin / 60);
+}
+
+const round2 = (n) => (n == null || isNaN(n) ? n : Math.round(n * 100) / 100);
+
 galconApp.get("/valves", async (req, res) => {
   try {
     const fromStr = req.query.from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
@@ -447,42 +562,67 @@ galconApp.get("/valves", async (req, res) => {
     const filterSerial = req.query.controllerSerial ?
       String(req.query.controllerSerial).trim() : null;
 
-    const fromDate = new Date(fromStr + "T00:00:00");
-    const toDate = new Date(toStr + "T23:59:59");
+    const fromLocal = `${fromStr} 00:00:00`;
+    const toLocal = `${toStr} 23:59:59`;
 
-    const data = await galileoGet(
-        "/external-api/get-valve-finish-irrigation-info",
-        fromDate, toDate,
-    );
-
-    const valves = [];
-    const controllers = data && data.body && data.body.controllers || [];
+    const all = await listControllers();
+    const targets = filterSerial ?
+      all.filter((c) => c.serial === filterSerial) : all;
     logger.info("valves filter", {
-      filterSerial,
-      controllerSerials: controllers.map((c) => String(c.serialNumber)),
+      filterSerial, controllerSerials: all.map((c) => c.serial),
     });
-    for (const c of controllers) {
-      const cSerial = c.serialNumber == null ? "" : String(c.serialNumber).trim();
-      if (filterSerial && cSerial !== filterSerial) continue;
-      for (const v of (c.valves || [])) {
-        valves.push({
-          SerialNumber: c.serialNumber,
-          DateTimeStartValve: normalizeGalileoDate(v.dateTimeStartValve),
-          DateTimeStopValve: normalizeGalileoDate(v.dateTimeStopValve),
-          ValveNo: v.valveNo,
-          ProgNum: v.progNum,
-          DurationValve: v.durationValve,
-          FlowRateM3h: v.flowRateM3h,
-          VolumeM3Valve: v.volumeM3Valve,
-          PhMin: v.phMin,
-          PhMed: v.phMed,
-          PhMax: v.phMax,
-          EcMin: v.ecMin,
-          EcMed: v.ecMed,
-          EcMax: v.ecMax,
+
+    const perController = await Promise.all(targets.map(async (c) => {
+      const [items, nominalFlows] = await Promise.all([
+        fetchFinishIrrigation(c.configId, fromLocal, toLocal),
+        getNominalFlows(c.configId),
+      ]);
+      const out = [];
+      let empty = 0;
+      for (const row of items) {
+        const durMin = Number(row.lastTime) || 0;
+        const volume = Number(row.lastWater) || 0;
+        const stopMs = row.time == null ? null : Number(row.time);
+        const startMs = (stopMs != null && durMin > 0) ?
+          stopMs - Math.round(durMin * 60000) : stopMs;
+
+        const group = [0, 1, 2, 3, 4]
+            .map((i) => row["valve" + i])
+            .filter((n) => n != null && Number(n) > 0)
+            .map(Number);
+        // A row with no valve at all carries nothing the report can place.
+        if (!group.length) { empty++; continue; }
+
+        const shares = group.length > 1 ?
+          valveShares(group, nominalFlows) : [1];
+
+        group.forEach((valveNo, i) => {
+          const valveVolume = round2(volume * shares[i]);
+          out.push({
+            SerialNumber: c.serial,
+            DateTimeStartValve: ilStamp(startMs),
+            DateTimeStopValve: ilStamp(stopMs),
+            ValveNo: valveNo,
+            ProgNum: row.programNumber,
+            DurationValve: row.lastTime,
+            FlowRateM3h: round2(
+                valveFlow(group.length, row.measureFlow, valveVolume, durMin)),
+            VolumeM3Valve: valveVolume,
+            PhMin: row.phLast, PhMed: row.phLast, PhMax: row.phLast,
+            EcMin: row.ecLast, EcMed: row.ecLast, EcMax: row.ecLast,
+            EcRequired: row.ecRequired, PhRequired: row.phRequired,
+            ValveCount: group.length, // >1 → volume/flow are this valve's share
+            ValveGroup: group,
+          });
         });
       }
-    }
+      logger.info("valves loaded", {
+        serial: c.serial, rows: items.length, events: out.length, skippedEmpty: empty,
+      });
+      return out;
+    }));
+
+    const valves = perController.flat();
     valves.sort((a, b) => (b.DateTimeStartValve || "").localeCompare(a.DateTimeStartValve || ""));
 
     return res.json({ok: true, valves});
