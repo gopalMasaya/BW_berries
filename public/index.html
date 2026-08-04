@@ -1994,8 +1994,10 @@
       let detailHtml;
       if (events.length){
         const bodyRows = events.map((e, i) => {
-          const ec = pickIrrigSensor(e.samples, IRRIG_EC_FIELDS);
-          const ph = pickIrrigSensor(e.samples, IRRIG_PH_FIELDS);
+          const ec  = pickIrrigSensor(e.samples, IRRIG_EC_FIELDS);
+          const ph  = pickIrrigSensor(e.samples, IRRIG_PH_FIELDS);
+          const hu1 = pickIrrigSensor(e.samples, ["soil1_humidity"]);
+          const hu2 = pickIrrigSensor(e.samples, ["soil2_humidity"]);
           const samplesHtml = (e.samples || []).map(s => `
             <div class="ir-sample">
               <span class="ir-sample-t">${fmtHM(s.time)}</span>
