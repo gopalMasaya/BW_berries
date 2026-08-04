@@ -2041,6 +2041,20 @@
         irrigToggle.querySelector(".caret").textContent = opening ? "▲" : "▼";
       });
 
+      // Clicking an irrigation row reveals every sampling point inside it, each
+      // with the sensor values (EC/pH/soil/…) recorded at that exact moment.
+      irrigDetail.addEventListener("click", (ev) => {
+        const row = ev.target.closest("tr.ir-row");
+        if (!row) return;
+        ev.stopPropagation();
+        const samplesRow = irrigDetail.querySelector(`tr.ir-samples[data-idx="${row.dataset.idx}"]`);
+        if (!samplesRow) return;
+        const opening = samplesRow.style.display === "none";
+        samplesRow.style.display = opening ? "" : "none";
+        const caret = row.querySelector(".ir-caret");
+        if (caret) caret.textContent = opening ? "▲" : "▼";
+      });
+
       // ── Chart data: stored on the square; built lazily when the chart is open ──
       square._chartData = { readings, sensorKey, sensorLabel, multiDay };
       if (chartEl && chartEl.style.display !== "none"){
