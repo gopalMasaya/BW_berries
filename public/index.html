@@ -1857,7 +1857,7 @@
     // Drop "phantom" events: a stray pulse or two (e.g. 1 pulse = 2.4 ml) starts
     // an event whose litres round to 0.0 on BOTH channels, so it displays as an
     // irrigation with no drip and no drain. Keep an event only if its drip OR
-    // drain shows a non-zero value at the displayed precision (1 decimal).
+    // drain reaches the 0.05 L noise floor (the table itself shows 3 decimals).
     return events.filter(e =>
       Math.round(e.waterInL * 10) > 0 || Math.round(e.waterOutL * 10) > 0);
   }
