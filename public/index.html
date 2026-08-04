@@ -1862,6 +1862,48 @@
       Math.round(e.waterInL * 10) > 0 || Math.round(e.waterOutL * 10) > 0);
   }
 
+  // ── Sensor snapshot shown per irrigation ──
+  // EC/pH get their own table columns; the first candidate that actually has a
+  // reading during the irrigation wins (inline probes first, soil fork as fallback).
+  const IRRIG_EC_FIELDS = ["ec", "ec2", "soil1_ec", "soil2_ec"];
+  const IRRIG_PH_FIELDS = ["ph1", "ph2", "soil1_ph", "soil2_ph"];
+
+  // Value of `field` at the earliest reading of the event that carries it (fork
+  // probes skip readings, so the first reading may not have it).
+  function sampleValue(samples, field){
+    for (const s of samples || []){
+      const v = parseFloat(s.item && s.item[field]);
+      if (Number.isFinite(v)) return v;
+    }
+    return NaN;
+  }
+  function pickIrrigSensor(samples, candidates){
+    for (const f of candidates){
+      const v = sampleValue(samples, f);
+      if (Number.isFinite(v)) return { field:f, value:v };
+    }
+    return null;
+  }
+  function irrigSensorCell(sensor){
+    if (!sensor) return `<td class="ir-sensor">—</td>`;
+    const unit = sqUnit(sensor.field);
+    const title = labelFor(sensor.field) + (unit ? " · " + unit : "");
+    return `<td class="ir-sensor" title="${title}">${sqFormat(sensor.field, sensor.value)}</td>`;
+  }
+
+  // All sensor values recorded at one sampling point, as chips (water first).
+  function irrigSampleChips(s){
+    const water = [
+      `<span class="ir-chip w-in"><b>טפטפת</b> ${(s.dIn * ML_PER_PULSE / 1000).toFixed(3)} ל׳</span>`,
+      `<span class="ir-chip w-out"><b>נקז</b> ${(s.dOut * ML_PER_PULSE / 1000).toFixed(3)} ל׳</span>`
+    ].join("");
+    const sensors = squareMetricKeys(s.item).map(k => {
+      const unit = sqUnit(k);
+      return `<span class="ir-chip"><b>${labelFor(k)}</b> ${sqFormat(k, parseFloat(s.item[k]))}${unit ? " " + unit : ""}</span>`;
+    }).join("");
+    return water + sensors;
+  }
+
   // ── Squares view: date range + sensor-line state ──
   const squaresCharts = {};            // deviceId → Chart instance (destroyed on re-render)
   const squaresExpanded = {};          // deviceId → bool: is the chart panel open
