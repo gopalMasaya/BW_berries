@@ -1851,12 +1851,9 @@
     npk_n:"חנקן N", npk_p:"זרחן P", npk_k:"אשלגן K",
     temp:"טמפ׳ אוויר", scale1:"משקל", voltage:"מתח"
   };
-  // scale1 is simulated while the load cell is unwired — say so in the label so
-  // nobody reads it as a measurement (see SCALE_SIM).
-  function labelFor(k){
-    if (k === "scale1" && SCALE_SIM_ON) return FIELD_LABELS.scale1 + " (הדמיה)";
-    return FIELD_LABELS[k] || fmtFieldName(k);
-  }
+  // Note: scale1 is simulated while the load cell is unwired (see SCALE_SIM), but
+  // it is deliberately labelled like any other sensor.
+  function labelFor(k){ return FIELD_LABELS[k] || fmtFieldName(k); }
 
   // Fields never shown as metric tiles: metadata, diagnostics, position, derived
   // duplicates (dS/m mirrors EC), and the water counters (own irrigation panel).
