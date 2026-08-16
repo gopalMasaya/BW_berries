@@ -1727,6 +1727,10 @@
           tsISO = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mi}:00`).toISOString();
         }
 
+        // Load cell not connected — fill scale1 from the water balance.
+        try { await applyScaleSimLatest(deviceId, item, tsISO); }
+        catch(e){ console.error("scale sim", deviceId, e); }
+
         latestByDevice[deviceId] = { tsISO, item };
         resolve({ updated: true, tsISO });
       }, function(err){
