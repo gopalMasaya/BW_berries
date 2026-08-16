@@ -4372,8 +4372,11 @@
     return keys;
   }
 
+  // Reads from SCALE_SIM_WARMUP_MS before the window so the simulated weight
+  // (scale1) enters the window on a settled water balance; the warm-up rows are
+  // filtered out again at the end.
   async function fetchChartDataForStation(deviceId, fromDate, toDate) {
-    const monthKeys = getMonthKeys(fromDate, toDate);
+    const monthKeys = getMonthKeys(new Date(fromDate.getTime() - SCALE_SIM_WARMUP_MS), toDate);
     const rows = [];
 
     for (const mk of monthKeys) {
