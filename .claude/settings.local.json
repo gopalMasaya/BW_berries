@@ -168,7 +168,8 @@
       "Bash(node \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/a8bcd3c5-878f-453f-9364-cc6acaab5e45/scratchpad/stale.js\")",
       "Bash(node \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/a8bcd3c5-878f-453f-9364-cc6acaab5e45/scratchpad/timeline.js\")",
       "Read(//c/Users/Admin/AppData/Local/Temp/claude/**)",
-      "Bash(node --check s1.js)"
+      "Bash(node --check s1.js)",
+      "Bash(node --check \"C:/Users/Admin/AppData/Local/Temp/claude/s1.js\")"
     ]
   },
   "hooks": {

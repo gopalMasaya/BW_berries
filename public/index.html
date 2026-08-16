@@ -1297,6 +1297,214 @@
     return applyPhFallback(normalizeWaterFields(item), deviceId);
   }
 
+  // ===============================
+  // SIMULATED POT WEIGHT (scale1)
+  // ===============================
+  // The load cell exists in the schema but is NOT wired up, so scale1 never
+  // arrives from the device. Until it does, the weight is simulated in the
+  // browser from the flowmeters: every irrigation adds (waterIn − waterOut) to
+  // the pot, and the plant gives it back through evapotranspiration. Nothing is
+  // written to Firebase — empty SCALE_SIM below and the simulation disappears
+  // everywhere, leaving the real sensor (once connected) to speak for itself.
+  //
+  // The model is integrated reading by reading (~one reading / 5 min):
+  //
+  //   kg = potDryKg + waterKg + growthKg + load-cell noise
+  //
+  //   • waterKg takes the measured net inflow of each sample.
+  //   • The substrate holds at most bufferKg of water (field capacity). Whatever
+  //     sits above that is free water in transit: it shows up as the momentary
+  //     spike during an irrigation and then leaks away with a drainTauMin time
+  //     constant — so a surplus can never pile up day after day.
+  //   • Evapotranspiration removes water continuously along a sunrise→sunset
+  //     curve (little at night, peak at midday). Its daily total tracks a 2-day
+  //     average of what the pot ACTUALLY retained, which is the steady state of
+  //     a real container: what goes in and isn't drained is exactly what the
+  //     plant transpires. That is what keeps the weight oscillating around its
+  //     anchor instead of climbing to 15 kg within a week.
+  //   • growthKg is the slow biomass gain, counted from the day the pot was
+  //     weighed by hand, so on that date the simulation reads anchorKg.
+  const SCALE_SIM_DEFAULTS = {
+    bufferKg: 2.0,           // plant-available water between field capacity and dry-out
+    drainTauMin: 12,         // free drainage of anything above field capacity
+    etDefaultKgPerDay: 0.8,  // starting guess until the retention average settles
+    growthKgPerDay: 0.015,   // fresh biomass gain (≈100 g/week)
+    noiseKg: 0.004           // load-cell scatter, ±4 g
+  };
+  // anchorKg = the pot as weighed by hand, taken as its weight at field capacity
+  // (i.e. right after an irrigation has finished draining), on anchorISO.
+  const SCALE_SIM = {
+    station1: { anchorKg: 9.125, anchorISO: "2026-08-16T12:00:00" },
+    station2: { anchorKg: 9.125, anchorISO: "2026-08-16T12:00:00" }
+  };
+  const SCALE_SIM_ON = Object.keys(SCALE_SIM).length > 0;
+  const SCALE_SIM_WARMUP_MS = 2 * 24 * 3600 * 1000; // history needed before a window
+  const SCALE_SIM_ET_TAU_DAYS = 2;                  // how fast ET follows retention
+  const SCALE_SIM_ET_MIN = 0.10, SCALE_SIM_ET_MAX = 3.0; // kg/day guard rails
+
+  function scaleSimCfg(deviceId){
+    const o = SCALE_SIM[deviceId];
+    if (!o) return null;
+    const cfg = { ...SCALE_SIM_DEFAULTS, ...o };
+    cfg.dryKg = cfg.anchorKg - cfg.bufferKg;
+    cfg.anchorMs = new Date(cfg.anchorISO).getTime();
+    return cfg;
+  }
+
+  // Share of a day's evapotranspiration spent per hour at local hour h — a flat
+  // night baseline plus a sine-shaped daylight arc. Integrates to 1 over 24 h,
+  // so multiplying by the daily ET (kg) gives kg/h.
+  const ET_SUNRISE_H = 5.5, ET_SUNSET_H = 19.0, ET_NIGHT_SHARE = 0.12;
+  function etDiurnal(h){
+    const night = ET_NIGHT_SHARE / 24;
+    if (h <= ET_SUNRISE_H || h >= ET_SUNSET_H) return night;
+    const span = ET_SUNSET_H - ET_SUNRISE_H;
+    const arc = Math.sin(Math.PI * (h - ET_SUNRISE_H) / span);
+    return night + (1 - ET_NIGHT_SHARE) * arc / (2 * span / Math.PI);
+  }
+
+  // Warmer air transpires faster. Used only RELATIVE to its own running average
+  // (see the step below), so it redistributes ET across the days without
+  // changing the daily total — the mass balance stays closed.
+  function scaleSimTempFactor(item){
+    const t = parseFloat(item && (item.temp !== undefined ? item.temp : item.soil1_temp));
+    if (!Number.isFinite(t)) return 1;
+    return Math.min(1.6, Math.max(0.6, 1 + 0.035 * (t - 25)));
+  }
+
+  // Deterministic pseudo-noise keyed on the reading's minute, so the same
+  // reading always simulates to the same weight and the chart doesn't flicker
+  // between renders. Returns −0.5 … +0.5.
+  function scaleSimNoise(ms){
+    let x = Math.imul(Math.floor(ms / 60000) | 0, 2654435761) >>> 0;
+    x ^= x >>> 15; x = Math.imul(x, 2246822519) >>> 0; x ^= x >>> 13;
+    return (x >>> 0) / 4294967296 - 0.5;
+  }
+
+  function newScaleSim(cfg){
+    return { t: null, water: cfg.bufferKg, et: cfg.etDefaultKgPerDay,
+             tempF: 1, prevIn: null, prevOut: null };
+  }
+
+  // Advance one simulation step to `time` with the reading `item`; returns kg.
+  function scaleSimStep(sim, cfg, time, item){
+    const ms = time.getTime();
+    let dtH = sim.t === null ? 0 : (ms - sim.t) / 3600000;
+    if (!(dtH > 0)) dtH = 0;
+    // Station offline for days: whatever was in the pot is long gone.
+    if (dtH > 48){ sim.water = 0; dtH = 0; }
+
+    // Flow since the previous reading — the counters are cumulative on the
+    // device and never reset, so a drop means the device restarted its count.
+    const wIn = parseFloat(item.waterIn), wOut = parseFloat(item.waterOut);
+    let inKg = 0, outKg = 0;
+    if (Number.isFinite(wIn)){
+      if (sim.prevIn !== null) inKg = (wIn >= sim.prevIn ? wIn - sim.prevIn : wIn) * ML_PER_PULSE / 1000;
+      sim.prevIn = wIn;
+    }
+    if (Number.isFinite(wOut)){
+      if (sim.prevOut !== null) outKg = (wOut >= sim.prevOut ? wOut - sim.prevOut : wOut) * ML_PER_PULSE / 1000;
+      sim.prevOut = wOut;
+    }
+
+    // 1. net flow in, then free drainage of everything held above field capacity
+    const before = sim.water;
+    sim.water += inKg - outKg;
+    if (sim.water > cfg.bufferKg){
+      const excess = sim.water - cfg.bufferKg;
+      sim.water = cfg.bufferKg + excess * Math.exp(-(dtH * 60) / cfg.drainTauMin);
+    }
+    if (sim.water < 0) sim.water = 0;
+    const retained = sim.water - before; // what the pot really kept this step
+
+    if (dtH > 0){
+      const dtDays = dtH / 24;
+      const a = 1 - Math.exp(-dtDays / SCALE_SIM_ET_TAU_DAYS);
+
+      // 2. the daily ET target follows the 2-day average retention rate
+      sim.et += (retained / dtDays - sim.et) * a;
+      sim.et = Math.min(SCALE_SIM_ET_MAX, Math.max(SCALE_SIM_ET_MIN, sim.et));
+
+      // 3. drain the ET over the elapsed time in ≤30 min sub-steps, so the
+      //    day/night curve is integrated properly even across a long gap
+      const tf = scaleSimTempFactor(item);
+      sim.tempF += (tf - sim.tempF) * a;
+      const rel = sim.tempF > 0 ? tf / sim.tempF : 1;
+      const steps = Math.min(96, Math.max(1, Math.ceil(dtH / 0.5)));
+      const stepH = dtH / steps;
+      for (let i = 0; i < steps; i++){
+        const at = new Date(sim.t + (i + 0.5) * stepH * 3600000);
+        const hour = at.getHours() + at.getMinutes() / 60;
+        sim.water -= sim.et * etDiurnal(hour) * stepH * rel;
+      }
+      if (sim.water < 0) sim.water = 0;
+    }
+    sim.t = ms;
+
+    const growthKg = Math.max(-1.5, Math.min(5,
+      cfg.growthKgPerDay * (ms - cfg.anchorMs) / 86400000));
+    const kg = cfg.dryKg + sim.water + growthKg + scaleSimNoise(ms) * 2 * cfg.noiseKg;
+    return Math.round(kg * 1000) / 1000;
+  }
+
+  // Fill scale1 across a chronologically sorted series. `pairs` is
+  // [{ time:Date, target:object }] — the target gets the simulated value.
+  // Callers pass everything they fetched (including readings from before the
+  // displayed window) so the water balance is warmed up before it is shown.
+  function applyScaleSimSeries(deviceId, pairs){
+    const cfg = scaleSimCfg(deviceId);
+    if (!cfg) return;
+    const sim = newScaleSim(cfg);
+    for (const p of pairs){
+      if (!p || !p.time || !p.target || isNaN(p.time.getTime())) continue;
+      p.target.scale1 = scaleSimStep(sim, cfg, p.time, p.target);
+    }
+  }
+
+  // ── Live simulation for the station cards / drawer ──
+  // fetchLatestFromFirebase reads a single reading, so the simulation is kept
+  // running in memory instead: warmed once from the last ~2 days, then advanced
+  // by each new reading as it arrives.
+  const SCALE_SIM_WARM_SAMPLES = 600; // ≈2 days at one reading / 5 min
+  const scaleSimLive = {};            // deviceId → { cfg, sim, lastKg }
+
+  async function ensureScaleSimLive(deviceId){
+    const cfg = scaleSimCfg(deviceId);
+    if (!cfg) return null;
+    if (scaleSimLive[deviceId]) return scaleSimLive[deviceId];
+    const live = scaleSimLive[deviceId] = { cfg, sim: newScaleSim(cfg), lastKg: NaN };
+    try {
+      const snap = await database.ref("berries/" + deviceId + "/" + getCurrentMonthKey())
+        .orderByKey().limitToLast(SCALE_SIM_WARM_SAMPLES).once("value");
+      const val = snap.val() || {};
+      const pairs = [];
+      Object.keys(val).forEach(tsKey => {
+        if (tsKey === "control") return;
+        const item = normalizeReading(val[tsKey], deviceId);
+        const t = readingMoment(tsKey, item);
+        if (t && !isNaN(t.getTime())) pairs.push({ t, item });
+      });
+      pairs.sort((a, b) => a.t - b.t);
+      for (const p of pairs) live.lastKg = scaleSimStep(live.sim, cfg, p.t, p.item);
+    } catch(e){
+      console.error("scale sim warmup", deviceId, e);
+    }
+    return live;
+  }
+
+  // Stamp the simulated weight onto the latest reading of a station.
+  async function applyScaleSimLatest(deviceId, item, tsISO){
+    if (!SCALE_SIM[deviceId] || !item || !tsISO) return;
+    const live = await ensureScaleSimLive(deviceId);
+    if (!live) return;
+    const t = new Date(tsISO);
+    if (isNaN(t.getTime())) return;
+    // The warm-up already consumed this reading when nothing new has arrived.
+    if (live.sim.t === null || t.getTime() > live.sim.t)
+      live.lastKg = scaleSimStep(live.sim, live.cfg, t, item);
+    if (Number.isFinite(live.lastKg)) item.scale1 = live.lastKg;
+  }
+
   function ageMinutes(iso){
     if (!iso) return Infinity;
     const ms = Date.now() - new Date(iso).getTime();
