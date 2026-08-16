@@ -170,7 +170,8 @@
       "Read(//c/Users/Admin/AppData/Local/Temp/claude/**)",
       "Bash(node --check s1.js)",
       "Bash(node --check \"C:/Users/Admin/AppData/Local/Temp/claude/s1.js\")",
-      "Bash(node --check \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/7ffaa248-4d12-4fd5-bb9a-fef521591303/scratchpad/check.js\")"
+      "Bash(node --check \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/7ffaa248-4d12-4fd5-bb9a-fef521591303/scratchpad/check.js\")",
+      "Bash(node \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/7ffaa248-4d12-4fd5-bb9a-fef521591303/scratchpad/simtest.js\")"
     ]
   },
   "hooks": {
