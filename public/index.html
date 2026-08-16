@@ -1337,9 +1337,9 @@
   };
   // anchorKg = the pot as weighed by hand on anchorISO, in the state described
   // by anchorFillFrac.
+  // Only station1 carries the pot on a load cell — station2 has no scale at all.
   const SCALE_SIM = {
-    station1: { anchorKg: 9.125, anchorISO: "2026-08-16T12:00:00" },
-    station2: { anchorKg: 9.125, anchorISO: "2026-08-16T12:00:00" }
+    station1: { anchorKg: 9.125, anchorISO: "2026-08-16T12:00:00" }
   };
   const SCALE_SIM_ON = Object.keys(SCALE_SIM).length > 0;
   const SCALE_SIM_WARMUP_MS = 2 * 24 * 3600 * 1000; // history needed before a window
