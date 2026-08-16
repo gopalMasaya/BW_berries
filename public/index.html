@@ -1350,7 +1350,7 @@
     const o = SCALE_SIM[deviceId];
     if (!o) return null;
     const cfg = { ...SCALE_SIM_DEFAULTS, ...o };
-    cfg.dryKg = cfg.anchorKg - cfg.bufferKg;
+    cfg.dryKg = cfg.anchorKg - cfg.anchorFillFrac * cfg.bufferKg;
     cfg.anchorMs = new Date(cfg.anchorISO).getTime();
     return cfg;
   }
