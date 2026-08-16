@@ -1703,7 +1703,7 @@
       const monthKey = getCurrentMonthKey();
       const ref = database.ref("berries/" + deviceId + "/" + monthKey);
 
-      ref.orderByKey().limitToLast(1).once("value", function(snap){
+      ref.orderByKey().limitToLast(1).once("value", async function(snap){
         const val = snap.val();
         if (!val) {
           resolve({ updated: false, tsISO: latestByDevice[deviceId]?.tsISO || null });
