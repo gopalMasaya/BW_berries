@@ -2002,9 +2002,12 @@
 
   // Fetch a station's readings in [fromDate,toDate], ascending, with the raw
   // cumulative waterIn/waterOut pulse counters.
+  // The month nodes are read from SCALE_SIM_WARMUP_MS before the window so the
+  // simulated weight (scale1) starts from a settled water balance; the extra
+  // readings are dropped again before the list is returned.
   async function fetchWaterReadings(deviceId, fromDate, toDate){
-    const monthKeys = getMonthKeys(fromDate, toDate);
-    const out = [];
+    const monthKeys = getMonthKeys(new Date(fromDate.getTime() - SCALE_SIM_WARMUP_MS), toDate);
+    const all = [];
     for (const mk of monthKeys){
       const snap = await database.ref("berries/" + deviceId + "/" + mk).once("value");
       const val = snap.val();
@@ -2013,12 +2016,13 @@
         if (tsKey === "control") return;
         const item = normalizeReading(val[tsKey], deviceId);
         const t = readingMoment(tsKey, item);
-        if (!t || isNaN(t.getTime()) || t < fromDate || t > toDate) return;
-        out.push({ time: t, waterIn: Number(item.waterIn) || 0, waterOut: Number(item.waterOut) || 0, item });
+        if (!t || isNaN(t.getTime()) || t > toDate) return;
+        all.push({ time: t, waterIn: Number(item.waterIn) || 0, waterOut: Number(item.waterOut) || 0, item });
       });
     }
-    out.sort((a,b) => a.time - b.time);
-    return out;
+    all.sort((a,b) => a.time - b.time);
+    applyScaleSimSeries(deviceId, all.map(r => ({ time: r.time, target: r.item })));
+    return all.filter(r => r.time >= fromDate);
   }
 
   // Group readings into irrigation events. Flow counters are cumulative, so each
