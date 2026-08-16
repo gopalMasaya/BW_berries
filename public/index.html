@@ -4611,7 +4611,10 @@
     if (hasWaterOut) headerHtml += "<th>מים יוצאים מצטבר<br>(L)</th>";
     fields.forEach(f => {
       const unit = (FIELD_CALIBRATION[f] && FIELD_CALIBRATION[f].unit) || unitFor(f);
-      headerHtml += "<th>" + fmtFieldName(f) + (unit ? "<br>(" + unit + ")" : "") + "</th>";
+      // Columns keep their raw field name, except the two EC probes: "Ec"/"Ec2"
+      // says nothing about which line each one sits on.
+      const head = (f === "ec" || f === "ec2") ? labelFor(f) : fmtFieldName(f);
+      headerHtml += "<th>" + head + (unit ? "<br>(" + unit + ")" : "") + "</th>";
     });
     headerHtml += "</tr>";
     head.innerHTML = headerHtml;
