@@ -4228,7 +4228,7 @@
     if (latest && latest.item){
       const item = latest.item;
       const want = ["ec", "ec2", "ph1", "ph2", "temp", "scale1", "soil1_humidity", "soil2_humidity"];
-      want.forEach(k => { if (item[k] != null) cards.push([fmtFieldName(k), parseFloat(item[k]).toFixed(decimalsFor(k))]); });
+      want.forEach(k => { if (item[k] != null) cards.push([labelFor(k), parseFloat(item[k]).toFixed(decimalsFor(k))]); });
       sub = "עודכן: " + new Date(latest.tsISO).toLocaleString("he-IL");
     }
     const g = galconValveFor(vid);
