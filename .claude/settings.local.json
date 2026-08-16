@@ -171,7 +171,11 @@
       "Bash(node --check s1.js)",
       "Bash(node --check \"C:/Users/Admin/AppData/Local/Temp/claude/s1.js\")",
       "Bash(node --check \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/7ffaa248-4d12-4fd5-bb9a-fef521591303/scratchpad/check.js\")",
-      "Bash(node \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/7ffaa248-4d12-4fd5-bb9a-fef521591303/scratchpad/simtest.js\")"
+      "Bash(node \"C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-js-coding-plantsTracker/7ffaa248-4d12-4fd5-bb9a-fef521591303/scratchpad/simtest.js\")",
+      "Bash(powershell -NoProfile -Command \"Get-ScheduledTaskInfo -TaskName 'PlantsTracker-GitSync' | Select-Object LastRunTime, NextRunTime, LastTaskResult | Format-List\")",
+      "Bash(node -e \"const j=require\\('C:/Users/Admin/Documents/js coding/plantsTracker/.claude/settings.local.json'\\); console.log\\(Object.keys\\(j\\)\\); console.log\\(JSON.stringify\\(j.hooks||'none'\\)\\)\")",
+      "PowerShell(\\(Get-ScheduledTask -TaskName 'PlantsTracker-GitSync'\\).Actions | Format-List Execute, Arguments, WorkingDirectory; \\(Get-ScheduledTask -TaskName 'PlantsTracker-GitSync'\\).Principal | Format-List UserId, LogonType, RunLevel)",
+      "PowerShell(Start-ScheduledTask *)"
     ]
   },
   "hooks": {
