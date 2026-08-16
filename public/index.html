@@ -3995,7 +3995,7 @@
     const item = latest.item;
     let cards = "";
     STATION_FIELDS.forEach(k => {
-      if (item[k] != null) cards += `<div class="pi-card"><div class="pi-k">${fmtFieldName(k)}</div><div class="pi-v">${parseFloat(item[k]).toFixed(decimalsFor(k))}</div></div>`;
+      if (item[k] != null) cards += `<div class="pi-card"><div class="pi-k">${labelFor(k)}</div><div class="pi-v">${parseFloat(item[k]).toFixed(decimalsFor(k))}</div></div>`;
     });
     h += `<div class="pi-sub">עודכן: ${new Date(latest.tsISO).toLocaleString("he-IL")}</div>`;
     h += cards ? `<div class="pi-grid">${cards}</div>` : '<div class="pi-sub">אין מדדים זמינים.</div>';
