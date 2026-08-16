@@ -1466,30 +1466,37 @@
   // running in memory instead: warmed once from the last ~2 days, then advanced
   // by each new reading as it arrives.
   const SCALE_SIM_WARM_SAMPLES = 600; // ≈2 days at one reading / 5 min
-  const scaleSimLive = {};            // deviceId → { cfg, sim, lastKg }
+  const scaleSimLive = {};            // deviceId → { cfg, sim, lastKg } once warm
+  const scaleSimWarming = {};         // deviceId → Promise of the above
 
-  async function ensureScaleSimLive(deviceId){
+  // The warm-up is cached as a promise, so two overlapping refreshes can never
+  // step a half-warmed simulation.
+  function ensureScaleSimLive(deviceId){
     const cfg = scaleSimCfg(deviceId);
-    if (!cfg) return null;
-    if (scaleSimLive[deviceId]) return scaleSimLive[deviceId];
-    const live = scaleSimLive[deviceId] = { cfg, sim: newScaleSim(cfg), lastKg: NaN };
-    try {
-      const snap = await database.ref("berries/" + deviceId + "/" + getCurrentMonthKey())
-        .orderByKey().limitToLast(SCALE_SIM_WARM_SAMPLES).once("value");
-      const val = snap.val() || {};
-      const pairs = [];
-      Object.keys(val).forEach(tsKey => {
-        if (tsKey === "control") return;
-        const item = normalizeReading(val[tsKey], deviceId);
-        const t = readingMoment(tsKey, item);
-        if (t && !isNaN(t.getTime())) pairs.push({ t, item });
-      });
-      pairs.sort((a, b) => a.t - b.t);
-      for (const p of pairs) live.lastKg = scaleSimStep(live.sim, cfg, p.t, p.item);
-    } catch(e){
-      console.error("scale sim warmup", deviceId, e);
-    }
-    return live;
+    if (!cfg) return Promise.resolve(null);
+    if (scaleSimLive[deviceId]) return Promise.resolve(scaleSimLive[deviceId]);
+    if (!scaleSimWarming[deviceId]) scaleSimWarming[deviceId] = (async () => {
+      const live = { cfg, sim: newScaleSim(cfg), lastKg: NaN };
+      try {
+        const snap = await database.ref("berries/" + deviceId + "/" + getCurrentMonthKey())
+          .orderByKey().limitToLast(SCALE_SIM_WARM_SAMPLES).once("value");
+        const val = snap.val() || {};
+        const pairs = [];
+        Object.keys(val).forEach(tsKey => {
+          if (tsKey === "control") return;
+          const item = normalizeReading(val[tsKey], deviceId);
+          const t = readingMoment(tsKey, item);
+          if (t && !isNaN(t.getTime())) pairs.push({ t, item });
+        });
+        pairs.sort((a, b) => a.t - b.t);
+        for (const p of pairs) live.lastKg = scaleSimStep(live.sim, cfg, p.t, p.item);
+      } catch(e){
+        console.error("scale sim warmup", deviceId, e);
+      }
+      scaleSimLive[deviceId] = live;
+      return live;
+    })();
+    return scaleSimWarming[deviceId];
   }
 
   // Stamp the simulated weight onto the latest reading of a station.
