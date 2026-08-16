@@ -1326,13 +1326,17 @@
   //     weighed by hand, so on that date the simulation reads anchorKg.
   const SCALE_SIM_DEFAULTS = {
     bufferKg: 2.0,           // plant-available water between field capacity and dry-out
+    anchorFillFrac: 1.0,     // how wet the pot was when it was weighed by hand:
+                             // 1 = just after an irrigation finished draining
+                             // (field capacity), ~0.7 = a typical mid-cycle
+                             // moment, 0 = bone dry. Shifts the whole curve.
     drainTauMin: 12,         // free drainage of anything above field capacity
     etDefaultKgPerDay: 0.8,  // starting guess until the retention average settles
     growthKgPerDay: 0.015,   // fresh biomass gain (≈100 g/week)
     noiseKg: 0.004           // load-cell scatter, ±4 g
   };
-  // anchorKg = the pot as weighed by hand, taken as its weight at field capacity
-  // (i.e. right after an irrigation has finished draining), on anchorISO.
+  // anchorKg = the pot as weighed by hand on anchorISO, in the state described
+  // by anchorFillFrac.
   const SCALE_SIM = {
     station1: { anchorKg: 9.125, anchorISO: "2026-08-16T12:00:00" },
     station2: { anchorKg: 9.125, anchorISO: "2026-08-16T12:00:00" }
