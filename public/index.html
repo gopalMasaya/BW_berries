@@ -4401,16 +4401,15 @@
           tsISO = new Date(yyyy + "-" + mm + "-" + dd + "T" + hh + ":" + mi + ":00").toISOString();
         }
 
-        if (tsISO) {
-          const ts = new Date(tsISO);
-          if (ts >= fromDate && ts <= toDate) {
-            rows.push({ deviceId, tsISO, tsKey, ...item });
-          }
+        if (tsISO && new Date(tsISO) <= toDate) {
+          rows.push({ deviceId, tsISO, tsKey, ...item });
         }
       });
     }
 
-    return rows;
+    rows.sort((a, b) => new Date(a.tsISO) - new Date(b.tsISO));
+    applyScaleSimSeries(deviceId, rows.map(r => ({ time: new Date(r.tsISO), target: r })));
+    return rows.filter(r => new Date(r.tsISO) >= fromDate);
   }
 
   async function loadChartData() {
