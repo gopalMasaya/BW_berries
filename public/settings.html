@@ -35,6 +35,12 @@
             </div>
 
             <div class="field" style="margin-bottom:18px;">
+              <label style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">מ״ל לפולס (כיול מד הזרימה)</label>
+              <input id="fMlPerPulse" type="number" step="0.1" min="0.1" max="1000" dir="ltr" style="width:100%;max-width:300px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;" />
+              <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">כל חישובי המים באפליקציה (השקיות, גרפים, טבלאות, משקל) ממירים פולסים לליטרים לפי הערך הזה. ברירת מחדל: 2.4</span>
+            </div>
+
+            <div class="field" style="margin-bottom:18px;">
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
                 <input id="fWateringEnabled" type="checkbox" style="width:20px;height:20px;" />
                 <span style="font-size:15px;font-weight:600;">השקיה פעילה</span>
@@ -97,7 +103,8 @@
       soil2RiseToStop: 5,
       noRiseTimeoutMin: 10,
       maxWateringMin: 25,
-      postWateringWaitMin: 20
+      postWateringWaitMin: 20,
+      mlPerPulse: 2.4
     };
 
     const stationSelect = document.getElementById("stationSelect");
@@ -114,6 +121,7 @@
     const fNoRiseTimeout = document.getElementById("fNoRiseTimeout");
     const fMaxWatering = document.getElementById("fMaxWatering");
     const fPostWait = document.getElementById("fPostWait");
+    const fMlPerPulse = document.getElementById("fMlPerPulse");
 
     // Populate station dropdown
     for (const s of STATIONS) {
@@ -141,6 +149,7 @@
         fNoRiseTimeout.value = config.noRiseTimeoutMin ?? DEFAULTS.noRiseTimeoutMin;
         fMaxWatering.value = config.maxWateringMin ?? DEFAULTS.maxWateringMin;
         fPostWait.value = config.postWateringWaitMin ?? DEFAULTS.postWateringWaitMin;
+        fMlPerPulse.value = config.mlPerPulse ?? DEFAULTS.mlPerPulse;
 
         loadingMsg.style.display = "none";
         configForm.style.display = "";
@@ -167,6 +176,7 @@
       const noRiseTimeoutMin = parseInt(fNoRiseTimeout.value, 10);
       const maxWateringMin = parseInt(fMaxWatering.value, 10);
       const postWateringWaitMin = parseInt(fPostWait.value, 10);
+      const mlPerPulse = parseFloat(fMlPerPulse.value);
 
       if (isNaN(soil1Threshold) || soil1Threshold < 0 || soil1Threshold > 100) {
         formError.textContent = "סף לחות קרקע 1 חייב להיות בין 0 ל-100";
@@ -188,6 +198,10 @@
         formError.textContent = "זמן המתנה חייב להיות בין 0 ל-60 דקות";
         return;
       }
+      if (isNaN(mlPerPulse) || mlPerPulse < 0.1 || mlPerPulse > 1000) {
+        formError.textContent = "מ״ל לפולס חייב להיות בין 0.1 ל-1000";
+        return;
+      }
 
       const saveBtn = document.getElementById("saveBtn");
       saveBtn.disabled = true;
@@ -203,6 +217,7 @@
           noRiseTimeoutMin,
           maxWateringMin,
           postWateringWaitMin,
+          mlPerPulse,
           updatedAt: new Date().toISOString()
         });
         formSuccess.textContent = "ההגדרות נשמרו בהצלחה";
