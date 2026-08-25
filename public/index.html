@@ -395,7 +395,7 @@
     .station-square .sq-chart{
       border-top:1px solid var(--border); padding-top:12px; margin-top:2px;
     }
-    .sq-chart-box{ position:relative; height:280px; width:100%; }
+    .sq-chart-box{ position:relative; height:340px; width:100%; }
     .sq-chart-empty{ color:var(--muted); font-size:13px; padding:8px 0; }
     .sq-chart-toggle{
       align-self:flex-start; padding:8px 16px; border-radius:10px;
@@ -2395,8 +2395,38 @@
     else   chartBox.innerHTML = `<div class="sq-chart-empty">טוען…</div>`;
   }
 
-  // Build a per-square chart: per-reading irrigation/drain (L) bars on the left
-  // axis, the chosen sensor as a line on the right axis, over the readings range.
+  // ── Per-square chart: time buckets, round-clock ticks, fitted sensor axis ──
+  // Raw readings arrive every ~5 min. Drawing one bar per reading makes a day of
+  // irrigation look like noise and a week unreadable, and a category X axis puts
+  // the ticks on whatever sample happened to be Nth (01:01, 02:21, 03:41…). So:
+  // flow is SUMMED into fixed time buckets, the sensor is AVERAGED over the same
+  // buckets, and the X axis is a real time axis whose ticks land on round times.
+
+  // Bucket width: aim for ~160 bars across the visible span (a day then lands on
+  // 10-minute bars — fine enough to see a single irrigation pulse group).
+  const SQ_BUCKET_STEPS = [5, 10, 15, 30, 60, 120, 180, 360, 720, 1440].map(m => m * 60000);
+  function sqBucketMs(spanMs){
+    const target = spanMs / 160;
+    return SQ_BUCKET_STEPS.find(s => s >= target) || SQ_BUCKET_STEPS[SQ_BUCKET_STEPS.length - 1];
+  }
+  function sqBucketLabel(ms){
+    const min = ms / 60000;
+    if (min < 60) return min + " דק׳";
+    if (min < 1440) return (min / 60) + " שע׳";
+    return (min / 1440) + " ימים";
+  }
+
+  // Tick spacing: the smallest round step that keeps the labels from colliding.
+  const SQ_TICK_STEPS = [15, 30, 60, 120, 180, 360, 720, 1440, 2880, 4320, 10080, 20160, 43200].map(m => m * 60000);
+  function sqTickStepMs(spanMs, maxTicks){
+    const target = spanMs / Math.max(2, maxTicks);
+    return SQ_TICK_STEPS.find(s => s >= target) || SQ_TICK_STEPS[SQ_TICK_STEPS.length - 1];
+  }
+
+  const isMidnightMs = ms => { const d = new Date(ms); return d.getHours() === 0 && d.getMinutes() === 0; };
+
+  // Build a per-square chart: bucketed irrigation/drain (L) bars on the left axis,
+  // the chosen sensor as a line on the right axis, over the readings range.
   function buildSquareChart(deviceId, chartEl, readings, sensorKey, sensorLabel, multiDay){
     if (squaresCharts[deviceId]){ squaresCharts[deviceId].destroy(); delete squaresCharts[deviceId]; }
     chartEl.innerHTML = "";
@@ -2406,27 +2436,44 @@
       return;
     }
 
-    // Per-reading water deltas → litres (cumulative counters; a drop = reset).
     const ml = mlPerPulse(deviceId);
+    const t0 = readings[0].time.getTime();
+    const t1 = readings[readings.length - 1].time.getTime();
+    const spanMs  = Math.max(t1 - t0, 10 * 60000);
+    const bucketMs = sqBucketMs(spanMs);
+
+    // Buckets are aligned to LOCAL midnight, so a 3 h bucket starts at 00:00/03:00
+    // local time rather than at a UTC boundary.
+    const originD = new Date(t0); originD.setHours(0, 0, 0, 0);
+    const origin = originD.getTime();
+    const floorToBucket = t => origin + Math.floor((t - origin) / bucketMs) * bucketMs;
+
+    // Every bucket in range exists, empty ones included, so the bars stay evenly
+    // spaced and a transmission gap reads as a gap instead of being closed up.
+    const first = floorToBucket(t0), last = floorToBucket(t1);
+    const count = Math.min(600, Math.floor((last - first) / bucketMs) + 1);
+    const inL = [], outL = [], sensorSum = [], sensorN = [];
+    for (let i = 0; i < count; i++){ inL.push(0); outL.push(0); sensorSum.push(0); sensorN.push(0); }
+    const idxOf = t => Math.max(0, Math.min(count - 1, Math.floor((floorToBucket(t) - first) / bucketMs)));
+
+    // Per-reading water deltas → litres (cumulative counters; a drop = reset).
     let prevIn = null, prevOut = null;
-    const labels = [], inL = [], outL = [], sensor = [];
-    let anySensor = false;
     for (const r of readings){
-      let dIn = 0, dOut = 0;
+      const i = idxOf(r.time.getTime());
       if (prevIn !== null){
-        dIn  = r.waterIn  >= prevIn  ? r.waterIn  - prevIn  : r.waterIn;
-        dOut = r.waterOut >= prevOut ? r.waterOut - prevOut : r.waterOut;
+        inL[i]  += (r.waterIn  >= prevIn  ? r.waterIn  - prevIn  : r.waterIn)  * ml / 1000;
+        outL[i] += (r.waterOut >= prevOut ? r.waterOut - prevOut : r.waterOut) * ml / 1000;
       }
       prevIn = r.waterIn; prevOut = r.waterOut;
-      labels.push(multiDay
-        ? r.time.toLocaleDateString("he-IL", { day:"2-digit", month:"2-digit" }) + " " + fmtHM(r.time)
-        : fmtHM(r.time));
-      inL.push(dIn  * ml / 1000);
-      outL.push(dOut * ml / 1000);
       const sv = parseFloat(r.item ? r.item[sensorKey] : NaN);
-      if (Number.isFinite(sv)) anySensor = true;
-      sensor.push(Number.isFinite(sv) ? sqTransform(sensorKey, sv) : null);
+      if (Number.isFinite(sv)){ sensorSum[i] += sqTransform(sensorKey, sv); sensorN[i]++; }
     }
+
+    const at = i => first + i * bucketMs;
+    const waterIn  = inL.map((v, i)  => ({ x: at(i), y: v }));
+    const waterOut = outL.map((v, i) => ({ x: at(i), y: v }));
+    const sensorAvg = sensorSum.map((s, i) => sensorN[i] ? s / sensorN[i] : null);
+    const anySensor = sensorAvg.some(v => v !== null);
 
     const box = document.createElement("div");
     box.className = "sq-chart-box";
@@ -2435,35 +2482,104 @@
     chartEl.appendChild(box);
 
     const gridCol = "rgba(0,0,0,0.08)";
+    const dayCol  = "rgba(0,0,0,0.28)";   // midnight gridline in a multi-day range
     const tickCol = "#5a6472";
+    const waterAxisLabel = "ל׳ / " + sqBucketLabel(bucketMs);
     const datasets = [
-      { type:"bar", label:"השקיה (ל׳)", data:inL, yAxisID:"yWater",
-        backgroundColor:"rgba(74,163,255,0.7)", borderWidth:0, order:2 },
-      { type:"bar", label:"נקז (ל׳)", data:outL, yAxisID:"yWater",
-        backgroundColor:"rgba(255,176,32,0.7)", borderWidth:0, order:2 }
+      { type:"bar", label:"השקיה (ל׳)", data:waterIn, yAxisID:"yWater",
+        backgroundColor:"rgba(74,163,255,0.75)", borderWidth:0, order:2 },
+      { type:"bar", label:"נקז (ל׳)", data:waterOut, yAxisID:"yWater",
+        backgroundColor:"rgba(255,176,32,0.75)", borderWidth:0, order:2 }
     ];
-    const sensorAxisLabel = SOIL_EC_FIELDS.has(sensorKey) ? sensorLabel + " (dS/m)" : sensorLabel;
+
+    // The sensor axis is fitted to the values actually measured (padded), instead
+    // of starting at 0 — that is what makes a 3 % move in soil humidity visible.
+    const sensorUnit = SOIL_EC_FIELDS.has(sensorKey) ? "dS/m" : (sqUnit(sensorKey) || "");
+    const sensorAxisLabel = sensorLabel + (sensorUnit ? " (" + sensorUnit + ")" : "");
+    let sMin, sMax;
     if (anySensor){
-      // Continue the sensor line as 0 past its last reading (disconnected sensor)
-      // so it doesn't stop mid-chart; interior gaps stay null (spanGaps bridges).
-      datasets.push({ type:"line", label:sensorAxisLabel, data:zeroFillOutsideActive(sensor), yAxisID:"ySensor",
-        borderColor:"#2bd576", backgroundColor:"#2bd576", borderWidth:2,
-        pointRadius:0, tension:0.3, spanGaps:true, order:1 });
+      const real = sensorAvg.filter(v => v !== null);
+      sMin = Math.min(...real); sMax = Math.max(...real);
+      const pad = (sMax - sMin) * 0.12 || Math.max(0.5, Math.abs(sMax) * 0.05);
+      sMax = sMax + pad;
+      sMin = sMin - pad;
+      if (sMin < 0 && Math.min(...real) >= 0) sMin = 0;   // never invent negatives
+      // A sensor that stopped reporting still dives to 0 (zeroFillOutsideActive);
+      // the dive is simply clipped at the bottom of the fitted axis.
+      datasets.push({ type:"line", label:sensorAxisLabel,
+        data: zeroFillOutsideActive(sensorAvg).map((v, i) => ({ x: at(i), y: v })),
+        yAxisID:"ySensor", borderColor:"#2bd576", backgroundColor:"#2bd576",
+        borderWidth:2, pointRadius:0, pointHitRadius:6, tension:0.25, spanGaps:true, order:1 });
     }
+
+    const maxWater = Math.max(...inL, ...outL, 0);
+    const tickStep = sqTickStepMs(spanMs, Math.max(4, Math.min(12, Math.round(spanMs / bucketMs / 9))));
+    const fmtTime = ms => new Date(ms).toLocaleTimeString("he-IL", { hour:"2-digit", minute:"2-digit" });
+    const fmtDate = ms => new Date(ms).toLocaleDateString("he-IL", { day:"2-digit", month:"2-digit" });
 
     squaresCharts[deviceId] = new Chart(canvas.getContext("2d"), {
       type: "bar",
-      data: { labels, datasets },
+      data: { datasets },
       options: {
         responsive:true, maintainAspectRatio:false,
         interaction:{ mode:"index", intersect:false },
-        plugins:{ legend:{ labels:{ color:tickCol, boxWidth:12, font:{ size:11 } } } },
+        plugins:{
+          legend:{ labels:{ color:tickCol, boxWidth:12, font:{ size:11 } } },
+          tooltip:{
+            callbacks:{
+              // Each point covers a whole bucket — say which window it is.
+              title: items => {
+                if (!items.length) return "";
+                const t = items[0].parsed.x;
+                const range = fmtTime(t) + "–" + fmtTime(t + bucketMs);
+                return multiDay ? fmtDate(t) + " · " + range : range;
+              },
+              label: ctx => {
+                const v = ctx.parsed.y;
+                if (v === null || v === undefined) return null;
+                if (ctx.dataset.yAxisID === "yWater"){
+                  if (v === 0) return null;                       // hide empty channels
+                  return ctx.dataset.label + ": " + v.toFixed(3) + " ל׳";
+                }
+                const dec = Math.abs(v) >= 100 ? 0 : 2;
+                return ctx.dataset.label + ": " + v.toFixed(dec);
+              }
+            }
+          }
+        },
         scales:{
-          x:{ ticks:{ color:tickCol, maxTicksLimit:8, font:{ size:10 } }, grid:{ color:gridCol } },
-          yWater:{ position:"left", beginAtZero:true, title:{ display:true, text:"ל׳", color:tickCol },
-                   ticks:{ color:tickCol, font:{ size:10 } }, grid:{ color:gridCol } },
-          ySensor:{ position:"right", display:anySensor, title:{ display:anySensor, text:sensorAxisLabel, color:tickCol },
-                    ticks:{ color:tickCol, font:{ size:10 } }, grid:{ drawOnChartArea:false } }
+          x:{
+            type:"linear",
+            min: first - bucketMs / 2, max: last + bucketMs / 2,
+            // Ticks on round clock times, aligned to local midnight.
+            afterBuildTicks: axis => {
+              const ticks = [];
+              let t = origin + Math.ceil((axis.min - origin) / tickStep) * tickStep;
+              for (; t <= axis.max && ticks.length < 40; t += tickStep) ticks.push({ value:t });
+              axis.ticks = ticks;
+            },
+            ticks:{
+              color:tickCol, font:{ size:10 }, autoSkip:false, maxRotation:0,
+              callback: v => {
+                if (!multiDay) return fmtTime(v);
+                if (tickStep >= 24 * 3600000) return fmtDate(v);
+                return isMidnightMs(v) ? [fmtDate(v), fmtTime(v)] : fmtTime(v);
+              }
+            },
+            // A day boundary gets a darker line, so a week reads as days.
+            grid:{ color: ctx => (multiDay && ctx.tick && isMidnightMs(ctx.tick.value)) ? dayCol : gridCol }
+          },
+          yWater:{
+            position:"left", beginAtZero:true,
+            suggestedMax: maxWater > 0 ? maxWater * 1.15 : 0.1,
+            title:{ display:true, text:waterAxisLabel, color:tickCol, font:{ size:10 } },
+            ticks:{ color:tickCol, font:{ size:10 }, maxTicksLimit:6 }, grid:{ color:gridCol }
+          },
+          ySensor:{
+            position:"right", display:anySensor, min:sMin, max:sMax,
+            title:{ display:anySensor, text:sensorAxisLabel, color:tickCol, font:{ size:10 } },
+            ticks:{ color:tickCol, font:{ size:10 }, maxTicksLimit:6 }, grid:{ drawOnChartArea:false }
+          }
         }
       }
     });
