@@ -1091,6 +1091,59 @@
     { deviceId:"station2", name:"Station 002", lng:35.028495716666775, lat:31.860706884638824 }
   ];
 
+  // ===============================
+  // ML PER FLOWMETER PULSE
+  // ===============================
+  // The calibration is edited in Settings and stored per station at
+  // berries/{deviceId}/control/wateringConfig.mlPerPulse, so a single value drives
+  // every water figure in the app (irrigations, charts, graphs, simulated weight).
+  // The default below is only a fallback for a station that was never configured.
+  const ML_PER_PULSE_DEFAULT = 2.4;
+  const mlPerPulseByStation = {};   // deviceId -> ml/pulse from Settings
+
+  function mlPerPulse(deviceId){
+    const v = mlPerPulseByStation[deviceId];
+    return Number.isFinite(v) && v > 0 ? v : ML_PER_PULSE_DEFAULT;
+  }
+
+  // Read every station's calibration before the first render, then keep listening
+  // so saving a new value in Settings reaches an open dashboard without a reload.
+  async function loadMlPerPulse(){
+    await Promise.all(STATIONS.map(async st => {
+      const path = "berries/" + st.deviceId + "/control/wateringConfig/mlPerPulse";
+      const readVal = snap => {
+        const v = parseFloat(snap.val());
+        return Number.isFinite(v) && v > 0 ? v : undefined;
+      };
+      try {
+        const v = readVal(await database.ref(path).once("value"));
+        if (v !== undefined) mlPerPulseByStation[st.deviceId] = v;
+      } catch(e){ console.error("mlPerPulse load", st.deviceId, e); }
+      database.ref(path).on("value", snap => {
+        const v = readVal(snap);
+        if (v === mlPerPulseByStation[st.deviceId]) return;
+        if (v === undefined) delete mlPerPulseByStation[st.deviceId];
+        else mlPerPulseByStation[st.deviceId] = v;
+        onMlPerPulseChanged();
+      });
+    }));
+  }
+
+  // Every water figure is derived from the pulse counters, so a new calibration
+  // only needs the current view redrawn (the graphs view converts to litres while
+  // loading, so it is reloaded rather than re-rendered).
+  function onMlPerPulseChanged(){
+    // the live weight simulation carries converted litres in its state
+    Object.keys(scaleSimLive).forEach(k => delete scaleSimLive[k]);
+    Object.keys(scaleSimWarming).forEach(k => delete scaleSimWarming[k]);
+    try {
+      if (currentView === "squares") renderSquaresView();
+      else if (currentView === "chart") renderChartTable();
+      else if (currentView === "graphs") loadGraphData();
+      refreshAllStations();
+    } catch(e){ console.error("mlPerPulse refresh", e); }
+  }
+
   const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
   // Offline thresholds (minutes)
@@ -1349,6 +1402,7 @@
     const o = SCALE_SIM[deviceId];
     if (!o) return null;
     const cfg = { ...SCALE_SIM_DEFAULTS, ...o };
+    cfg.deviceId = deviceId;   // so the step can look up the station's ml/pulse
     cfg.dryKg = cfg.anchorKg - cfg.anchorFillFrac * cfg.bufferKg;
     cfg.anchorMs = new Date(cfg.anchorISO).getTime();
     return cfg;
@@ -1402,11 +1456,11 @@
     const wIn = parseFloat(item.waterIn), wOut = parseFloat(item.waterOut);
     let inKg = 0, outKg = 0;
     if (Number.isFinite(wIn)){
-      if (sim.prevIn !== null) inKg = (wIn >= sim.prevIn ? wIn - sim.prevIn : wIn) * ML_PER_PULSE / 1000;
+      if (sim.prevIn !== null) inKg = (wIn >= sim.prevIn ? wIn - sim.prevIn : wIn) * mlPerPulse(cfg.deviceId) / 1000;
       sim.prevIn = wIn;
     }
     if (Number.isFinite(wOut)){
-      if (sim.prevOut !== null) outKg = (wOut >= sim.prevOut ? wOut - sim.prevOut : wOut) * ML_PER_PULSE / 1000;
+      if (sim.prevOut !== null) outKg = (wOut >= sim.prevOut ? wOut - sim.prevOut : wOut) * mlPerPulse(cfg.deviceId) / 1000;
       sim.prevOut = wOut;
     }
 
@@ -2046,8 +2100,9 @@
   // (e.g. drainage after water-in stops) is attributed to the current event.
   // boundaryField: "in" (default, normal) or "out" (fallback when the inlet meter
   // is stuck — detect cycles from the drainage meter instead).
-  function segmentIrrigations(readings, gapMin, boundaryField){
+  function segmentIrrigations(deviceId, readings, gapMin, boundaryField){
     const gapMs = (gapMin || IRRIG_GAP_MIN) * 60000;
+    const ml = mlPerPulse(deviceId);
     const byOut = boundaryField === "out";
     let prevIn = null, prevOut = null, lastBoundaryTime = null, cur = null;
     const events = [];
@@ -2084,14 +2139,14 @@
     }
     for (const e of events){
       e.durationMin = Math.round((e.endTime - e.startTime) / 60000);
-      e.waterInL  = e.pulsesIn  * ML_PER_PULSE / 1000;
-      e.waterOutL = e.pulsesOut * ML_PER_PULSE / 1000;
+      e.waterInL  = e.pulsesIn  * ml / 1000;
+      e.waterOutL = e.pulsesOut * ml / 1000;
       e.drainPct  = e.pulsesIn > 0 ? (e.pulsesOut / e.pulsesIn) * 100 : null;
     }
-    // Drop "phantom" events: a stray pulse or two (e.g. 1 pulse = 2.4 ml) starts
-    // an event whose litres round to 0.0 on BOTH channels, so it displays as an
-    // irrigation with no drip and no drain. Keep an event only if its drip OR
-    // drain reaches the 0.05 L noise floor (the table itself shows 3 decimals).
+    // Drop "phantom" events: a stray pulse or two (a few ml at the configured
+    // ml/pulse) starts an event whose litres round to 0.0 on BOTH channels, so it
+    // displays as an irrigation with no drip and no drain. Keep an event only if
+    // its drip OR drain reaches the 0.05 L noise floor (the table shows 3 decimals).
     return events.filter(e =>
       Math.round(e.waterInL * 10) > 0 || Math.round(e.waterOutL * 10) > 0);
   }
@@ -2126,10 +2181,10 @@
   }
 
   // All sensor values recorded at one sampling point, as chips (water first).
-  function irrigSampleChips(s){
+  function irrigSampleChips(s, ml){
     const water = [
-      `<span class="ir-chip w-in"><b>טפטפת</b> ${(s.dIn * ML_PER_PULSE / 1000).toFixed(3)} ל׳</span>`,
-      `<span class="ir-chip w-out"><b>נקז</b> ${(s.dOut * ML_PER_PULSE / 1000).toFixed(3)} ל׳</span>`
+      `<span class="ir-chip w-in"><b>טפטפת</b> ${(s.dIn * ml / 1000).toFixed(3)} ל׳</span>`,
+      `<span class="ir-chip w-out"><b>נקז</b> ${(s.dOut * ml / 1000).toFixed(3)} ל׳</span>`
     ].join("");
     const sensors = squareMetricKeys(s.item).map(k => {
       const unit = sqUnit(k);
@@ -2182,6 +2237,7 @@
     // dedicated per-field chart instead, tracked via squaresSensorSel).
     const sensorKey = document.getElementById("sqSensor")?.value || "soil1_humidity";
     const sensorLabel = labelFor(sensorKey);
+    const mlThisStation = mlPerPulse(deviceId);
     const periodLabel = multiDay
       ? `${from.toLocaleDateString("he-IL")}–${to.toLocaleDateString("he-IL")}`
       : from.toLocaleDateString("he-IL");
@@ -2202,7 +2258,7 @@
       // stuck (no in-deltas) but drainage is flowing, fall back to the drain meter
       // so the day's watering cycles still show.
       const stuckInlet = !anyIn && anyOut;
-      const events = segmentIrrigations(readings, IRRIG_GAP_MIN, stuckInlet ? "out" : "in");
+      const events = segmentIrrigations(deviceId, readings, IRRIG_GAP_MIN, stuckInlet ? "out" : "in");
 
       // A stuck inlet flowmeter means the sensor is clogged → flag the card so it's
       // visible at a glance (needs cleaning).
@@ -2235,7 +2291,7 @@
           const samplesHtml = (e.samples || []).map(s => `
             <div class="ir-sample">
               <span class="ir-sample-t">${fmtHM(s.time)}</span>
-              <span class="ir-sample-v">${irrigSampleChips(s)}</span>
+              <span class="ir-sample-v">${irrigSampleChips(s, mlThisStation)}</span>
             </div>`).join("");
           return `
           <tr class="ir-row" data-idx="${i}" title="לחץ להצגת כל נקודות הדגימה בהשקיה">
@@ -2351,6 +2407,7 @@
     }
 
     // Per-reading water deltas → litres (cumulative counters; a drop = reset).
+    const ml = mlPerPulse(deviceId);
     let prevIn = null, prevOut = null;
     const labels = [], inL = [], outL = [], sensor = [];
     let anySensor = false;
@@ -2364,8 +2421,8 @@
       labels.push(multiDay
         ? r.time.toLocaleDateString("he-IL", { day:"2-digit", month:"2-digit" }) + " " + fmtHM(r.time)
         : fmtHM(r.time));
-      inL.push(dIn  * ML_PER_PULSE / 1000);
-      outL.push(dOut * ML_PER_PULSE / 1000);
+      inL.push(dIn  * ml / 1000);
+      outL.push(dOut * ml / 1000);
       const sv = parseFloat(r.item ? r.item[sensorKey] : NaN);
       if (Number.isFinite(sv)) anySensor = true;
       sensor.push(Number.isFinite(sv) ? sqTransform(sensorKey, sv) : null);
@@ -4516,7 +4573,7 @@
   // waterIn/waterOut are cumulative pulse counters on the device. For the table
   // the user wants a running total of liters consumed within the filtered window.
   // Process each station in chronological order: reset-aware delta vs. the
-  // previous reading (a drop is treated as a counter reset), ×ML_PER_PULSE ÷1000
+  // previous reading (a drop is treated as a counter reset), × the station's ml/pulse ÷ 1000
   // → liters, then accumulate. Each row receives __cumWaterInL / __cumWaterOutL
   // = liters since the start of the window for that station.
   const WATER_IN_KEYS  = ["waterIn", "water_in", "WaterIn"];
@@ -4550,7 +4607,7 @@
         if (val === null) { r[f.out] = cum[i]; return; }
         const prevVal = prev[i];
         const deltaPulses = prevVal === undefined ? 0 : (val >= prevVal ? val - prevVal : val);
-        cum[i] += deltaPulses * ML_PER_PULSE / 1000;
+        cum[i] += deltaPulses * mlPerPulse(sid) / 1000;
         prev[i] = val;
         r[f.out] = cum[i];
       });
@@ -4785,8 +4842,9 @@
       unit: "L",
       type: "cumulative",
       fields: [
-        { label: "waterIn",  candidates: ["waterIn","water_in","WaterIn"],   transform: v => (v * ML_PER_PULSE) / 1000, color: C_BLUE,   bg: F_BLUE },
-        { label: "waterOut", candidates: ["waterOut","water_out","WaterOut"],transform: v => (v * ML_PER_PULSE) / 1000, color: C_ORANGE, bg: F_ORANGE }
+        // already in litres - computeGraphWaterDeltas applies the station's ml/pulse
+        { label: "waterIn",  candidates: ["waterIn","water_in","WaterIn"],   color: C_BLUE,   bg: F_BLUE },
+        { label: "waterOut", candidates: ["waterOut","water_out","WaterOut"],color: C_ORANGE, bg: F_ORANGE }
       ]
     },
     {
@@ -4800,8 +4858,6 @@
     }
   ];
 
-  const ML_PER_PULSE = 2.4; // calibrated ml per flowmeter pulse
-
   let currentGraphIndex = 0;
   let graphChartInstance = null;
   let graphData = [];
@@ -4812,7 +4868,9 @@
   // each row's waterIn/waterOut to the delta vs. the previous reading from
   // the SAME station; first per-station row = 0 (baseline); a current value
   // below the previous is treated as a counter reset (current is the new total
-  // since the reset). Only waterIn/waterOut are touched — EC, scale, soil,
+  // since the reset). The delta is converted to LITRES right here, using the
+  // station's own ml/pulse from Settings, because one range may mix stations with
+  // different calibrations. Only waterIn/waterOut are touched — EC, scale, soil,
   // etc. are absolute measurements and remain untouched.
   function computeGraphWaterDeltas(rows) {
     const FIELDS = [
@@ -4836,7 +4894,7 @@
         if (key === null) continue;
         const prevVal = prev[f.name];
         const delta = prevVal === null ? 0 : (val >= prevVal ? val - prevVal : val);
-        r[key] = delta;
+        r[key] = delta * mlPerPulse(sid) / 1000;
         updated[f.name] = val;
       }
       byStation.set(sid, updated);
@@ -5063,7 +5121,7 @@
     const labels = days.map(d => new Date(d.date + "T00:00:00").toLocaleDateString("he-IL", {month:"2-digit", day:"2-digit"}));
     const datasets = cfg.fields.map((f, i) => ({
       label: f.label,
-      data: days.map(d => (d.sums[i] * ML_PER_PULSE) / 1000),
+      data: days.map(d => d.sums[i]),   // already litres
       backgroundColor: f.color,
       borderColor: f.color,
       borderWidth: 0,
@@ -5084,7 +5142,7 @@
     let titleSuffix = "";
     if (todayEntry) {
       const parts = cfg.fields.map((f, i) =>
-        f.label + " " + ((todayEntry.sums[i] * ML_PER_PULSE) / 1000).toFixed(2) + " L");
+        f.label + " " + todayEntry.sums[i].toFixed(2) + " L");
       titleSuffix = "  —  Today: " + parts.join(" · ");
     }
     document.getElementById("graphTitle").textContent =
@@ -5355,6 +5413,9 @@
   async function boot(){
     if (booted) return;
     booted = true;
+
+    // The ml/pulse calibration must be known before the first water figure is drawn.
+    await loadMlPerPulse();
 
     // Open on the main (squares) view by default.
     applyView("squares");
