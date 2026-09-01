@@ -396,6 +396,13 @@
       border-top:1px solid var(--border); padding-top:12px; margin-top:2px;
     }
     .sq-chart-box{ position:relative; height:340px; width:100%; }
+    .sq-chart-nav{ display:flex; align-items:center; gap:6px; margin:4px 0 6px; flex-wrap:wrap; }
+    .sq-chart-nav button{
+      padding:4px 9px; border-radius:8px; border:1px solid var(--border);
+      background:#f4f6fa; color:var(--text); cursor:pointer; font-size:12px; line-height:1.5;
+    }
+    .sq-chart-nav button:hover{ background:#e8ebf1; }
+    .sq-chart-info{ font-size:11px; color:var(--muted); }
     .sq-chart-empty{ color:var(--muted); font-size:13px; padding:8px 0; }
     .sq-chart-toggle{
       align-self:flex-start; padding:8px 16px; border-radius:10px;
@@ -2401,6 +2408,11 @@
   // the ticks on whatever sample happened to be Nth (01:01, 02:21, 03:41…). So:
   // flow is SUMMED into fixed time buckets, the sensor is AVERAGED over the same
   // buckets, and the X axis is a real time axis whose ticks land on round times.
+  //
+  // The window itself is interactive: the wheel zooms around the cursor, dragging
+  // pans, and the buckets are recomputed for whatever window is on screen — so
+  // zooming in really does buy resolution (down to one bucket per reading) instead
+  // of just stretching the same bars.
 
   // Bucket width: aim for ~160 bars across the visible span (a day then lands on
   // 10-minute bars — fine enough to see a single irrigation pulse group).
@@ -2424,11 +2436,143 @@
   }
 
   const isMidnightMs = ms => { const d = new Date(ms); return d.getHours() === 0 && d.getMinutes() === 0; };
+  const sqFmtTime = ms => new Date(ms).toLocaleTimeString("he-IL", { hour:"2-digit", minute:"2-digit" });
+  const sqFmtDate = ms => new Date(ms).toLocaleDateString("he-IL", { day:"2-digit", month:"2-digit" });
+
+  const SQ_MIN_SPAN_MS = 20 * 60000;   // never zoom in past a 20-minute window
+  const squaresChartState = {};        // deviceId → the interactive chart's state
+
+  // Sum flow / average the sensor over the buckets of the CURRENT window.
+  // Deltas are walked across every reading (the counters are cumulative, so the
+  // reading before the window is what makes the first in-window delta correct)
+  // but only in-window readings are accumulated.
+  function sqComputeSeries(st){
+    const bucketMs = sqBucketMs(st.viewMax - st.viewMin);
+    const originD = new Date(st.viewMin); originD.setHours(0, 0, 0, 0);
+    const origin = originD.getTime();
+    const floorToBucket = t => origin + Math.floor((t - origin) / bucketMs) * bucketMs;
+
+    const first = floorToBucket(st.viewMin), last = floorToBucket(st.viewMax);
+    const count = Math.min(800, Math.floor((last - first) / bucketMs) + 1);
+    const inL = new Array(count).fill(0), outL = new Array(count).fill(0);
+    const sSum = new Array(count).fill(0), sN = new Array(count).fill(0);
+
+    let prevIn = null, prevOut = null;
+    for (const r of st.readings){
+      const t = r.time.getTime();
+      let dIn = 0, dOut = 0;
+      if (prevIn !== null){
+        dIn  = r.waterIn  >= prevIn  ? r.waterIn  - prevIn  : r.waterIn;
+        dOut = r.waterOut >= prevOut ? r.waterOut - prevOut : r.waterOut;
+      }
+      prevIn = r.waterIn; prevOut = r.waterOut;
+      if (t < st.viewMin || t > st.viewMax) continue;
+      const i = Math.max(0, Math.min(count - 1, Math.floor((floorToBucket(t) - first) / bucketMs)));
+      inL[i]  += dIn  * st.ml / 1000;
+      outL[i] += dOut * st.ml / 1000;
+      const sv = parseFloat(r.item ? r.item[st.sensorKey] : NaN);
+      if (Number.isFinite(sv)){ sSum[i] += sqTransform(st.sensorKey, sv); sN[i]++; }
+    }
+
+    const at = i => first + i * bucketMs;
+    const sensor = sSum.map((s, i) => sN[i] ? s / sN[i] : null);
+    return {
+      bucketMs, first, last,
+      waterIn:  inL.map((v, i)  => ({ x: at(i), y: v })),
+      waterOut: outL.map((v, i) => ({ x: at(i), y: v })),
+      sensor:   zeroFillOutsideActive(sensor).map((v, i) => ({ x: at(i), y: v })),
+      sensorReal: sensor.filter(v => v !== null),
+      maxWater: Math.max(0, ...inL, ...outL)
+    };
+  }
+
+  // Push the current window into the chart: new buckets, new axis bounds, new
+  // tick step, new caption.
+  function sqApplyView(deviceId){
+    const st = squaresChartState[deviceId];
+    if (!st || !st.chart) return;
+    const s = sqComputeSeries(st);
+    const viewSpan = st.viewMax - st.viewMin;
+
+    st.bucketMs = s.bucketMs;
+    st.origin   = s.first;
+    st.tickStep = sqTickStepMs(viewSpan, Math.max(4, Math.min(12, Math.round(viewSpan / s.bucketMs / 9))));
+    st.multiDay = viewSpan > 36 * 3600 * 1000;
+
+    st.chart.data.datasets[0].data = s.waterIn;
+    st.chart.data.datasets[1].data = s.waterOut;
+    if (st.chart.data.datasets[2]) st.chart.data.datasets[2].data = s.sensor;
+
+    const x = st.chart.options.scales.x;
+    x.min = s.first - s.bucketMs / 2;
+    x.max = s.last  + s.bucketMs / 2;
+
+    const yW = st.chart.options.scales.yWater;
+    yW.suggestedMax = s.maxWater > 0 ? s.maxWater * 1.15 : 0.1;
+    yW.title.text = "ל׳ / " + sqBucketLabel(s.bucketMs);
+
+    // The sensor axis is fitted to what is visible, so zooming into a flat stretch
+    // opens it up instead of keeping the whole range's scale.
+    if (st.chart.data.datasets[2] && s.sensorReal.length){
+      const lo = Math.min(...s.sensorReal), hi = Math.max(...s.sensorReal);
+      const pad = (hi - lo) * 0.12 || Math.max(0.5, Math.abs(hi) * 0.05);
+      const yS = st.chart.options.scales.ySensor;
+      yS.max = hi + pad;
+      yS.min = (lo - pad < 0 && lo >= 0) ? 0 : lo - pad;
+    }
+
+    if (st.infoEl){
+      const sameDay = new Date(st.viewMin).toDateString() === new Date(st.viewMax).toDateString();
+      const window = sameDay
+        ? sqFmtDate(st.viewMin) + " " + sqFmtTime(st.viewMin) + "–" + sqFmtTime(st.viewMax)
+        : sqFmtDate(st.viewMin) + " " + sqFmtTime(st.viewMin) + " – " + sqFmtDate(st.viewMax) + " " + sqFmtTime(st.viewMax);
+      const zoomed = (st.viewMin > st.fullMin + 1000) || (st.viewMax < st.fullMax - 1000);
+      st.infoEl.textContent = window + " · עמודה = " + sqBucketLabel(s.bucketMs) + (zoomed ? " · מוגדל" : "");
+    }
+    st.chart.update("none");
+  }
+
+  // Zoom by `factor` (<1 = in) around `center` on the time axis; the window is
+  // always kept inside the loaded range.
+  function sqZoomView(deviceId, factor, center){
+    const st = squaresChartState[deviceId];
+    if (!st) return;
+    const fullSpan = st.fullMax - st.fullMin;
+    const span = st.viewMax - st.viewMin;
+    let next = Math.min(fullSpan, Math.max(Math.min(SQ_MIN_SPAN_MS, fullSpan), span * factor));
+    const c = Math.min(st.viewMax, Math.max(st.viewMin, center === undefined ? (st.viewMin + span / 2) : center));
+    const ratio = span > 0 ? (c - st.viewMin) / span : 0.5;
+    let min = c - ratio * next;
+    if (min < st.fullMin) min = st.fullMin;
+    if (min + next > st.fullMax) min = st.fullMax - next;
+    st.viewMin = min; st.viewMax = min + next;
+    sqApplyView(deviceId);
+  }
+
+  // Slide the window by a share of its own width (positive = forward in time).
+  function sqPanView(deviceId, fraction){
+    const st = squaresChartState[deviceId];
+    if (!st) return;
+    const span = st.viewMax - st.viewMin;
+    let min = st.viewMin + span * fraction;
+    if (min < st.fullMin) min = st.fullMin;
+    if (min + span > st.fullMax) min = st.fullMax - span;
+    st.viewMin = min; st.viewMax = min + span;
+    sqApplyView(deviceId);
+  }
+
+  function sqResetView(deviceId){
+    const st = squaresChartState[deviceId];
+    if (!st) return;
+    st.viewMin = st.fullMin; st.viewMax = st.fullMax;
+    sqApplyView(deviceId);
+  }
 
   // Build a per-square chart: bucketed irrigation/drain (L) bars on the left axis,
   // the chosen sensor as a line on the right axis, over the readings range.
   function buildSquareChart(deviceId, chartEl, readings, sensorKey, sensorLabel, multiDay){
     if (squaresCharts[deviceId]){ squaresCharts[deviceId].destroy(); delete squaresCharts[deviceId]; }
+    delete squaresChartState[deviceId];
     chartEl.innerHTML = "";
 
     if (!readings.length || typeof Chart === "undefined"){
@@ -2436,44 +2580,21 @@
       return;
     }
 
-    const ml = mlPerPulse(deviceId);
     const t0 = readings[0].time.getTime();
-    const t1 = readings[readings.length - 1].time.getTime();
-    const spanMs  = Math.max(t1 - t0, 10 * 60000);
-    const bucketMs = sqBucketMs(spanMs);
+    const t1 = Math.max(readings[readings.length - 1].time.getTime(), t0 + 10 * 60000);
 
-    // Buckets are aligned to LOCAL midnight, so a 3 h bucket starts at 00:00/03:00
-    // local time rather than at a UTC boundary.
-    const originD = new Date(t0); originD.setHours(0, 0, 0, 0);
-    const origin = originD.getTime();
-    const floorToBucket = t => origin + Math.floor((t - origin) / bucketMs) * bucketMs;
-
-    // Every bucket in range exists, empty ones included, so the bars stay evenly
-    // spaced and a transmission gap reads as a gap instead of being closed up.
-    const first = floorToBucket(t0), last = floorToBucket(t1);
-    const count = Math.min(600, Math.floor((last - first) / bucketMs) + 1);
-    const inL = [], outL = [], sensorSum = [], sensorN = [];
-    for (let i = 0; i < count; i++){ inL.push(0); outL.push(0); sensorSum.push(0); sensorN.push(0); }
-    const idxOf = t => Math.max(0, Math.min(count - 1, Math.floor((floorToBucket(t) - first) / bucketMs)));
-
-    // Per-reading water deltas → litres (cumulative counters; a drop = reset).
-    let prevIn = null, prevOut = null;
-    for (const r of readings){
-      const i = idxOf(r.time.getTime());
-      if (prevIn !== null){
-        inL[i]  += (r.waterIn  >= prevIn  ? r.waterIn  - prevIn  : r.waterIn)  * ml / 1000;
-        outL[i] += (r.waterOut >= prevOut ? r.waterOut - prevOut : r.waterOut) * ml / 1000;
-      }
-      prevIn = r.waterIn; prevOut = r.waterOut;
-      const sv = parseFloat(r.item ? r.item[sensorKey] : NaN);
-      if (Number.isFinite(sv)){ sensorSum[i] += sqTransform(sensorKey, sv); sensorN[i]++; }
-    }
-
-    const at = i => first + i * bucketMs;
-    const waterIn  = inL.map((v, i)  => ({ x: at(i), y: v }));
-    const waterOut = outL.map((v, i) => ({ x: at(i), y: v }));
-    const sensorAvg = sensorSum.map((s, i) => sensorN[i] ? s / sensorN[i] : null);
-    const anySensor = sensorAvg.some(v => v !== null);
+    // Zoom / pan controls — the wheel and dragging do the same thing, these make
+    // it discoverable and usable on a touch screen.
+    const nav = document.createElement("div");
+    nav.className = "sq-chart-nav";
+    nav.innerHTML = `
+      <button type="button" data-act="back"  title="חלון אחורה בזמן">◀</button>
+      <button type="button" data-act="out"   title="הרחק — טווח גדול יותר, רזולוציה גסה יותר">🔍−</button>
+      <button type="button" data-act="in"    title="קרב — טווח קטן יותר, רזולוציה עדינה יותר">🔍+</button>
+      <button type="button" data-act="fwd"   title="חלון קדימה בזמן">▶</button>
+      <button type="button" data-act="reset" title="חזרה לכל הטווח שנטען">⟲ הכל</button>
+      <span class="sq-chart-info"></span>`;
+    chartEl.appendChild(nav);
 
     const box = document.createElement("div");
     box.className = "sq-chart-box";
@@ -2482,46 +2603,39 @@
     chartEl.appendChild(box);
 
     const gridCol = "rgba(0,0,0,0.08)";
-    const dayCol  = "rgba(0,0,0,0.28)";   // midnight gridline in a multi-day range
+    const dayCol  = "rgba(0,0,0,0.28)";   // midnight gridline in a multi-day window
     const tickCol = "#5a6472";
-    const waterAxisLabel = "ל׳ / " + sqBucketLabel(bucketMs);
+    const st = {
+      readings, sensorKey, sensorLabel, ml: mlPerPulse(deviceId),
+      fullMin: t0, fullMax: t1, viewMin: t0, viewMax: t1,
+      bucketMs: sqBucketMs(t1 - t0), origin: t0,
+      tickStep: 3600000, multiDay: !!multiDay,
+      infoEl: nav.querySelector(".sq-chart-info"), chart: null
+    };
+    squaresChartState[deviceId] = st;
+
+    const anySensor = readings.some(r => Number.isFinite(parseFloat(r.item ? r.item[sensorKey] : NaN)));
+    const sensorUnit = sqUnit(sensorKey) || "";
+    const sensorAxisLabel = sensorLabel + (sensorUnit ? " (" + sensorUnit + ")" : "");
     const datasets = [
-      { type:"bar", label:"השקיה (ל׳)", data:waterIn, yAxisID:"yWater",
+      { type:"bar", label:"השקיה (ל׳)", data:[], yAxisID:"yWater",
         backgroundColor:"rgba(74,163,255,0.75)", borderWidth:0, order:2 },
-      { type:"bar", label:"נקז (ל׳)", data:waterOut, yAxisID:"yWater",
+      { type:"bar", label:"נקז (ל׳)", data:[], yAxisID:"yWater",
         backgroundColor:"rgba(255,176,32,0.75)", borderWidth:0, order:2 }
     ];
-
-    // The sensor axis is fitted to the values actually measured (padded), instead
-    // of starting at 0 — that is what makes a 3 % move in soil humidity visible.
-    const sensorUnit = SOIL_EC_FIELDS.has(sensorKey) ? "dS/m" : (sqUnit(sensorKey) || "");
-    const sensorAxisLabel = sensorLabel + (sensorUnit ? " (" + sensorUnit + ")" : "");
-    let sMin, sMax;
     if (anySensor){
-      const real = sensorAvg.filter(v => v !== null);
-      sMin = Math.min(...real); sMax = Math.max(...real);
-      const pad = (sMax - sMin) * 0.12 || Math.max(0.5, Math.abs(sMax) * 0.05);
-      sMax = sMax + pad;
-      sMin = sMin - pad;
-      if (sMin < 0 && Math.min(...real) >= 0) sMin = 0;   // never invent negatives
       // A sensor that stopped reporting still dives to 0 (zeroFillOutsideActive);
-      // the dive is simply clipped at the bottom of the fitted axis.
-      datasets.push({ type:"line", label:sensorAxisLabel,
-        data: zeroFillOutsideActive(sensorAvg).map((v, i) => ({ x: at(i), y: v })),
-        yAxisID:"ySensor", borderColor:"#2bd576", backgroundColor:"#2bd576",
+      // on a fitted axis that dive is simply clipped at the bottom.
+      datasets.push({ type:"line", label:sensorAxisLabel, data:[], yAxisID:"ySensor",
+        borderColor:"#2bd576", backgroundColor:"#2bd576",
         borderWidth:2, pointRadius:0, pointHitRadius:6, tension:0.25, spanGaps:true, order:1 });
     }
 
-    const maxWater = Math.max(...inL, ...outL, 0);
-    const tickStep = sqTickStepMs(spanMs, Math.max(4, Math.min(12, Math.round(spanMs / bucketMs / 9))));
-    const fmtTime = ms => new Date(ms).toLocaleTimeString("he-IL", { hour:"2-digit", minute:"2-digit" });
-    const fmtDate = ms => new Date(ms).toLocaleDateString("he-IL", { day:"2-digit", month:"2-digit" });
-
-    squaresCharts[deviceId] = new Chart(canvas.getContext("2d"), {
+    st.chart = squaresCharts[deviceId] = new Chart(canvas.getContext("2d"), {
       type: "bar",
       data: { datasets },
       options: {
-        responsive:true, maintainAspectRatio:false,
+        responsive:true, maintainAspectRatio:false, animation:false,
         interaction:{ mode:"index", intersect:false },
         plugins:{
           legend:{ labels:{ color:tickCol, boxWidth:12, font:{ size:11 } } },
@@ -2531,8 +2645,8 @@
               title: items => {
                 if (!items.length) return "";
                 const t = items[0].parsed.x;
-                const range = fmtTime(t) + "–" + fmtTime(t + bucketMs);
-                return multiDay ? fmtDate(t) + " · " + range : range;
+                const range = sqFmtTime(t) + "–" + sqFmtTime(t + st.bucketMs);
+                return st.multiDay ? sqFmtDate(t) + " · " + range : range;
               },
               label: ctx => {
                 const v = ctx.parsed.y;
@@ -2541,8 +2655,7 @@
                   if (v === 0) return null;                       // hide empty channels
                   return ctx.dataset.label + ": " + v.toFixed(3) + " ל׳";
                 }
-                const dec = Math.abs(v) >= 100 ? 0 : 2;
-                return ctx.dataset.label + ": " + v.toFixed(dec);
+                return ctx.dataset.label + ": " + v.toFixed(Math.abs(v) >= 100 ? 0 : 2);
               }
             }
           }
@@ -2550,39 +2663,91 @@
         scales:{
           x:{
             type:"linear",
-            min: first - bucketMs / 2, max: last + bucketMs / 2,
             // Ticks on round clock times, aligned to local midnight.
             afterBuildTicks: axis => {
+              const d = new Date(axis.min); d.setHours(0, 0, 0, 0);
+              const base = d.getTime();
               const ticks = [];
-              let t = origin + Math.ceil((axis.min - origin) / tickStep) * tickStep;
-              for (; t <= axis.max && ticks.length < 40; t += tickStep) ticks.push({ value:t });
+              let t = base + Math.ceil((axis.min - base) / st.tickStep) * st.tickStep;
+              for (; t <= axis.max && ticks.length < 40; t += st.tickStep) ticks.push({ value:t });
               axis.ticks = ticks;
             },
             ticks:{
               color:tickCol, font:{ size:10 }, autoSkip:false, maxRotation:0,
               callback: v => {
-                if (!multiDay) return fmtTime(v);
-                if (tickStep >= 24 * 3600000) return fmtDate(v);
-                return isMidnightMs(v) ? [fmtDate(v), fmtTime(v)] : fmtTime(v);
+                if (!st.multiDay) return sqFmtTime(v);
+                if (st.tickStep >= 24 * 3600000) return sqFmtDate(v);
+                return isMidnightMs(v) ? [sqFmtDate(v), sqFmtTime(v)] : sqFmtTime(v);
               }
             },
             // A day boundary gets a darker line, so a week reads as days.
-            grid:{ color: ctx => (multiDay && ctx.tick && isMidnightMs(ctx.tick.value)) ? dayCol : gridCol }
+            grid:{ color: ctx => (st.multiDay && ctx.tick && isMidnightMs(ctx.tick.value)) ? dayCol : gridCol }
           },
           yWater:{
             position:"left", beginAtZero:true,
-            suggestedMax: maxWater > 0 ? maxWater * 1.15 : 0.1,
-            title:{ display:true, text:waterAxisLabel, color:tickCol, font:{ size:10 } },
+            title:{ display:true, text:"ל׳", color:tickCol, font:{ size:10 } },
             ticks:{ color:tickCol, font:{ size:10 }, maxTicksLimit:6 }, grid:{ color:gridCol }
           },
           ySensor:{
-            position:"right", display:anySensor, min:sMin, max:sMax,
+            position:"right", display:anySensor,
             title:{ display:anySensor, text:sensorAxisLabel, color:tickCol, font:{ size:10 } },
             ticks:{ color:tickCol, font:{ size:10 }, maxTicksLimit:6 }, grid:{ drawOnChartArea:false }
           }
         }
       }
     });
+
+    nav.addEventListener("click", (e) => {
+      const act = e.target.closest("button")?.dataset.act;
+      if (!act) return;
+      e.stopPropagation();
+      if (act === "in")    sqZoomView(deviceId, 0.5);
+      if (act === "out")   sqZoomView(deviceId, 2);
+      if (act === "back")  sqPanView(deviceId, -0.5);
+      if (act === "fwd")   sqPanView(deviceId, 0.5);
+      if (act === "reset") sqResetView(deviceId);
+    });
+
+    // Wheel = zoom around the cursor.
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const rect = canvas.getBoundingClientRect();
+      const val = st.chart.scales.x.getValueForPixel(e.clientX - rect.left);
+      sqZoomView(deviceId, e.deltaY < 0 ? 0.75 : 1 / 0.75, val);
+    }, { passive:false });
+
+    // Drag = pan. touch-action:pan-y keeps a vertical swipe scrolling the page.
+    let dragging = null;
+    canvas.addEventListener("pointerdown", (e) => {
+      dragging = { x:e.clientX, min:st.viewMin, max:st.viewMax };
+      canvas.setPointerCapture(e.pointerId);
+      canvas.style.cursor = "grabbing";
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const area = st.chart.chartArea;
+      const w = area ? (area.right - area.left) : canvas.clientWidth;
+      const span = dragging.max - dragging.min;
+      let min = dragging.min - (e.clientX - dragging.x) * span / Math.max(1, w);
+      if (min < st.fullMin) min = st.fullMin;
+      if (min + span > st.fullMax) min = st.fullMax - span;
+      if (min === st.viewMin) return;
+      st.viewMin = min; st.viewMax = min + span;
+      sqApplyView(deviceId);
+    });
+    const endDrag = (e) => {
+      if (!dragging) return;
+      dragging = null;
+      try { canvas.releasePointerCapture(e.pointerId); } catch(_){}
+      canvas.style.cursor = "grab";
+    };
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+    canvas.addEventListener("dblclick", (e) => { e.stopPropagation(); sqResetView(deviceId); });
+    canvas.style.cursor = "grab";
+    canvas.style.touchAction = "pan-y";
+
+    sqApplyView(deviceId);
   }
 
   function renderSquaresView(){
