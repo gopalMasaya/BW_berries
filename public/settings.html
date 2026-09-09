@@ -71,7 +71,76 @@
                 <input id="fPostWait" type="number" step="1" min="0" max="60" dir="ltr" />
               </div>
             </div>
+            </div><!-- /wateringFields — the VPD section below is deliberately
+                       outside it. VPD is worth reading and configuring even on
+                       a station in monitor mode with watering switched off,
+                       and burying it in there hid it completely. -->
+
+            <hr style="border:none;border-top:1px solid var(--border);margin:22px 0;" />
+
+            <div class="field" style="margin-bottom:14px;">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                <input id="fVpdEnabled" type="checkbox" style="width:20px;height:20px;" />
+                <span style="font-size:15px;font-weight:600;">שימוש ב־VPD מתחנת FieldClimate</span>
+              </label>
+              <span style="font-size:13px;color:var(--muted);">
+                גירעון לחץ אדים (kPa) מחושב מטמפרטורת האוויר והלחות היחסית של תחנת המזג אוויר.
+                כשהאפשרות כבויה, ההשקיה מתנהגת בדיוק כמו היום — לפי לחות הקרקע בלבד.
+              </span>
+              <span id="vpdLive" style="font-size:13px;color:var(--muted);display:block;margin-top:6px;"></span>
             </div>
+
+            <div id="vpdFields">
+            <div class="field" style="margin-bottom:14px;">
+              <label>מזהה תחנת FieldClimate (8 תווים)</label>
+              <input id="fFcStationId" type="text" maxlength="16" dir="ltr" placeholder="00001234"
+                     style="width:100%;max-width:300px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;" />
+              <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">השאר ריק כדי להשתמש בתחנת ברירת המחדל שמוגדרת בשרת</span>
+            </div>
+
+            <div class="field" style="margin-bottom:14px;">
+              <label>אופן הפעולה</label>
+              <select id="fVpdMode" style="width:100%;max-width:420px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;">
+                <option value="gate">תנאי נוסף — משקים רק כשהקרקע יבשה וגם ה־VPD גבוה</option>
+                <option value="trigger">הפעלה עצמאית — VPD גבוה פותח שסתום גם ללא יובש בקרקע</option>
+              </select>
+              <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">
+                &quot;תנאי נוסף&quot; יכול רק להקטין את כמות ההשקיה לעומת היום. &quot;הפעלה עצמאית&quot; יכול להוסיף השקיות.
+              </span>
+            </div>
+
+            <div class="form-grid">
+              <div class="field">
+                <label>סף VPD להפעלה (kPa)</label>
+                <input id="fVpdOn" type="number" step="0.05" min="0" max="10" dir="ltr" />
+              </div>
+              <div class="field">
+                <label>סף VPD לשחרור (kPa)</label>
+                <input id="fVpdOff" type="number" step="0.05" min="0" max="10" dir="ltr" />
+              </div>
+              <div class="field">
+                <label>משך השקיה לפי VPD (דקות)</label>
+                <input id="fVpdWaterMin" type="number" step="1" min="1" max="60" dir="ltr" />
+              </div>
+              <div class="field">
+                <label>מרווח מינימלי בין השקיות VPD (דקות)</label>
+                <input id="fVpdRepeatMin" type="number" step="10" min="0" max="1440" dir="ltr" />
+              </div>
+            </div>
+            <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">
+              מעל סף ההפעלה — VPD נחשב גבוה. הוא חוזר להיות נמוך רק כשיורד מתחת לסף השחרור.
+              הפרש בין השניים מונע פתיחה וסגירה חוזרת סביב הסף. סף השחרור חייב להיות קטן מסף ההפעלה.
+            </span>
+            <span style="font-size:13px;color:var(--muted);display:block;margin-top:8px;">
+              <b>משך ההשקיה</b> חל רק על השקיה שה־VPD פתח בעצמו (מצב &quot;הפעלה עצמאית&quot;).
+              השקיה שהתחילה מיובש בקרקע ממשיכה להיעצר לפי חיישני הקרקע וזמן ההשקיה המקסימלי שלמעלה.
+            </span>
+            <span style="font-size:13px;color:var(--muted);display:block;margin-top:8px;">
+              <b>המרווח המינימלי</b> קובע כל כמה זמן מותר ל־VPD לפתוח שוב. ה־VPD כאן נשאר גבוה
+              כ־4 שעות ביום, ובלי מרווח כזה המערכת הייתה פותחת מחדש בכל התעוררות כל עוד הוא גבוה.
+              ברירת מחדל 180 דקות. הטיימר מתאפס כשה־VPD יורד מתחת לסף השחרור, כך שגל חום חדש פותח מיד.
+            </span>
+            </div><!-- /vpdFields -->
 
             <div style="color:var(--bad);font-size:14px;min-height:20px;margin-top:12px;" id="formError"></div>
             <div style="color:var(--good);font-size:14px;min-height:20px;" id="formSuccess"></div>
@@ -93,7 +162,31 @@
     import { db, ref, get, set } from "./auth.mjs";
     import { STATIONS } from "./stations.mjs";
 
-    const { user, profile } = await requireAuth(["manager"]);
+    // Authenticate, but do the role check here instead of inside requireAuth().
+    //
+    // requireAuth(["manager"]) answers a wrong role with location.replace() back
+    // to the map — no message, no trace. Clicking ⚙️ הגדרות then looks exactly
+    // like a dead button, which is how this page appeared to be missing its VPD
+    // section when the section was in fact fine.
+    //
+    // The owner account is allowed through on its email as well, matching what
+    // index.html does to decide whether to offer the button at all. Otherwise
+    // the button can be visible on one page and refused by the next.
+    const OWNER_EMAIL = "bcreativeground@gmail.com";
+    const { user, profile } = await requireAuth();
+
+    if (profile.role !== "manager" &&
+        (user.email || "").toLowerCase() !== OWNER_EMAIL) {
+      document.body.innerHTML =
+        '<div style="max-width:520px;margin:80px auto;padding:24px;font-family:system-ui;' +
+        'direction:rtl;text-align:center;line-height:1.7;">' +
+        '<h2>אין הרשאה לעמוד ההגדרות</h2>' +
+        '<p>העמוד פתוח למנהלים בלבד. התפקיד הרשום לחשבון הזה הוא: ' +
+        '<b>' + (profile.role || "לא מוגדר") + '</b></p>' +
+        '<p><a href="index.html">חזרה למפה</a></p></div>';
+      throw new Error("settings: role not permitted (" + profile.role + ")");
+    }
+
     initSidebar(profile);
 
     const DEFAULTS = {
@@ -104,7 +197,19 @@
       noRiseTimeoutMin: 10,
       maxWateringMin: 25,
       postWateringWaitMin: 20,
-      mlPerPulse: 2.4
+      mlPerPulse: 2.4,
+      // VPD is off until someone turns it on, so existing stations keep
+      // behaving exactly as they did before this feature existed.
+      vpdEnabled: false,
+      vpdMode: "gate",
+      // Sized from a week of real readings at the blueberry station: VPD is ~0
+      // overnight and peaks at 2.0-3.6 kPa midday, so 2.0 is high for roughly
+      // 4.5 h/day and 1.5 releases it.
+      vpdOnKpa: 2.0,
+      vpdOffKpa: 1.5,
+      vpdWaterMin: 10,
+      vpdRepeatMin: 180,
+      fcStationId: ""
     };
 
     const stationSelect = document.getElementById("stationSelect");
@@ -122,6 +227,15 @@
     const fMaxWatering = document.getElementById("fMaxWatering");
     const fPostWait = document.getElementById("fPostWait");
     const fMlPerPulse = document.getElementById("fMlPerPulse");
+    const fVpdEnabled = document.getElementById("fVpdEnabled");
+    const fVpdMode = document.getElementById("fVpdMode");
+    const fVpdOn = document.getElementById("fVpdOn");
+    const fVpdOff = document.getElementById("fVpdOff");
+    const fVpdWaterMin = document.getElementById("fVpdWaterMin");
+    const fVpdRepeatMin = document.getElementById("fVpdRepeatMin");
+    const fFcStationId = document.getElementById("fFcStationId");
+    const vpdFields = document.getElementById("vpdFields");
+    const vpdLive = document.getElementById("vpdLive");
 
     // Populate station dropdown
     for (const s of STATIONS) {
@@ -151,6 +265,16 @@
         fPostWait.value = config.postWateringWaitMin ?? DEFAULTS.postWateringWaitMin;
         fMlPerPulse.value = config.mlPerPulse ?? DEFAULTS.mlPerPulse;
 
+        fVpdEnabled.checked = config.vpdEnabled ?? DEFAULTS.vpdEnabled;
+        fVpdMode.value = config.vpdMode ?? DEFAULTS.vpdMode;
+        fVpdOn.value = config.vpdOnKpa ?? DEFAULTS.vpdOnKpa;
+        fVpdOff.value = config.vpdOffKpa ?? DEFAULTS.vpdOffKpa;
+        fVpdWaterMin.value = config.vpdWaterMin ?? DEFAULTS.vpdWaterMin;
+        fVpdRepeatMin.value = config.vpdRepeatMin ?? DEFAULTS.vpdRepeatMin;
+        fFcStationId.value = config.fcStationId ?? DEFAULTS.fcStationId;
+        updateFieldVisibility();
+        showLiveVpd(stationId);
+
         loadingMsg.style.display = "none";
         configForm.style.display = "";
       } catch (e) {
@@ -158,12 +282,33 @@
       }
     }
 
+    // The last reading the cloud function pulled from FieldClimate, so the
+    // thresholds above can be set against a number the user can actually see.
+    // Written by functions/fieldclimate.js; absent until VPD is first enabled.
+    async function showLiveVpd(stationId) {
+      vpdLive.textContent = "";
+      try {
+        const snap = await get(ref(db, `berries/${stationId}/fieldclimate/last`));
+        const r = snap.val();
+        if (!r || typeof r.vpd !== "number") return;
+        const ageMin = r.fetchedAt ? Math.round(Date.now() / 1000 - r.fetchedAt) / 60 : null;
+        vpdLive.textContent =
+          `קריאה אחרונה: VPD ${r.vpd.toFixed(2)} kPa` +
+          (typeof r.tempC === "number" ? ` (${r.tempC}°C, ${r.rh}% לחות)` : "") +
+          (ageMin !== null ? ` — לפני ${ageMin.toFixed(0)} דקות` : "");
+      } catch (e) {
+        // A missing node is normal before VPD is used; nothing to show.
+      }
+    }
+
     function updateFieldVisibility() {
       const isControl = fOperationMode.value === "control";
       wateringFields.style.display = (fWateringEnabled.checked && isControl) ? "" : "none";
+      vpdFields.style.display = fVpdEnabled.checked ? "" : "none";
     }
     fWateringEnabled.addEventListener("change", updateFieldVisibility);
     fOperationMode.addEventListener("change", updateFieldVisibility);
+    fVpdEnabled.addEventListener("change", updateFieldVisibility);
 
     stationSelect.addEventListener("change", () => loadConfig(stationSelect.value));
 
@@ -203,6 +348,51 @@
         return;
       }
 
+      const vpdEnabled = fVpdEnabled.checked;
+      const fcStationId = fFcStationId.value.trim();
+      const rawVpdOn = parseFloat(fVpdOn.value);
+      const rawVpdOff = parseFloat(fVpdOff.value);
+      const rawVpdWater = parseInt(fVpdWaterMin.value, 10);
+      const rawVpdRepeat = parseInt(fVpdRepeatMin.value, 10);
+
+      if (vpdEnabled) {
+        if (isNaN(rawVpdOn) || rawVpdOn <= 0 || rawVpdOn > 10) {
+          formError.textContent = "סף VPD להפעלה חייב להיות בין 0.1 ל-10 kPa";
+          return;
+        }
+        if (isNaN(rawVpdOff) || rawVpdOff < 0 || rawVpdOff > 10) {
+          formError.textContent = "סף VPD לשחרור חייב להיות בין 0 ל-10 kPa";
+          return;
+        }
+        // Without a gap the relay would flip on every reading that lands on the
+        // threshold; equal values are the same as having no hysteresis at all.
+        if (rawVpdOff >= rawVpdOn) {
+          formError.textContent = "סף השחרור חייב להיות קטן מסף ההפעלה";
+          return;
+        }
+        if (isNaN(rawVpdWater) || rawVpdWater < 1 || rawVpdWater > 60) {
+          formError.textContent = "משך השקיה לפי VPD חייב להיות בין 1 ל-60 דקות";
+          return;
+        }
+        if (isNaN(rawVpdRepeat) || rawVpdRepeat < 0 || rawVpdRepeat > 1440) {
+          formError.textContent = "מרווח בין השקיות VPD חייב להיות בין 0 ל-1440 דקות";
+          return;
+        }
+        // A gap shorter than the watering itself would re-trigger while the
+        // valve is still open, which reads as one long watering rather than the
+        // two the numbers describe.
+        if (fVpdMode.value === "trigger" && rawVpdRepeat > 0 && rawVpdRepeat <= rawVpdWater) {
+          formError.textContent = "המרווח בין השקיות חייב להיות גדול ממשך ההשקיה";
+          return;
+        }
+      }
+
+      // With VPD switched off the inputs may be empty, and set() rejects NaN.
+      const vpdOnKpa = isNaN(rawVpdOn) ? DEFAULTS.vpdOnKpa : rawVpdOn;
+      const vpdOffKpa = isNaN(rawVpdOff) ? DEFAULTS.vpdOffKpa : rawVpdOff;
+      const vpdWaterMin = isNaN(rawVpdWater) ? DEFAULTS.vpdWaterMin : rawVpdWater;
+      const vpdRepeatMin = isNaN(rawVpdRepeat) ? DEFAULTS.vpdRepeatMin : rawVpdRepeat;
+
       const saveBtn = document.getElementById("saveBtn");
       saveBtn.disabled = true;
       saveBtn.textContent = "שומר...";
@@ -218,6 +408,13 @@
           maxWateringMin,
           postWateringWaitMin,
           mlPerPulse,
+          vpdEnabled,
+          vpdMode: fVpdMode.value,
+          vpdOnKpa,
+          vpdOffKpa,
+          vpdWaterMin,
+          vpdRepeatMin,
+          fcStationId,
           updatedAt: new Date().toISOString()
         });
         formSuccess.textContent = "ההגדרות נשמרו בהצלחה";

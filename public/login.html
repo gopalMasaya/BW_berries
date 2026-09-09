@@ -242,8 +242,8 @@
         const phoneProf = await getPhoneProfile(fbUser.phoneNumber);
         if (!phoneProf) {
           await logout();
-          errorEl.textContent = "מספר טלפון לא רשום במערכת. פנה למנהל.";
           showStep(1);
+          errorEl.textContent = `המספר ${fbUser.phoneNumber} אינו רשום במערכת. פנה למנהל.`;
           return;
         }
 

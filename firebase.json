@@ -1,7 +1,6 @@
 {
   "functions": {
     "source": "functions"
-    
   },
   "hosting": {
     "public": "public",
@@ -15,7 +14,17 @@
         "source": "/api/**",
         "function": "api"
       }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|mjs|css|html)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, max-age=0, must-revalidate"
+          }
+        ]
+      }
     ]
   }
 }
-

@@ -298,6 +298,27 @@
     .station-square .sq-name{ font-size:20px; font-weight:bold; }
     .station-square .sq-sub{ font-size:13px; color:var(--muted); margin-top:4px; }
     .station-square .sq-flags{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+
+    /* VPD headline box: centred at the top of each station card.
+       `color` is set inline from the reading's band, and the border and the
+       big number both inherit it via currentColor, so one assignment tints the
+       whole box. Hidden until a reading exists -- an empty bordered box would
+       read as "sensor broken" rather than "not configured". */
+    /* No display rule here on purpose. paintVpdIntoSquares() sets display
+       explicitly to "none" or "block"; if the hidden state lived in this rule,
+       clearing the inline style would fall back to it and the box could never
+       be shown again. */
+    .station-square .sq-vpdbox{
+      align-self:center; text-align:center;
+      min-width:200px; padding:10px 24px;
+      border:2px solid currentColor; border-radius:16px;
+    }
+    .station-square .sq-vpdbox .vb-label{
+      font-size:12px; font-weight:700; letter-spacing:0.14em; opacity:0.75;
+    }
+    .station-square .sq-vpdbox .vb-value{ font-size:40px; font-weight:800; line-height:1.05; }
+    .station-square .sq-vpdbox .vb-value span{ font-size:17px; font-weight:600; margin-inline-start:5px; }
+    .station-square .sq-vpdbox .vb-meta{ font-size:12.5px; color:var(--muted); margin-top:3px; }
     .sq-badge-clog{
       display:inline-flex; align-items:center; gap:4px;
       font-size:12px; font-weight:700; color:#1a2233;
@@ -762,7 +783,7 @@
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <h2>Stations Map Dashboard</h2>
         <div style="display:flex;gap:6px;align-items:center;">
-          <a id="manageUsersBtn" href="settings.html" style="display:none;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:rgba(74,163,255,0.15);color:var(--text);cursor:pointer;font-size:12px;text-decoration:none;white-space:nowrap;">Settings</a>
+          <a id="manageUsersBtn" href="settings.html" style="display:none;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:rgba(74,163,255,0.15);color:var(--text);cursor:pointer;font-size:12px;text-decoration:none;white-space:nowrap;">⚙️ הגדרות</a>
           <a id="galconBtn" href="galcon.html" style="display:none;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:rgba(43,213,118,0.15);color:var(--text);cursor:pointer;font-size:12px;text-decoration:none;white-space:nowrap;">Galcon</a>
           <button id="logoutBtn" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:rgba(255,77,94,0.15);color:var(--text);cursor:pointer;font-size:12px;">Logout</button>
           <button id="panelCollapse" title="הסתר את הפאנל">&#8249;</button>
@@ -967,6 +988,11 @@
         <select id="sqSensor"></select>
       </div>
       <button class="sq-btn" id="sqReload">הצג</button>
+      <!-- The left panel (and its Settings link) is hidden on this view, so the
+           main screen needs its own way into Settings. Revealed by
+           showManagerButtons() for managers and for the owner account. -->
+      <a class="sq-btn" id="sqSettingsBtn" href="settings.html"
+         style="display:none;text-decoration:none;margin-inline-start:auto;">⚙️ הגדרות</a>
     </div>
     <div id="squaresGrid"></div>
   </div>
@@ -1174,6 +1200,104 @@
   const lastStatusByDevice = {};
 
   // ===============================
+  // VPD (FieldClimate weather station)
+  // ===============================
+  // Vapour pressure deficit in kPa: how thirsty the air is. It does not come
+  // from the station's own sensors -- the Arduino cannot reach FieldClimate --
+  // so the cloud function fetches it and /api/vpd hands it to this page.
+  //
+  // Served from a shared 30-minute cache, so this poll is nearly always free
+  // and the number can lag the weather station by up to half an hour. The age
+  // is displayed next to it rather than hidden.
+  const vpdByDevice = {};   // deviceId -> {vpd, tempC, rh, ageSec, stale}
+
+  const VPD_API = "https://us-central1-plantstracker-f1274.cloudfunctions.net/api/vpd";
+
+  async function refreshVpd(){
+    const user = auth.currentUser;
+    if (!user) return;
+
+    let token;
+    try { token = await user.getIdToken(); } catch (e) { return; }
+
+    await Promise.all(STATIONS.map(async st => {
+      try {
+        const res = await fetch(VPD_API + "?stationId=" + encodeURIComponent(st.deviceId),
+                                { headers: { Authorization: "Bearer " + token } });
+        const data = await res.json();
+        // ok:false is the ordinary "this station has no weather station wired
+        // to it" answer, not an error worth surfacing.
+        vpdByDevice[st.deviceId] = (data && data.ok && typeof data.vpd === "number") ? data : null;
+      } catch (e) {
+        vpdByDevice[st.deviceId] = null;
+      }
+    }));
+
+    renderStationList();
+    paintVpdIntoSquares();
+  }
+
+  // Colour follows what the number means for the plant, not an arbitrary scale:
+  // below ~0.4 kPa the air is saturated (disease risk), 0.4-2.0 is the
+  // comfortable band, and above ~2.0 the air pulls water faster than roots can
+  // replace it. Thresholds for acting on it live in Settings, per station.
+  function vpdTone(v){
+    if (v < 0.4) return "var(--bad)";
+    if (v <= 2.0) return "var(--ok)";
+    return "var(--warn)";
+  }
+
+  // Returns the content only, no wrapper: the two places that show VPD (the
+  // left-panel list and the squares cards) have their own typography, so each
+  // supplies its own container.
+  function vpdInnerHtml(deviceId){
+    const r = vpdByDevice[deviceId];
+    if (!r) return "";
+    const age = Number.isFinite(r.ageSec) ? Math.round(r.ageSec / 60) : null;
+    const air = (typeof r.tempC === "number" && typeof r.rh === "number") ?
+      ` · ${r.tempC}°C · ${r.rh}%` : "";
+    const when = age === null ? "" : ` · לפני ${age} דק׳`;
+    return `<span style="color:var(--muted)">VPD:</span> ` +
+           `<b style="color:${vpdTone(r.vpd)}">${r.vpd.toFixed(2)} kPa</b>` +
+           `<span style="color:var(--muted)">${air}${when}</span>`;
+  }
+
+  // The squares view is light-themed (white cards), and the dark theme's --ok /
+  // --warn are too pale to carry a 40px number on white. Same three bands as
+  // vpdTone(), darker inks.
+  function vpdToneLight(v){
+    if (v < 0.4) return "#d92d20";
+    if (v <= 2.0) return "#067647";
+    return "#b54708";
+  }
+
+  // The squares cards are expensive to rebuild (each destroys and re-creates a
+  // Chart.js instance) and rebuilding one would collapse any chart the user has
+  // open. So the VPD box is painted into the existing card instead.
+  function paintVpdIntoSquares(){
+    document.querySelectorAll("#squaresGrid .station-square").forEach(el => {
+      const box = el.querySelector(".sq-vpdbox");
+      if (!box) return;
+      const r = vpdByDevice[el.dataset.device];
+
+      // Explicit "none"/"block", never "" -- see the CSS note on .sq-vpdbox.
+      if (!r){ box.style.display = "none"; box.innerHTML = ""; return; }
+
+      const age = Number.isFinite(r.ageSec) ? Math.round(r.ageSec / 60) : null;
+      const air = (typeof r.tempC === "number" && typeof r.rh === "number") ?
+        `${r.tempC}°C · ${r.rh}% לחות` : "";
+      const when = age === null ? "" : `לפני ${age} דק׳`;
+
+      box.style.color = vpdToneLight(r.vpd);
+      box.style.display = "block";
+      box.innerHTML =
+        `<div class="vb-label">VPD</div>` +
+        `<div class="vb-value">${r.vpd.toFixed(2)}<span>kPa</span></div>` +
+        `<div class="vb-meta">${[air, when].filter(Boolean).join(" · ")}</div>`;
+    });
+  }
+
+  // ===============================
   // DOM
   // ===============================
   const statusEl = document.getElementById("status");
@@ -1197,6 +1321,17 @@
   // ===============================
   // Only this account may edit (and thus globally publish) marker positions.
   const POSITION_EDITOR_EMAIL = "bcreativeground@gmail.com";
+
+  // Two Settings entry points, because the left panel is hidden on the two
+  // full-width views (chart and squares) and squares is what boot() opens on.
+  function showManagerButtons(){
+    const s = document.getElementById("manageUsersBtn");
+    const g = document.getElementById("galconBtn");
+    const sq = document.getElementById("sqSettingsBtn");
+    if (s) s.style.display = "";
+    if (g) g.style.display = "";
+    if (sq) sq.style.display = "";
+  }
   auth.onAuthStateChanged(user => {
     if (user) {
       document.getElementById("app").style.display = "flex";
@@ -1205,13 +1340,18 @@
       if (posBtn && (user.email || "").toLowerCase() === POSITION_EDITOR_EMAIL) {
         posBtn.style.display = "";
       }
+      // The owner account always sees the manager buttons, whatever its
+      // users/{uid} record happens to say. Without this the Settings link can
+      // vanish for the very person who administers the system -- a missing or
+      // mistyped role field is enough -- and there is then no way back into the
+      // settings page from the map at all.
+      const isOwner = (user.email || "").toLowerCase() === POSITION_EDITOR_EMAIL;
+      if (isOwner) showManagerButtons();
+
       // Check user role for manager features
       database.ref("users/" + user.uid).once("value").then(snap => {
         const profile = snap.val();
-        if (profile && profile.role === "manager") {
-          document.getElementById("manageUsersBtn").style.display = "";
-          document.getElementById("galconBtn").style.display = "";
-        }
+        if (profile && profile.role === "manager") showManagerButtons();
       });
       boot();
     } else {
@@ -1887,6 +2027,7 @@
           <div class="meta">
             <div><span style="color:var(--muted)">stationId:</span> ${st.deviceId}</div>
             <div><span style="color:var(--muted)">last seen:</span> ${latest ? new Date(latest.tsISO).toLocaleString() : "\u2014"}</div>
+            <div>${vpdInnerHtml(st.deviceId)}</div>
           </div>
         </div>
         <div class="pill"><span class="dot ${s.cls}"></span>${s.label}</div>
@@ -2766,7 +2907,9 @@
 
       const square = document.createElement("div");
       square.className = "station-square";
+      square.dataset.device = st.deviceId;   // so paintVpdIntoSquares() can find it
       square.innerHTML = `
+        <div class="sq-vpdbox" style="display:none;"></div>
         <div class="sq-head">
           <div>
             <div class="sq-name">${st.name}</div>
@@ -2833,6 +2976,10 @@
       // Irrigation events + chart data load asynchronously per station for the range.
       loadSquareData(st.deviceId, square);
     });
+
+    // Cards are built empty of VPD; fill them from whatever refreshVpd() last
+    // fetched, so a re-render (date change, sensor change) keeps the box.
+    paintVpdIntoSquares();
   }
 
   function openDrawer(deviceId){
@@ -5716,8 +5863,12 @@
     // Initial fetch
     await refreshAllStations();
 
+    // Not awaited: VPD comes from an external weather service and must never
+    // hold up the first paint of the station list.
+    refreshVpd();
+
     // Poll every 10 minutes
-    pollTimer = setInterval(refreshAllStations, POLL_INTERVAL_MS);
+    pollTimer = setInterval(() => { refreshAllStations(); refreshVpd(); }, POLL_INTERVAL_MS);
   }
 </script>
 </body>

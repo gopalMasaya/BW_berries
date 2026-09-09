@@ -4,6 +4,7 @@ const admin = require("firebase-admin");
 const express = require("express");
 const sql = require("mssql");
 const https = require("https");
+const fc = require("./fieldclimate");
 
 admin.initializeApp();
 
@@ -125,7 +126,45 @@ app.get("/watering", async (req, res) => {
 
     const config = configSnap.val() || {};
 
-    return res.status(200).json({
+    // VPD comes from FieldClimate, which the station itself cannot reach.
+    // Only touched when the user has switched it on for this station: every
+    // call here spends part of a 48/day per-station API budget, and stations
+    // not using VPD should not pay the latency either.
+    //
+    // The four vpd* fields below are what the Mega parses. Keep them terse:
+    // the MKR link truncates a response body at MAX_DATA_TO_MEGA (300 bytes)
+    // and this JSON is already ~200.
+    let vpdFields = {};
+    if (config.vpdEnabled) {
+      const fcStationId = config.fcStationId || process.env.FC_STATION_ID || "";
+      if (fcStationId) {
+        const reading = await fc.readVpd(admin.database(), stationId, fcStationId);
+        const decision = await fc.decideVpd(
+            admin.database(), stationId, reading, config);
+        const gate = config.vpdMode !== "trigger";
+        vpdFields = {
+          // vpdOk false means "no trustworthy reading" -- the firmware then
+          // ignores VPD entirely and waters on soil moisture alone, exactly as
+          // it did before. A FieldClimate outage must never strand the valve.
+          vpdOk: !!reading.ok,
+          // One field, two meanings, chosen here rather than on the Arduino:
+          // in gate mode the level (is the air dry?), in trigger mode the event
+          // (start a watering now). The station has 300 bytes for this whole
+          // response and no room to be sent both.
+          vpdRelay: gate ? decision.high : decision.fire,
+          vpdGate: gate,
+          vpd: typeof reading.vpd === "number" ? reading.vpd : 0,
+          // Minutes to hold the valve open for a VPD-triggered watering. Unused
+          // in gate mode, where the soil probes decide when to stop.
+          vpdDur: Math.round(Number(config.vpdWaterMin ?? 10)),
+        };
+      } else {
+        logger.warn("vpdEnabled but no fcStationId", {stationId});
+        vpdFields = {vpdOk: false, vpdRelay: false, vpdGate: true, vpd: 0};
+      }
+    }
+
+    return res.status(200).json(Object.assign({
       ok: true,
       stationId,
       watering: !!waterSnap.val(),
@@ -136,12 +175,61 @@ app.get("/watering", async (req, res) => {
       noRiseTimeoutMin: config.noRiseTimeoutMin ?? 10,
       maxWateringMin: config.maxWateringMin ?? 25,
       postWateringWaitMin: config.postWateringWaitMin ?? 20,
-    });
+    }, vpdFields));
   } catch (err) {
     logger.error("watering failed", err);
     return res.status(500).json({ok: false, error: "server error"});
   }
 });
+
+// Dashboard-facing VPD reading.
+//
+// The station gets its VPD verdict inside /watering; the browser cannot use
+// that route because it has no device secret and has no business holding one.
+// This route authenticates a signed-in user instead, and returns the reading
+// itself rather than a relay decision.
+//
+// It shares the same 30-minute RTDB cache as the watering path, so opening the
+// dashboard -- on any number of screens -- cannot eat into the station's daily
+// FieldClimate budget. Worst case one screen pays for one refresh per half hour
+// and everyone else reads what it stored.
+async function vpdHandler(req, res) {
+  try {
+    const m = /^Bearer (.+)$/.exec(req.get("Authorization") || "");
+    if (!m) return res.status(401).json({ok: false, error: "missing id token"});
+
+    try {
+      await admin.auth().verifyIdToken(m[1]);
+    } catch (err) {
+      return res.status(401).json({ok: false, error: "invalid id token"});
+    }
+
+    const stationId = String(req.query.stationId || "");
+    if (!DEVICE_SECRETS[stationId]) {
+      return res.status(400).json({ok: false, error: "unknown stationId"});
+    }
+
+    const configSnap = await admin.database()
+        .ref(`/berries/${stationId}/control/wateringConfig`).get();
+    const config = configSnap.val() || {};
+    const fcStationId = config.fcStationId || process.env.FC_STATION_ID || "";
+    if (!fcStationId) {
+      return res.status(200).json({ok: false, error: "no fieldclimate station configured"});
+    }
+
+    const reading = await fc.readVpd(admin.database(), stationId, fcStationId);
+    return res.status(200).json(Object.assign({stationId, fcStationId}, reading));
+  } catch (err) {
+    logger.error("vpd failed", err);
+    return res.status(500).json({ok: false, error: "server error"});
+  }
+}
+
+// Registered under both paths: the station reaches the function directly, where
+// express sees "/vpd", while the browser goes through the hosting rewrite in
+// firebase.json, where the original "/api/vpd" is what arrives.
+app.get("/vpd", vpdHandler);
+app.get("/api/vpd", vpdHandler);
 
 exports.api = onRequest({cors: true}, app);
 
