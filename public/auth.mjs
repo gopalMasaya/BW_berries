@@ -6,8 +6,9 @@ import {
   signOut,
   onAuthStateChanged,
   RecaptchaVerifier,
-  signInWithPhoneNumber
-  
+  signInWithPhoneNumber,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
 import {
   getDatabase, ref, get, set, update, remove, onValue, off, push
@@ -79,17 +80,43 @@ export function phoneKey(phone) {
 export async function sendOTP(phoneNumber, recaptchaContainerId) {
   const normalized = normalizePhone(phoneNumber);
 
-  // Clear any existing reCAPTCHA
+  // Fully tear down any previous reCAPTCHA. Calling .clear() alone is not
+  // enough: when Firebase can't load reCAPTCHA Enterprise it falls back to
+  // reCAPTCHA v2 and renders a widget into the container DOM. grecaptcha then
+  // refuses to render a second widget into an element it has already used,
+  // throwing "reCAPTCHA has already been rendered in this element" on every
+  // later send — so the second attempt fails no matter what. Give it a
+  // brand-new child element each time.
   if (window._recaptchaVerifier) {
     try { window._recaptchaVerifier.clear(); } catch (_) {}
+    window._recaptchaVerifier = null;
   }
 
-  window._recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerId, {
+  const wrapper = typeof recaptchaContainerId === "string"
+    ? document.getElementById(recaptchaContainerId)
+    : recaptchaContainerId;
+
+  let target = recaptchaContainerId;
+  if (wrapper) {
+    wrapper.innerHTML = "";
+    const fresh = document.createElement("div");
+    wrapper.appendChild(fresh);
+    target = fresh;
+  }
+
+  window._recaptchaVerifier = new RecaptchaVerifier(auth, target, {
     size: "invisible"
   });
 
-  const confirmationResult = await signInWithPhoneNumber(auth, normalized, window._recaptchaVerifier);
-  return confirmationResult;
+  try {
+    return await signInWithPhoneNumber(auth, normalized, window._recaptchaVerifier);
+  } catch (error) {
+    // Firebase recommends resetting reCAPTCHA after a failed phone-auth
+    // request, so the next attempt starts from a clean verifier.
+    try { window._recaptchaVerifier?.clear(); } catch (_) {}
+    window._recaptchaVerifier = null;
+    throw error;
+  }
 }
 
 /**
@@ -102,6 +129,49 @@ export async function verifyOTP(confirmationResult, code) {
   return await confirmationResult.confirm(code);
 }
 
+// ── Email + Password Sign-In (SMS-free fallback) ─────────────
+// For a user who can't receive an SMS at all (blocked number, reCAPTCHA that
+// won't load on their phone). The manager creates the account in Firebase Auth
+// and puts the same address on the user's allowedPhones entry, so the profile
+// can be resolved by email — no phone, no SMS, no reCAPTCHA.
+
+/**
+ * Sign in with email + password.
+ * @param {string} email
+ * @param {string} password
+ * @returns {UserCredential}
+ */
+export async function signInWithEmail(email, password) {
+  return await signInWithEmailAndPassword(auth, String(email || "").trim(), password);
+}
+
+/**
+ * Send a password-reset ("set your password") email. Firebase only sends it if
+ * a password account already exists for that address — it can't create one.
+ * @param {string} email
+ */
+export async function sendPasswordReset(email) {
+  return await sendPasswordResetEmail(auth, String(email || "").trim());
+}
+
+/**
+ * Resolve a pre-registered profile by its login email.
+ * allowedPhones is keyed by phone, so we scan it; one entry per user makes a
+ * full read cheap. Comparison is trimmed and case-insensitive.
+ * @param {string} email
+ * @returns {object|null} the allowedPhones entry, or null if none matches
+ */
+export async function getPhoneProfileByEmail(email) {
+  const target = String(email || "").trim().toLowerCase();
+  if (!target) return null;
+  const snap = await get(ref(db, "allowedPhones"));
+  const val = snap.val() || {};
+  for (const data of Object.values(val)) {
+    if (String(data?.email || "").trim().toLowerCase() === target) return data;
+  }
+  return null;
+}
+
 // ── Allowed Phones CRUD (pre-registration) ──────────────────
 
 /** Register a phone number with a role (manager only) */
@@ -111,6 +181,9 @@ export async function registerPhone(phone, profile) {
     name: profile.name || "",
     role: profile.role || "worker",
     phone: normalizePhone(phone),
+    // Optional login email — lets this user sign in with email + password when
+    // SMS isn't an option, and be resolved by getPhoneProfileByEmail.
+    email: (profile.email || "").trim().toLowerCase(),
     serialNumber: profile.serialNumber || "",
     createdAt: new Date().toISOString()
   });
@@ -175,20 +248,22 @@ export async function deleteUserProfile(uid) {
 export async function ensureUserProfile(uid, phoneProfile) {
   const existing = await getUserProfile(uid);
   if (existing) {
-    await update(ref(db, `users/${uid}`), {
+    const synced = {
       name: phoneProfile.name,
       role: phoneProfile.role,
       phone: phoneProfile.phone,
-      serialNumber: phoneProfile.serialNumber || "",
-      updatedAt: new Date().toISOString()
-    });
-    return { ...existing, name: phoneProfile.name, role: phoneProfile.role, phone: phoneProfile.phone, serialNumber: phoneProfile.serialNumber || "" };
+      email: phoneProfile.email || "",
+      serialNumber: phoneProfile.serialNumber || ""
+    };
+    await update(ref(db, `users/${uid}`), { ...synced, updatedAt: new Date().toISOString() });
+    return { ...existing, ...synced };
   }
 
   const profile = {
     name: phoneProfile.name,
     role: phoneProfile.role,
     phone: phoneProfile.phone,
+    email: phoneProfile.email || "",
     serialNumber: phoneProfile.serialNumber || "",
     createdAt: new Date().toISOString()
   };

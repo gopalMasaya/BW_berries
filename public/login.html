@@ -98,6 +98,24 @@
       cursor:pointer;
       text-decoration:underline;
     }
+    .back-link .sep { color:var(--muted); margin:0 8px; }
+    .fallback-note{
+      background:rgba(250,204,21,.16);
+      border:1px solid var(--border);
+      border-radius:var(--radius-sm);
+      padding:10px 12px;
+      margin-bottom:14px;
+      font-size:13px;
+      line-height:1.55;
+      color:var(--text);
+    }
+    .error-code{
+      margin-top:6px;
+      font-size:11px;
+      opacity:.75;
+      direction:ltr;
+      font-family:monospace;
+    }
   </style>
 </head>
 <body>
@@ -115,6 +133,9 @@
       </div>
       <div style="margin-top:18px;">
         <button class="login-btn" id="sendOtpBtn">שלח קוד</button>
+      </div>
+      <div class="back-link">
+        <a id="emailLoginLink">כניסה עם אימייל וסיסמה</a>
       </div>
     </div>
 
@@ -140,14 +161,54 @@
       </div>
     </div>
 
+    <!-- Step 3: Email + password login (SMS-free fallback) -->
+    <div id="step3" class="step">
+      <div style="text-align:center;margin-bottom:16px;font-size:14px;color:var(--muted);">
+        התחברות עם אימייל וסיסמה
+      </div>
+      <!-- Filled in when we land here automatically after the SMS path failed -->
+      <div id="emailFallbackNote" class="fallback-note" style="display:none;"></div>
+      <div class="form-grid" style="grid-template-columns:1fr;">
+        <div class="field">
+          <label>אימייל</label>
+          <input id="emailInput" type="email" placeholder="name@example.com" dir="ltr" autocomplete="username" />
+        </div>
+        <div class="field">
+          <label>סיסמה</label>
+          <input id="passwordInput" type="password" placeholder="••••••••" dir="ltr" autocomplete="current-password" />
+        </div>
+      </div>
+      <div style="margin-top:18px;">
+        <button class="login-btn" id="emailLoginBtn">התחבר</button>
+      </div>
+      <div class="back-link">
+        <a id="forgotPwLink">שכחתי סיסמה</a>
+        <span class="sep">·</span>
+        <a id="emailBackBtn">חזרה להתחברות עם SMS</a>
+      </div>
+      <div style="margin-top:14px;text-align:center;font-size:12px;color:var(--muted);line-height:1.6;">
+        אין לך אימייל וסיסמה? פנה למנהל שייצור לך חשבון.
+      </div>
+    </div>
+
     <div class="login-error" id="error"></div>
+
+    <!-- Revealed automatically when the SMS path fails -->
+    <div id="smsFreeFallback" style="display:none;margin-top:18px;text-align:center;">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">
+        בעיה בקבלת קוד SMS? אפשר להיכנס בלי SMS:
+      </div>
+      <button class="login-btn" id="emailFallbackBtn">כניסה עם אימייל וסיסמה</button>
+    </div>
 
     <!-- Invisible reCAPTCHA container -->
     <div id="recaptcha-container"></div>
   </div>
 
   <script type="module">
-    import { waitForAuth, sendOTP, verifyOTP, normalizePhone, phoneKey, getPhoneProfile, ensureUserProfile, logout } from "./auth.mjs";
+    import { waitForAuth, sendOTP, verifyOTP, signInWithEmail, sendPasswordReset,
+             getPhoneProfileByEmail, normalizePhone, phoneKey, getPhoneProfile,
+             ensureUserProfile, getUserProfile, logout } from "./auth.mjs";
 
     // If already logged in, go to dashboard
     const user = await waitForAuth();
@@ -159,8 +220,19 @@
     const verifyBtn   = document.getElementById("verifyBtn");
     const step1       = document.getElementById("step1");
     const step2       = document.getElementById("step2");
+    const step3       = document.getElementById("step3");
     const sentToPhone = document.getElementById("sentToPhone");
     const otpBoxes    = document.querySelectorAll("#otpInputs input");
+
+    const emailLoginLink    = document.getElementById("emailLoginLink");
+    const emailFallbackBtn  = document.getElementById("emailFallbackBtn");
+    const emailFallbackNote = document.getElementById("emailFallbackNote");
+    const smsFreeFallback   = document.getElementById("smsFreeFallback");
+    const emailInput        = document.getElementById("emailInput");
+    const passwordInput     = document.getElementById("passwordInput");
+    const emailLoginBtn     = document.getElementById("emailLoginBtn");
+    const emailBackBtn      = document.getElementById("emailBackBtn");
+    const forgotPwLink      = document.getElementById("forgotPwLink");
 
     let confirmationResult = null;
 
@@ -195,7 +267,85 @@
     function showStep(n) {
       step1.classList.toggle("active", n === 1);
       step2.classList.toggle("active", n === 2);
+      step3.classList.toggle("active", n === 3);
       errorEl.textContent = "";
+      errorEl.style.color = "";   // the reset-mail confirmation turns it green
+      syncFallbackVisibility();
+    }
+
+    // Shows an error and, when Firebase gave us one, the raw code beneath it.
+    // A user hits this on their own phone where nobody can open a console, so
+    // the code has to be on screen — it's the difference between the manager
+    // knowing "the number is blocked" and guessing at devices and carriers.
+    function showError(msg, code) {
+      errorEl.textContent = msg;
+      if (code) {
+        const small = document.createElement("div");
+        small.className = "error-code";
+        small.textContent = code;
+        errorEl.appendChild(small);
+      }
+    }
+
+    // ── Fail-safe: SMS login failed → hand the user email + password ──────
+    // Someone standing in a field can't debug a blocked number or a reCAPTCHA
+    // that won't load. So we count the phone-login failures on this device and,
+    // once the SMS path clearly isn't working, we don't just show a link — we
+    // move them onto the email/password step ourselves, and remember it so the
+    // next visit opens there instead of failing all over again.
+    const PHONE_FAIL_KEY = "phoneLoginFailures";
+    const PHONE_FAIL_LIMIT = 2;
+
+    function phoneFailCount() {
+      try { return Number(localStorage.getItem(PHONE_FAIL_KEY) || 0); } catch { return 0; }
+    }
+    function bumpPhoneFail() {
+      const n = phoneFailCount() + 1;
+      try { localStorage.setItem(PHONE_FAIL_KEY, String(n)); } catch { /* private mode */ }
+      return n;
+    }
+    function clearPhoneFail() {
+      try { localStorage.removeItem(PHONE_FAIL_KEY); } catch { /* private mode */ }
+    }
+
+    // Firebase codes that mean "this device/number will not get an SMS" —
+    // retrying is pointless (and for too-many-requests actively harmful, since
+    // every extra send extends the block), so we switch over at once instead of
+    // waiting for a second failure.
+    const HARD_SMS_CODES = new Set([
+      "auth/too-many-requests",
+      "auth/quota-exceeded",
+      "auth/captcha-check-failed",
+      "auth/invalid-app-credential",
+      "auth/missing-app-credential",
+      "auth/app-not-authorized",
+      "auth/operation-not-allowed",
+      "auth/web-storage-unsupported",
+      "auth/timeout"
+    ]);
+
+    // The offer to switch is pointless while the email step is already on
+    // screen, so remember that it was revealed and re-apply it per step.
+    let smsFreeRevealed = false;
+    function syncFallbackVisibility() {
+      const onEmailStep = step3.classList.contains("active");
+      smsFreeFallback.style.display = (smsFreeRevealed && !onEmailStep) ? "block" : "none";
+    }
+    function showSmsFreeFallback() {
+      smsFreeRevealed = true;
+      emailLoginLink.style.fontWeight = "700";
+      syncFallbackVisibility();
+    }
+
+    // Moves the user to the email/password step with an explanation of why they
+    // landed there. `remember` makes the next page load start here too.
+    function goEmailFallback(note, remember = true) {
+      if (remember) { try { localStorage.setItem(PHONE_FAIL_KEY, String(PHONE_FAIL_LIMIT)); } catch {} }
+      showStep(3);
+      showSmsFreeFallback();
+      emailFallbackNote.textContent = note || "";
+      emailFallbackNote.style.display = note ? "block" : "none";
+      emailInput.focus();
     }
 
     // ── Step 1: Send OTP ───────────────────────
@@ -208,17 +358,43 @@
       sendOtpBtn.textContent = "שולח...";
 
       try {
-        confirmationResult = await sendOTP(raw, "recaptcha-container");
+        // reCAPTCHA can simply never resolve on some devices (an old WebView, an
+        // ad-blocker, or a network that swallows google.com/recaptcha). Without a
+        // deadline the button stays on "שולח..." forever and the user has no way
+        // out, so we treat a stuck send as a failure like any other.
+        confirmationResult = await Promise.race([
+          sendOTP(raw, "recaptcha-container"),
+          new Promise((_, reject) => setTimeout(() => {
+            const err = new Error("SMS request timed out");
+            err.code = "auth/timeout";
+            reject(err);
+          }, 30000))
+        ]);
         sentToPhone.textContent = normalizePhone(raw);
+        clearPhoneFail();
         showStep(2);
         otpBoxes[0].focus();
       } catch (e) {
         console.error("sendOTP error", e);
         const msg =
           e.code === "auth/invalid-phone-number" ? "מספר טלפון לא תקין" :
-          e.code === "auth/too-many-requests"     ? "יותר מדי ניסיונות, נסה מאוחר יותר" :
+          e.code === "auth/too-many-requests"     ? "המספר הזה נחסם זמנית לשליחת SMS בגלל ניסיונות חוזרים. אל תנסה שוב — כל ניסיון נוסף מאריך את החסימה." :
+          e.code === "auth/quota-exceeded"        ? "מכסת ה-SMS של המערכת נגמרה. פנה למנהל." :
+          e.code === "auth/timeout"               ? "שליחת ה-SMS נתקעה (אימות reCAPTCHA לא נטען במכשיר הזה)." :
           "שגיאה בשליחת קוד: " + (e.message || e);
-        errorEl.textContent = msg;
+        showError(msg, e.code);
+
+        // Fail-safe: don't leave it to the user to spot a small link. A hard
+        // failure means SMS won't work here at all, so switch to email at once;
+        // a soft one (network blip) gets a second chance first.
+        showSmsFreeFallback();
+        const fails = bumpPhoneFail();
+        if (HARD_SMS_CODES.has(e.code) || fails >= PHONE_FAIL_LIMIT) {
+          const why = HARD_SMS_CODES.has(e.code)
+            ? "לא ניתן לשלוח אליך SMS כרגע. אפשר להיכנס כאן עם אימייל וסיסמה."
+            : "ההתחברות עם SMS לא הצליחה פעמיים. אפשר להיכנס כאן עם אימייל וסיסמה.";
+          setTimeout(() => goEmailFallback(why), 2000);
+        }
       } finally {
         sendOtpBtn.disabled = false;
         sendOtpBtn.textContent = "שלח קוד";
@@ -244,10 +420,14 @@
           await logout();
           showStep(1);
           errorEl.textContent = `המספר ${fbUser.phoneNumber} אינו רשום במערכת. פנה למנהל.`;
+          // They may be registered under a different number but with an email —
+          // show the SMS-free route rather than a dead end.
+          showSmsFreeFallback();
           return;
         }
 
         // Create/update user profile
+        clearPhoneFail();
         await ensureUserProfile(fbUser.uid, phoneProf);
         location.replace("index.html");
       } catch (e) {
@@ -256,10 +436,105 @@
           e.code === "auth/invalid-verification-code" ? "קוד שגוי, נסה שוב" :
           e.code === "auth/code-expired"              ? "הקוד פג תוקף, שלח קוד חדש" :
           "שגיאה באימות: " + (e.message || e);
-        errorEl.textContent = msg;
+        showError(msg, e.code);
+        // A wrong code is the user's own typo — let them retry. Anything else
+        // (expired code, a refused profile write, network) is the SMS path
+        // failing on them, so route to email after two tries.
+        if (e.code !== "auth/invalid-verification-code") {
+          showSmsFreeFallback();
+          if (bumpPhoneFail() >= PHONE_FAIL_LIMIT) {
+            setTimeout(() => goEmailFallback("ההתחברות עם SMS לא הושלמה. אפשר להיכנס כאן עם אימייל וסיסמה."), 2000);
+          }
+        }
       } finally {
         verifyBtn.disabled = false;
         verifyBtn.textContent = "אמת";
+      }
+    }
+
+    // ── Email + password login (SMS-free) ──────
+    // The app identifies users by phone, so after the email/password sign-in we
+    // resolve the pre-registered profile by the email stored on its
+    // allowedPhones entry — the user types nothing but email + password.
+    async function doEmailLogin() {
+      errorEl.textContent = "";
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+      if (!email) { errorEl.textContent = "נא להזין אימייל"; emailInput.focus(); return; }
+      if (!password) { errorEl.textContent = "נא להזין סיסמה"; passwordInput.focus(); return; }
+
+      emailLoginBtn.disabled = true;
+      emailLoginBtn.textContent = "מתחבר...";
+      try {
+        const cred = await signInWithEmail(email, password);
+        const phoneProf = await getPhoneProfileByEmail(cred.user.email || email);
+        if (!phoneProf) {
+          // Authenticated with Firebase but no matching record — don't leak into
+          // the app. Sign out and point them at the manager.
+          await logout();
+          errorEl.textContent = "האימייל אינו רשום במערכת. פנה למנהל שיוסיף אותו לכרטיס המשתמש שלך.";
+          return;
+        }
+        clearPhoneFail();
+        try {
+          await ensureUserProfile(cred.user.uid, phoneProf);
+        } catch (e2) {
+          // A refused profile write must not block a legitimate sign-in — the
+          // guard recovers the profile from allowedPhones on the next page.
+          console.warn("ensureUserProfile failed, continuing", e2);
+        }
+        location.replace("index.html");
+      } catch (e) {
+        console.error("email login error", e);
+        const msg =
+          (e.code === "auth/invalid-credential" ||
+           e.code === "auth/wrong-password" ||
+           e.code === "auth/user-not-found")       ? "אימייל או סיסמה שגויים" :
+          e.code === "auth/invalid-email"          ? "כתובת אימייל לא תקינה" :
+          // Shows up when Email/Password isn't enabled as a provider in the
+          // Firebase console — worth naming, or it looks like a wrong password.
+          e.code === "auth/operation-not-allowed"  ? "כניסה עם אימייל וסיסמה אינה מופעלת בפרויקט. פנה למנהל." :
+          e.code === "auth/too-many-requests"      ? "יותר מדי ניסיונות, נסה מאוחר יותר" :
+          e.code === "auth/network-request-failed" ? "אין חיבור לרשת, נסה שוב" :
+          "שגיאה בהתחברות: " + (e.message || e);
+        showError(msg, e.code);
+      } finally {
+        emailLoginBtn.disabled = false;
+        emailLoginBtn.textContent = "התחבר";
+      }
+    }
+
+    function doEmailBack() {
+      passwordInput.value = "";
+      emailFallbackNote.style.display = "none";
+      // They chose SMS again — forget the earlier failures so the next visit
+      // starts on the phone step as usual, and drop the "switch to email"
+      // offer until SMS actually fails again.
+      clearPhoneFail();
+      smsFreeRevealed = false;
+      showStep(1);
+    }
+
+    // ── Forgot password ────────────────────────
+    // Only useful if the manager already created a password account for this
+    // address; Firebase won't create one from here, so the wording stays "if".
+    async function doForgotPassword() {
+      errorEl.textContent = "";
+      const email = emailInput.value.trim();
+      if (!email) { errorEl.textContent = "הזן קודם את כתובת האימייל שלך"; emailInput.focus(); return; }
+      try {
+        await sendPasswordReset(email);
+        errorEl.style.color = "var(--good, #047857)";
+        errorEl.textContent = "אם קיים חשבון סיסמה לכתובת הזו, נשלח אליה קישור לאיפוס סיסמה.";
+      } catch (e) {
+        console.error("password reset error", e);
+        errorEl.style.color = "";
+        const msg =
+          e.code === "auth/invalid-email"     ? "כתובת אימייל לא תקינה" :
+          e.code === "auth/user-not-found"    ? "אין חשבון סיסמה לכתובת הזו. פנה למנהל." :
+          e.code === "auth/too-many-requests" ? "יותר מדי ניסיונות, נסה מאוחר יותר" :
+          "שגיאה בשליחת האיפוס: " + (e.message || e);
+        showError(msg, e.code);
       }
     }
 
@@ -271,6 +546,21 @@
       otpBoxes.forEach(b => b.value = "");
       confirmationResult = null;
     });
+
+    emailLoginLink.addEventListener("click", () => { showStep(3); emailInput.focus(); });
+    emailFallbackBtn.addEventListener("click", () => goEmailFallback("", false));
+    emailLoginBtn.addEventListener("click", doEmailLogin);
+    emailBackBtn.addEventListener("click", doEmailBack);
+    forgotPwLink.addEventListener("click", doForgotPassword);
+    emailInput.addEventListener("keydown", (e) => { if (e.key === "Enter") passwordInput.focus(); });
+    passwordInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doEmailLogin(); });
+
+    // Fail-safe, part two: SMS already failed on this device, so don't make the
+    // user walk into the same wall again — open on email + password, with the
+    // way back to SMS one tap away.
+    if (phoneFailCount() >= PHONE_FAIL_LIMIT) {
+      goEmailFallback("בפעם הקודמת ההתחברות עם SMS לא הצליחה במכשיר הזה. אפשר להיכנס כאן עם אימייל וסיסמה, או לחזור לניסיון עם SMS בקישור למטה.", false);
+    }
   </script>
 </body>
 </html>

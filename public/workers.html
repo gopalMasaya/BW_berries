@@ -44,6 +44,14 @@
           <input id="fSerial" placeholder="לדוגמה: 9555" dir="ltr" />
         </div>
         <div class="field">
+          <label>אימייל לכניסה (לא חובה)</label>
+          <input id="fEmail" type="email" placeholder="name@example.com" dir="ltr" autocomplete="off" />
+          <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5;">
+            מאפשר כניסה עם אימייל וסיסמה כשלא מגיע SMS. צריך גם ליצור למשתמש חשבון
+            Email/Password בקונסולת Firebase עם אותה כתובת.
+          </div>
+        </div>
+        <div class="field">
           <label>תפקיד</label>
           <select id="fRole">
             <option value="worker">עובד</option>
@@ -102,6 +110,7 @@
               <th>שם</th>
               <th>מס׳ סידורי</th>
               <th>טלפון</th>
+              <th>אימייל</th>
               <th>תפקיד</th>
               ${isManager ? "<th>פעולות</th>" : ""}
             </tr>
@@ -113,6 +122,7 @@
           <td>${esc(w.name)}</td>
           <td dir="ltr" style="text-align:right;">${esc(w.serialNumber || "")}</td>
           <td dir="ltr" style="text-align:right;">${esc(w.phone || "")}</td>
+          <td dir="ltr" style="text-align:right;">${w.email ? esc(w.email) : "—"}</td>
           <td>${roleLabels[w.role] || w.role}</td>`;
 
         if (isManager) {
@@ -151,6 +161,7 @@
     const fName       = document.getElementById("fName");
     const fPhone      = document.getElementById("fPhone");
     const fSerial     = document.getElementById("fSerial");
+    const fEmail      = document.getElementById("fEmail");
     const fRole       = document.getElementById("fRole");
 
     let editingKey = null;
@@ -164,6 +175,7 @@
         fName.value = "";
         fPhone.value = "";
         fSerial.value = "";
+        fEmail.value = "";
         fPhone.readOnly = false;
         fRole.value = "worker";
       } else {
@@ -173,6 +185,7 @@
         fName.value = w.name || "";
         fPhone.value = w.phone || "";
         fSerial.value = w.serialNumber || "";
+        fEmail.value = w.email || "";
         fPhone.readOnly = true;
         fRole.value = w.role || "worker";
       }
@@ -192,10 +205,15 @@
       const name  = fName.value.trim();
       const phone = fPhone.value.trim();
       const serialNumber = fSerial.value.trim();
+      const email = fEmail.value.trim().toLowerCase();
       const role  = fRole.value;
 
       if (!name) { modalError.textContent = "נא למלא שם"; return; }
       if (!phone) { modalError.textContent = "נא למלא מספר טלפון"; return; }
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        modalError.textContent = "כתובת אימייל לא תקינה";
+        return;
+      }
 
       // Validate phone format
       const normalized = normalizePhone(phone);
@@ -210,7 +228,7 @@
 
       try {
         if (editingKey) {
-          await updatePhone(editingKey, { name, role, serialNumber });
+          await updatePhone(editingKey, { name, role, serialNumber, email });
         } else {
           // Check if phone already registered
           const key = phoneKey(phone);
@@ -219,7 +237,7 @@
             modalError.textContent = "מספר טלפון כבר רשום במערכת";
             return;
           }
-          await registerPhone(phone, { name, role, serialNumber });
+          await registerPhone(phone, { name, role, serialNumber, email });
         }
         closeModal();
         await loadWorkers();

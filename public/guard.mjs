@@ -1,6 +1,6 @@
 // guard.mjs — Auth guard for protected pages
 
-import { waitForAuth, getUserProfile, logout, db, getPhoneProfile, ensureUserProfile } from "./auth.mjs";
+import { waitForAuth, getUserProfile, logout, db, getPhoneProfile, getPhoneProfileByEmail, ensureUserProfile } from "./auth.mjs";
 import { ref, get } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
 
 /**
@@ -28,16 +28,25 @@ export async function requireAuth(allowedRoles = []) {
   }
 
   if (!profile || !profile.role) {
-    // Fallback: try to recover from allowedPhones using phone number
-    if (user.phoneNumber) {
-      try {
-        const phoneProf = await getPhoneProfile(user.phoneNumber);
-        if (phoneProf) {
+    // Fallback: recover from allowedPhones — by phone for an SMS login, and by
+    // email for an email+password login, which carries no phone number at all
+    // (without this, an SMS-free sign-in bounces straight back to login).
+    try {
+      const phoneProf = user.phoneNumber
+        ? await getPhoneProfile(user.phoneNumber)
+        : await getPhoneProfileByEmail(user.email || "");
+      if (phoneProf) {
+        try {
           profile = await ensureUserProfile(user.uid, phoneProf);
+        } catch (e3) {
+          // The profile write can be refused by the DB rules; the sign-in is
+          // still legitimate, so run the session on the allowedPhones record.
+          console.warn("guard: profile sync refused, using allowedPhones record", e3);
+          profile = phoneProf;
         }
-      } catch (e2) {
-        console.error("guard: fallback phone lookup failed", e2);
       }
+    } catch (e2) {
+      console.error("guard: fallback profile lookup failed", e2);
     }
 
     if (!profile || !profile.role) {
