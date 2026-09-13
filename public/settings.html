@@ -115,9 +115,13 @@
               <select id="fVpdMode" style="width:100%;max-width:420px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;">
                 <option value="gate">תנאי נוסף — משקים רק כשהקרקע יבשה וגם ה־VPD גבוה</option>
                 <option value="trigger">הפעלה עצמאית — VPD גבוה פותח שסתום גם ללא יובש בקרקע</option>
+                <option value="vpdonly">VPD בלבד — רק האוויר קובע, חיישני הקרקע לניטור בלבד</option>
               </select>
               <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">
                 &quot;תנאי נוסף&quot; יכול רק להקטין את כמות ההשקיה לעומת היום. &quot;הפעלה עצמאית&quot; יכול להוסיף השקיות.
+                &quot;VPD בלבד&quot; פותח את השסתום כשה־VPD עולה מעל סף ההפעלה וסוגר כשהוא יורד מתחת לסף השחרור;
+                יובש בקרקע כבר לא יפתח שסתום. משך ההשקיה לפי VPD אינו בשימוש במצב זה — ההשקיה נמשכת כל עוד האוויר יבש,
+                עד מקסימום זמן ההשקיה.
               </span>
             </div>
 

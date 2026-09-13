@@ -137,7 +137,13 @@ app.get("/watering", async (req, res) => {
     let vpdFields = {};
     if (config.vpdEnabled) {
       const fcStationId = config.fcStationId || process.env.FC_STATION_ID || "";
+      // "vpdonly" is a level like gate, not a one-shot like trigger, so it
+      // groups with gate here: decideVpd()'s `high` is the right answer for it.
       const gateMode = config.vpdMode !== "trigger";
+      // Air alone decides and the soil probes are monitoring-only. Sent as its
+      // own flag rather than folded into vpdGate, which stays a straight
+      // AND/OR switch; the firmware defaults it to false when absent.
+      const soloMode = config.vpdMode === "vpdonly";
 
       if (config.vpdLocal) {
         // This station has an SHT3x on its own I2C bus and computes VPD itself,
@@ -155,6 +161,7 @@ app.get("/watering", async (req, res) => {
           vpdOff: Number(config.vpdOffKpa ?? 1.5),
           vpdDur: Math.round(Number(config.vpdWaterMin ?? 10)),
         };
+        if (soloMode) vpdFields.vpdSolo = true;
         // Only trigger mode uses the repeat gap; in gate mode the field would be
         // dead weight in a body that is already tight.
         if (!gateMode) {
@@ -181,6 +188,7 @@ app.get("/watering", async (req, res) => {
           // in gate mode, where the soil probes decide when to stop.
           vpdDur: Math.round(Number(config.vpdWaterMin ?? 10)),
         };
+        if (soloMode) vpdFields.vpdSolo = true;
       } else {
         logger.warn("vpdEnabled but no fcStationId", {stationId});
         vpdFields = {vpdOk: false, vpdRelay: false, vpdGate: true, vpd: 0};
