@@ -137,11 +137,34 @@ app.get("/watering", async (req, res) => {
     let vpdFields = {};
     if (config.vpdEnabled) {
       const fcStationId = config.fcStationId || process.env.FC_STATION_ID || "";
-      if (fcStationId) {
+      const gateMode = config.vpdMode !== "trigger";
+
+      if (config.vpdLocal) {
+        // This station has an SHT3x on its own I2C bus and computes VPD itself,
+        // so there is nothing to fetch: no FieldClimate call, none of the 48/day
+        // budget spent, and no dependency on a third party for a watering
+        // decision. What it still needs from here is the configuration the
+        // decision uses -- the same numbers decideVpd() would have applied.
+        //
+        // vpdOk/vpdRelay/vpd are deliberately NOT sent. The firmware overwrites
+        // them from its own reading anyway, and omitting them keeps this body
+        // under the 300-byte MKR link cap with room to spare.
+        vpdFields = {
+          vpdGate: gateMode,
+          vpdOn: Number(config.vpdOnKpa ?? 2.0),
+          vpdOff: Number(config.vpdOffKpa ?? 1.5),
+          vpdDur: Math.round(Number(config.vpdWaterMin ?? 10)),
+        };
+        // Only trigger mode uses the repeat gap; in gate mode the field would be
+        // dead weight in a body that is already tight.
+        if (!gateMode) {
+          vpdFields.vpdRepeatMin = Math.round(Number(config.vpdRepeatMin ?? 180));
+        }
+      } else if (fcStationId) {
         const reading = await fc.readVpd(admin.database(), stationId, fcStationId);
         const decision = await fc.decideVpd(
             admin.database(), stationId, reading, config);
-        const gate = config.vpdMode !== "trigger";
+        const gate = gateMode;
         vpdFields = {
           // vpdOk false means "no trustworthy reading" -- the firmware then
           // ignores VPD entirely and waters on soil moisture alone, exactly as
