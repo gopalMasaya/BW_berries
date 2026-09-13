@@ -1200,72 +1200,46 @@
   const lastStatusByDevice = {};
 
   // ===============================
-  // VPD (FieldClimate weather station)
+  // VPD (station's own SHT3x air sensor)
   // ===============================
-  // Vapour pressure deficit in kPa: how thirsty the air is. It does not come
-  // from the station's own sensors -- the Arduino cannot reach FieldClimate --
-  // so the cloud function fetches it and /api/vpd hands it to this page.
+  // Vapour pressure deficit in kPa: how thirsty the air is. It comes from the
+  // SHT3x wired to the station's I2C bus, which computes it on the Mega and
+  // ships it in the ordinary payload as "vpd", with air_temp / air_rh beside
+  // it. So there is nothing to fetch here: the number is already in the reading
+  // refreshAllStations() just stored.
   //
-  // Served from a shared 30-minute cache, so this poll is nearly always free
-  // and the number can lag the weather station by up to half an hour. The age
-  // is displayed next to it rather than hidden.
-  const vpdByDevice = {};   // deviceId -> {vpd, tempC, rh, ageSec, stale, local}
-
-  const VPD_API = "https://us-central1-plantstracker-f1274.cloudfunctions.net/api/vpd";
-
-  // A station with an SHT3x on its I2C bus computes VPD itself and ships it in
-  // the ordinary payload as "vpd" (with air_temp / air_rh beside it). That
-  // number beats FieldClimate on every axis that matters -- it is measured in
-  // this field rather than at a weather station some distance away, it is as
-  // fresh as the last send instead of up to 30 min stale, and reading it costs
-  // no API call -- so it wins whenever it is there and recent.
-  //
-  // Cap chosen against the 5-minute send interval: 30 min is six missed sends,
-  // by which point the board is in trouble and FieldClimate is the better guess.
-  const LOCAL_VPD_MAX_AGE_SEC = 30 * 60;
+  // This replaced /api/vpd, which served a FieldClimate number from a shared
+  // 30-minute cache. The endpoint and its cloud function still exist and the
+  // watering decision can still use them (see vpdLocal in Settings) -- this
+  // page simply no longer displays them. A station with no air sensor shows no
+  // VPD at all rather than a reading from a weather station somewhere else.
+  const vpdByDevice = {};   // deviceId -> {vpd, tempC, rh, ageSec}
 
   function localVpdFor(deviceId){
     const latest = latestByDevice[deviceId];
     const item = latest && latest.item;
     if (!item || typeof item.vpd !== "number") return null;
 
+    // Age is shown next to the value rather than used to hide it: the station
+    // card already says when it was last seen, and a number labelled with its
+    // own age is more useful than a box that silently empties.
     const ageSec = Math.round((Date.now() - new Date(latest.tsISO).getTime()) / 1000);
-    if (!Number.isFinite(ageSec) || ageSec > LOCAL_VPD_MAX_AGE_SEC) return null;
 
     return {
       ok: true,
       vpd: item.vpd,
       tempC: typeof item.air_temp === "number" ? item.air_temp : null,
       rh: typeof item.air_rh === "number" ? item.air_rh : null,
-      ageSec,
-      stale: false,
-      local: true,
+      ageSec: Number.isFinite(ageSec) ? ageSec : null,
     };
   }
 
+  // Kept async and kept its name: the three existing call sites are unchanged,
+  // they just no longer wait on a network round trip.
   async function refreshVpd(){
-    const user = auth.currentUser;
-    if (!user) return;
-
-    let token;
-    try { token = await user.getIdToken(); } catch (e) { return; }
-
-    await Promise.all(STATIONS.map(async st => {
-      // Local sensor first, and skip the network entirely when it answers.
-      const local = localVpdFor(st.deviceId);
-      if (local) { vpdByDevice[st.deviceId] = local; return; }
-
-      try {
-        const res = await fetch(VPD_API + "?stationId=" + encodeURIComponent(st.deviceId),
-                                { headers: { Authorization: "Bearer " + token } });
-        const data = await res.json();
-        // ok:false is the ordinary "this station has no weather station wired
-        // to it" answer, not an error worth surfacing.
-        vpdByDevice[st.deviceId] = (data && data.ok && typeof data.vpd === "number") ? data : null;
-      } catch (e) {
-        vpdByDevice[st.deviceId] = null;
-      }
-    }));
+    STATIONS.forEach(st => {
+      vpdByDevice[st.deviceId] = localVpdFor(st.deviceId);
+    });
 
     renderStationList();
     paintVpdIntoSquares();
@@ -1291,10 +1265,9 @@
     const air = (typeof r.tempC === "number" && typeof r.rh === "number") ?
       ` · ${r.tempC}°C · ${r.rh}%` : "";
     const when = age === null ? "" : ` · לפני ${age} דק׳`;
-    const src = r.local ? " · מקומי" : "";
     return `<span style="color:var(--muted)">VPD:</span> ` +
            `<b style="color:${vpdTone(r.vpd)}">${r.vpd.toFixed(2)} kPa</b>` +
-           `<span style="color:var(--muted)">${air}${when}${src}</span>`;
+           `<span style="color:var(--muted)">${air}${when}</span>`;
   }
 
   // The squares view is light-themed (white cards), and the dark theme's --ok /
@@ -1322,14 +1295,13 @@
       const air = (typeof r.tempC === "number" && typeof r.rh === "number") ?
         `${r.tempC}°C · ${r.rh}% לחות` : "";
       const when = age === null ? "" : `לפני ${age} דק׳`;
-      const src = r.local ? "חיישן מקומי" : "תחנת מזג אוויר";
 
       box.style.color = vpdToneLight(r.vpd);
       box.style.display = "block";
       box.innerHTML =
         `<div class="vb-label">VPD</div>` +
         `<div class="vb-value">${r.vpd.toFixed(2)}<span>kPa</span></div>` +
-        `<div class="vb-meta">${[air, when, src].filter(Boolean).join(" · ")}</div>`;
+        `<div class="vb-meta">${[air, when].filter(Boolean).join(" · ")}</div>`;
     });
   }
 
