@@ -157,13 +157,10 @@ app.get("/watering", async (req, res) => {
         // under the 300-byte MKR link cap with room to spare.
         vpdFields = {
           vpdGate: gateMode,
-          vpdOn: Number(config.vpdOnKpa ?? 2.0),
-          vpdOff: Number(config.vpdOffKpa ?? 1.5),
           vpdDur: Math.round(Number(config.vpdWaterMin ?? 10)),
         };
-        if (soloMode) vpdFields.vpdSolo = true;
-        // Only trigger mode uses the repeat gap; in gate mode the field would be
-        // dead weight in a body that is already tight.
+        // Only trigger mode uses the repeat gap; in the level modes the field
+        // would be dead weight in a body that is already tight.
         if (!gateMode) {
           vpdFields.vpdRepeatMin = Math.round(Number(config.vpdRepeatMin ?? 180));
         }
@@ -188,11 +185,20 @@ app.get("/watering", async (req, res) => {
           // in gate mode, where the soil probes decide when to stop.
           vpdDur: Math.round(Number(config.vpdWaterMin ?? 10)),
         };
-        if (soloMode) vpdFields.vpdSolo = true;
       } else {
         logger.warn("vpdEnabled but no fcStationId", {stationId});
         vpdFields = {vpdOk: false, vpdRelay: false, vpdGate: true, vpd: 0};
       }
+
+      // Thresholds and the solo flag go out on EVERY branch, not just the
+      // vpdLocal one. A station can have an SHT3x fitted while vpdLocal is
+      // still off -- the firmware overrides the cloud's verdict from its own
+      // reading regardless -- and if these did not arrive it would decide with
+      // its built-in 2.0/1.5 defaults instead of the numbers set in the web
+      // app. That silent mismatch is worth ~24 bytes of a 300-byte budget.
+      vpdFields.vpdOn = Number(config.vpdOnKpa ?? 2.0);
+      vpdFields.vpdOff = Number(config.vpdOffKpa ?? 1.5);
+      if (soloMode) vpdFields.vpdSolo = true;
     }
 
     return res.status(200).json(Object.assign({
