@@ -92,6 +92,18 @@
 
             <div id="vpdFields">
             <div class="field" style="margin-bottom:14px;">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                <input id="fVpdLocal" type="checkbox" style="width:20px;height:20px;" />
+                <span style="font-size:15px;font-weight:600;">חיישן SHT3x מקומי בתחנה</span>
+              </label>
+              <span style="font-size:13px;color:var(--muted);">
+                כשהאפשרות דולקת התחנה מודדת טמפרטורה ולחות בעצמה ומחשבת VPD מקומית —
+                בלי פנייה ל־FieldClimate. הספים למטה נשלחים לבקר והוא מחליט לבד,
+                כך ש־VPD ממשיך לעבוד גם כשהתקשורת נופלת.
+              </span>
+            </div>
+
+            <div class="field" id="fcStationIdField" style="margin-bottom:14px;">
               <label>מזהה תחנת FieldClimate (8 תווים)</label>
               <input id="fFcStationId" type="text" maxlength="16" dir="ltr" placeholder="00001234"
                      style="width:100%;max-width:300px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;" />
@@ -209,6 +221,9 @@
       vpdOffKpa: 1.5,
       vpdWaterMin: 10,
       vpdRepeatMin: 180,
+      // False keeps every existing station on the FieldClimate path exactly as
+      // before; only a station that actually has the part wired turns this on.
+      vpdLocal: false,
       fcStationId: ""
     };
 
@@ -234,6 +249,8 @@
     const fVpdWaterMin = document.getElementById("fVpdWaterMin");
     const fVpdRepeatMin = document.getElementById("fVpdRepeatMin");
     const fFcStationId = document.getElementById("fFcStationId");
+    const fVpdLocal = document.getElementById("fVpdLocal");
+    const fcStationIdField = document.getElementById("fcStationIdField");
     const vpdFields = document.getElementById("vpdFields");
     const vpdLive = document.getElementById("vpdLive");
 
@@ -271,6 +288,7 @@
         fVpdOff.value = config.vpdOffKpa ?? DEFAULTS.vpdOffKpa;
         fVpdWaterMin.value = config.vpdWaterMin ?? DEFAULTS.vpdWaterMin;
         fVpdRepeatMin.value = config.vpdRepeatMin ?? DEFAULTS.vpdRepeatMin;
+        fVpdLocal.checked = config.vpdLocal ?? DEFAULTS.vpdLocal;
         fFcStationId.value = config.fcStationId ?? DEFAULTS.fcStationId;
         updateFieldVisibility();
         showLiveVpd(stationId);
@@ -305,10 +323,14 @@
       const isControl = fOperationMode.value === "control";
       wateringFields.style.display = (fWateringEnabled.checked && isControl) ? "" : "none";
       vpdFields.style.display = fVpdEnabled.checked ? "" : "none";
+      // A locally-measured station never calls FieldClimate, so its station id
+      // is dead configuration -- hide it rather than leave it looking load-bearing.
+      fcStationIdField.style.display = fVpdLocal.checked ? "none" : "";
     }
     fWateringEnabled.addEventListener("change", updateFieldVisibility);
     fOperationMode.addEventListener("change", updateFieldVisibility);
     fVpdEnabled.addEventListener("change", updateFieldVisibility);
+    fVpdLocal.addEventListener("change", updateFieldVisibility);
 
     stationSelect.addEventListener("change", () => loadConfig(stationSelect.value));
 
@@ -414,6 +436,7 @@
           vpdOffKpa,
           vpdWaterMin,
           vpdRepeatMin,
+          vpdLocal: fVpdLocal.checked,
           fcStationId,
           updatedAt: new Date().toISOString()
         });
