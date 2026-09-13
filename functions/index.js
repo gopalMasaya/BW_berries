@@ -156,7 +156,17 @@ app.get("/watering", async (req, res) => {
         // them from its own reading anyway, and omitting them keeps this body
         // under the 300-byte MKR link cap with room to spare.
         vpdFields = {
+          // Explicit permission for the station to use its own sensor for the
+          // DECISION. Without it the firmware logs its SHT3x reading but still
+          // obeys the cloud verdict -- which is what stops a station that has
+          // the part fitted, but vpdLocal not yet switched on, from deciding
+          // with the firmware's built-in 2.0/1.5 defaults instead of the
+          // thresholds set here. One flag is cheaper than shipping the
+          // thresholds on every branch, which measured 327 B against a 300 B cap.
+          vpdLoc: true,
           vpdGate: gateMode,
+          vpdOn: Number(config.vpdOnKpa ?? 2.0),
+          vpdOff: Number(config.vpdOffKpa ?? 1.5),
           vpdDur: Math.round(Number(config.vpdWaterMin ?? 10)),
         };
         // Only trigger mode uses the repeat gap; in the level modes the field
@@ -190,14 +200,9 @@ app.get("/watering", async (req, res) => {
         vpdFields = {vpdOk: false, vpdRelay: false, vpdGate: true, vpd: 0};
       }
 
-      // Thresholds and the solo flag go out on EVERY branch, not just the
-      // vpdLocal one. A station can have an SHT3x fitted while vpdLocal is
-      // still off -- the firmware overrides the cloud's verdict from its own
-      // reading regardless -- and if these did not arrive it would decide with
-      // its built-in 2.0/1.5 defaults instead of the numbers set in the web
-      // app. That silent mismatch is worth ~24 bytes of a 300-byte budget.
-      vpdFields.vpdOn = Number(config.vpdOnKpa ?? 2.0);
-      vpdFields.vpdOff = Number(config.vpdOffKpa ?? 1.5);
+      // The solo flag applies to both branches; the thresholds do not -- they
+      // only travel on the vpdLocal branch, which is the only one where the
+      // firmware decides for itself. See vpdLoc below for why that is safe.
       if (soloMode) vpdFields.vpdSolo = true;
     }
 
