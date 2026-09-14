@@ -1177,7 +1177,14 @@
     } catch(e){ console.error("mlPerPulse refresh", e); }
   }
 
-  const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+  // How often the page re-reads Firebase. The stations themselves report every
+  // EXPECTED_PERIOD_MIN, so polling faster than that mostly re-reads the same
+  // record -- 5 min is half a reporting period, which is the shortest interval
+  // that still buys anything.
+  //
+  // Note that this number alone was never what kept the screen current: see
+  // startPolling(), where a backgrounded tab is what actually stales the view.
+  const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
   // Offline thresholds (minutes)
   const EXPECTED_PERIOD_MIN = 10;
@@ -1992,7 +1999,8 @@
 
       const updatedCount = results.filter(r => r.updated).length;
       const now = new Date();
-      setStatus("Updated " + updatedCount + "/" + targets.length + " stations\n" + now.toLocaleString() + "\nNext refresh in 10 min", true);
+      const nextMin = Math.round(POLL_INTERVAL_MS / 60000);
+      setStatus("Updated " + updatedCount + "/" + targets.length + " stations\n" + now.toLocaleString() + "\nNext refresh in " + nextMin + " min", true);
 
       if (drawerDeviceId) renderDrawer(drawerDeviceId);
       if (currentView === "squares") renderSquaresView();
@@ -2006,6 +2014,80 @@
       if (currentView === "squares") renderSquaresView();
       setStatus("Fetch failed: " + err.message, false);
     }
+  }
+
+  // ===============================
+  // POLLING
+  // ===============================
+  // Why this is more than setInterval(refreshAllStations, POLL_INTERVAL_MS):
+  //
+  // Browsers do not keep timers running in a backgrounded tab. Desktop Chrome
+  // throttles them to roughly once a minute, and a phone that locks the screen
+  // or switches app freezes the page outright -- the interval does not fire at
+  // all, for as long as the tab stays hidden. Coming back then showed whatever
+  // was on screen when the tab was left, with no fetch until the timer next
+  // managed to run. That is the "the screen is not updating" being reported,
+  // and shortening the interval does not touch it: a timer that is frozen is
+  // frozen at any period.
+  //
+  // So the interval is only the steady-state path. pollNow() also runs when the
+  // tab becomes visible again and when the network comes back.
+  let pollInFlight   = false;
+  let lastPollDoneMs = 0;
+
+  // A wake-up closer than this to the last completed poll is skipped. Without
+  // it every alt-tab and every glance at the phone would fire a round of
+  // Firebase reads, and the stations only produce a new record every
+  // EXPECTED_PERIOD_MIN anyway.
+  const MIN_WAKE_GAP_MS = 60 * 1000;
+
+  // Sequential, not raced: refreshVpd() reads the payload refreshAllStations()
+  // just stored, so starting both together would leave the VPD box one poll
+  // behind the reading it came from.
+  //
+  // The in-flight guard matters now that polls come from three places -- an
+  // interval tick and a visibility wake-up can otherwise land on top of each
+  // other and double every read.
+  async function pollNow(){
+    if (pollInFlight) return;
+    pollInFlight = true;
+    try {
+      await refreshAllStations();
+      refreshVpd();
+      lastPollDoneMs = Date.now();
+    } finally {
+      pollInFlight = false;
+    }
+  }
+
+  function armPollTimer(){
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollNow, POLL_INTERVAL_MS);
+  }
+
+  function startPolling(){
+    lastPollDoneMs = Date.now();   // the caller has just done the first fetch
+    armPollTimer();
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastPollDoneMs < MIN_WAKE_GAP_MS) return;
+
+      // Re-arm rather than let the old timer stand: after a freeze its next tick
+      // is due at some arbitrary point relative to now, which would put the
+      // following refresh anywhere between immediately and a full interval away.
+      // Restarting it puts the next one POLL_INTERVAL_MS after this refresh.
+      armPollTimer();
+      pollNow();
+    });
+
+    // Nothing was fetched while the connection was down, so catch up as soon as
+    // it returns instead of waiting out the rest of the interval.
+    window.addEventListener("online", () => {
+      if (Date.now() - lastPollDoneMs < MIN_WAKE_GAP_MS) return;
+      armPollTimer();
+      pollNow();
+    });
   }
 
   // ===============================
@@ -5875,14 +5957,9 @@
     // hold up the first paint of the station list.
     refreshVpd();
 
-    // Poll every 10 minutes
-    // Sequential, unlike the first paint above: refreshVpd() now reads the
-    // freshly-stored payload for stations with a local sensor, so letting the
-    // two race would leave the VPD box one poll behind the reading it came from.
-    pollTimer = setInterval(async () => {
-      await refreshAllStations();
-      refreshVpd();
-    }, POLL_INTERVAL_MS);
+    // Every subsequent fetch goes through here: the interval, plus a catch-up
+    // whenever the tab wakes or the network returns. See the POLLING section.
+    startPolling();
   }
 </script>
 </body>
