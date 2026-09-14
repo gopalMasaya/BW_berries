@@ -319,6 +319,24 @@
     .station-square .sq-vpdbox .vb-value{ font-size:40px; font-weight:800; line-height:1.05; }
     .station-square .sq-vpdbox .vb-value span{ font-size:17px; font-weight:600; margin-inline-start:5px; }
     .station-square .sq-vpdbox .vb-meta{ font-size:12.5px; color:var(--muted); margin-top:3px; }
+    /* Valve position badge. The same markup is used on the dark station list and
+       on the light squares card, so it carries its own background and ink rather
+       than inheriting either theme's. */
+    .valve-badge{
+      display:inline-flex; align-items:center; gap:5px;
+      padding:2px 10px; border-radius:999px;
+      font-size:12.5px; font-weight:700; line-height:1.8;
+      border:1px solid transparent; white-space:nowrap; cursor:help;
+    }
+    .valve-badge.vb-open{   background:#e7f6ec; border-color:#9bd9b1; color:#05603a; }
+    .valve-badge.vb-closed{ background:#eceff3; border-color:#cbd2dc; color:#475467; }
+    /* Late station: the position shown is the last one reported, and a latching
+       valve can have been moved by hand since. Dimmed rather than hidden --
+       "open, as of 40 minutes ago" is the thing worth seeing. */
+    .valve-badge.vb-stale{ opacity:0.5; }
+    .valve-badge .vb-age{ font-weight:500; opacity:0.75; }
+    .station-square .sq-valve{ margin-top:6px; }
+
     .sq-badge-clog{
       display:inline-flex; align-items:center; gap:4px;
       font-size:12px; font-weight:700; color:#1a2233;
@@ -1252,6 +1270,55 @@
     paintVpdIntoSquares();
   }
 
+  // ===============================
+  // VALVE POSITION
+  // ===============================
+  // "valve" is the station's own account of where its irrigation valve stands,
+  // sent in the ordinary payload next to "watering". The two are not the same
+  // thing, and only one of them answers "is the valve open":
+  //
+  //   watering   localWateringActive OR any flow since the last send. The flow
+  //              meters count the Galcon irrigating this plot through valves the
+  //              station does not control, so this goes true for water that has
+  //              nothing to do with our valve.
+  //   valve      our valve, and nothing else.
+  //
+  // Stations on firmware that predates the field send no "valve" key at all.
+  // Those must show no badge -- never a confident "סגור" -- hence the explicit
+  // typeof check rather than a truthiness test.
+  function valveStateFor(deviceId){
+    const latest = latestByDevice[deviceId];
+    const item = latest && latest.item;
+    if (!item || typeof item.valve !== "boolean") return null;
+
+    const mins = ageMinutes(latest.tsISO);
+    return {
+      open: item.valve,
+      ageMin: Number.isFinite(mins) ? Math.round(mins) : null,
+      // Same threshold the status pill uses, so a card cannot say "Stale" while
+      // its valve badge still reads as current.
+      stale: !Number.isFinite(mins) || mins > WARN_MIN,
+    };
+  }
+
+  // The valve latches: it holds its position with the board asleep, reset or
+  // dead. So an OPEN badge on an old reading still means open -- which is why
+  // the badge always carries the reading's age instead of disappearing once the
+  // station is late.
+  function valveBadgeHtml(deviceId){
+    const v = valveStateFor(deviceId);
+    if (!v) return "";
+
+    const cls = (v.open ? "vb-open" : "vb-closed") + (v.stale ? " vb-stale" : "");
+    const age = v.ageMin === null ? "" : `<span class="vb-age">· לפני ${v.ageMin} דק׳</span>`;
+    const title = v.stale
+      ? "התחנה לא דיווחה בזמן. זהו מצב הברז בדיווח האחרון — הברז נועל ומחזיק את מצבו, כך שהוא כנראה עדיין כך, אך אין אישור עדכני."
+      : "מצב הברז לפי הדיווח האחרון של התחנה";
+
+    return `<span class="valve-badge ${cls}" title="${title}">` +
+           `${v.open ? "🟢 ברז פתוח" : "⚪ ברז סגור"}${age}</span>`;
+  }
+
   // Colour follows what the number means for the plant, not an arbitrary scale:
   // below ~0.4 kPa the air is saturated (disease risk), 0.4-2.0 is the
   // comfortable band, and above ~2.0 the air pulls water faster than roots can
@@ -2111,6 +2178,9 @@
 
       const item = document.createElement("div");
       item.className = "stationItem";
+      // Rendered conditionally rather than into a permanent container: an empty
+      // div still costs a row of gap, and most of the list would carry one.
+      const valveHtml = valveBadgeHtml(st.deviceId);
       item.innerHTML = `
         <div>
           <div class="title">${st.name}</div>
@@ -2118,6 +2188,7 @@
             <div><span style="color:var(--muted)">stationId:</span> ${st.deviceId}</div>
             <div><span style="color:var(--muted)">last seen:</span> ${latest ? new Date(latest.tsISO).toLocaleString() : "\u2014"}</div>
             <div>${vpdInnerHtml(st.deviceId)}</div>
+            ${valveHtml ? `<div style="margin-top:5px">${valveHtml}</div>` : ""}
           </div>
         </div>
         <div class="pill"><span class="dot ${s.cls}"></span>${s.label}</div>
@@ -2998,6 +3069,7 @@
       const square = document.createElement("div");
       square.className = "station-square";
       square.dataset.device = st.deviceId;   // so paintVpdIntoSquares() can find it
+      const sqValveHtml = valveBadgeHtml(st.deviceId);
       square.innerHTML = `
         <div class="sq-vpdbox" style="display:none;"></div>
         <div class="sq-head">
@@ -3005,6 +3077,7 @@
             <div class="sq-name">${st.name}</div>
             <div class="sq-sub">${st.deviceId} · עודכן: ${latest ? new Date(latest.tsISO).toLocaleString() : "—"}</div>
             <div class="sq-flags"></div>
+            ${sqValveHtml ? `<div class="sq-valve">${sqValveHtml}</div>` : ""}
           </div>
           <div class="pill"><span class="dot ${s.cls}"></span>${s.label}</div>
         </div>
