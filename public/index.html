@@ -1528,7 +1528,7 @@
   function decimalsFor(fieldName){
     const lower = fieldName.toLowerCase();
     if (lower.includes("npk")) return 0;
-    if (lower.includes("tension")) return lower.endsWith("_v") ? 2 : 1;
+    if (lower.includes("tension")) return lower.endsWith("_v") ? 2 : 3;
     if (lower.includes("ec")) return 0;
     if (lower.includes("voltage")) return 2;
     if (lower.includes("power")) return 2;
