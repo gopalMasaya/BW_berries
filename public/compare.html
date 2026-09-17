@@ -320,7 +320,9 @@
         const avg = (f) => mean(src.map(s => s[f]).filter(v => v != null));
         const inL = d.inP * mlPerPulse / 1000, outL = d.outP * mlPerPulse / 1000;
         out.set(day, {
-          inL, outL, drainPct: inL > 0 ? outL / inL * 100 : null,
+          // Below half a litre in, the ratio is noise (a stuck inlet meter gave
+          // 75,000%) — leave drain % blank rather than wreck the chart scale.
+          inL, outL, drainPct: inL >= 0.5 ? outL / inL * 100 : null,
           ecIn: avg("ecIn"), ecOut: avg("ecOut"), ph1: avg("ph1"), ph2: avg("ph2"),
         });
       }
