@@ -48,6 +48,22 @@
     .detail th, .detail td { padding:3px 6px; border-bottom:1px solid var(--border); text-align:center; white-space:nowrap; }
     .no-data { text-align:center; padding:30px; color:var(--muted); }
     .muted { color:var(--muted); }
+    .gap-bad { color:var(--bad); font-weight:600; }
+
+    /* Full-screen card: any chart card or the table card, toggled by the button
+       (or a click on a chart). Escape closes. */
+    .fs-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+    .fs-btn { border:1px solid var(--border); background:var(--card); border-radius:var(--radius-sm); cursor:pointer;
+              font-size:14px; line-height:1; padding:5px 8px; color:var(--text-secondary); flex-shrink:0; }
+    .fs-btn:hover { background:var(--primary-bg); }
+    .chart-card:not(.fs-open) .chart-box { cursor:zoom-in; }
+    .fs-open { position:fixed !important; inset:0; z-index:1000; margin:0 !important; border-radius:0 !important;
+               overflow:auto; background:var(--card); padding:16px 20px !important; display:flex !important; flex-direction:column; }
+    .fs-open .chart-box { height:auto; flex:1; min-height:300px; }
+    .fs-open .table-wrap { flex:1; overflow:auto; }
+    .fs-open thead tr.grp th { position:sticky; top:0; background:var(--card); z-index:2; height:30px; }
+    .fs-open thead tr:not(.grp) th { position:sticky; top:30px; background:var(--card); z-index:2; }
+    body.fs-lock { overflow:hidden; }
   </style>
 </head>
 <body>
@@ -90,35 +106,40 @@
 
         <div class="charts" id="charts" style="display:none;">
           <div class="chart-card">
-            <h3>אחוז נקז יומי</h3>
+            <div class="fs-head"><h3>אחוז נקז יומי</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
             <p class="sub">נקז ÷ טפטפת, סכום יומי</p>
             <div class="chart-box"><canvas id="chDrain"></canvas></div>
           </div>
           <div class="chart-card">
-            <h3>EC (dS/m)</h3>
+            <div class="fs-head"><h3>EC (dS/m)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
             <p class="sub">קו מלא = טפטפת/כניסה · מקווקו = נקז/יציאה · ממוצע יומי</p>
             <div class="chart-box"><canvas id="chEc"></canvas></div>
           </div>
           <div class="chart-card">
-            <h3>pH</h3>
+            <div class="fs-head"><h3>pH</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
             <p class="sub">קו מלא = טפטפת/כניסה · מקווקו = נקז/יציאה · ממוצע יומי</p>
             <div class="chart-box"><canvas id="chPh"></canvas></div>
           </div>
           <div class="chart-card">
-            <h3>מים — תחנה (ליטר ליום)</h3>
+            <div class="fs-head"><h3>מים — תחנה (ליטר ליום)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
             <p class="sub">מד זרימה כניסה / יציאה</p>
             <div class="chart-box"><canvas id="chWaterStation"></canvas></div>
           </div>
           <div class="chart-card">
-            <h3>מים — מדידה ידנית (מ״ל ליום)</h3>
+            <div class="fs-head"><h3>מים — מדידה ידנית (מ״ל ליום)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
             <p class="sub">סכום כל המדידות באותו יום</p>
             <div class="chart-box"><canvas id="chWaterManual"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <div class="fs-head"><h3>פער מול המדידה הידנית (%)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
+            <p class="sub">EC / pH: (מקור − ידני) ÷ ידני · נקז: אחוז נקז בתחנה פחות אחוז נקז ידני</p>
+            <div class="chart-box"><canvas id="chGap"></canvas></div>
           </div>
         </div>
 
         <div class="card" id="tableCard" style="display:none;">
-          <h3 style="font-size:15px;margin:0 0 4px;">טבלה יומית</h3>
-          <p class="hint">לחיצה על שורה מציגה את המדידות הידניות והשקיות גלקון של אותו יום.</p>
+          <div class="fs-head"><h3 style="font-size:15px;margin:0 0 4px;">טבלה יומית</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
+          <p class="hint">לחיצה על שורה מציגה את המדידות הידניות והשקיות גלקון של אותו יום. פער מעל 15% מסומן באדום.</p>
           <div class="table-wrap">
             <table class="crm">
               <thead>
@@ -127,6 +148,7 @@
                   <th colspan="6"><span class="src-dot src-manual"></span>מדידה ידנית</th>
                   <th colspan="7"><span class="src-dot src-station"></span>תחנה</th>
                   <th colspan="4"><span class="src-dot src-galcon"></span>גלקון</th>
+                  <th colspan="5">פער מול ידני</th>
                 </tr>
                 <tr>
                   <th>תאריך</th>
@@ -135,6 +157,11 @@
                   <th>כניסה ל׳</th><th>יציאה ל׳</th><th>נקז %</th>
                   <th>EC כניסה</th><th>EC יציאה</th><th>pH1</th><th>pH2</th>
                   <th>השקיות</th><th>מ״ק</th><th>EC</th><th>pH</th>
+                  <th title="אחוז נקז בתחנה פחות אחוז נקז ידני (נקודות אחוז)">נקז תחנה</th>
+                  <th title="EC כניסה בתחנה מול EC טפטפת ידני">EC כניסה</th>
+                  <th title="EC יציאה בתחנה מול EC נקז ידני">EC יציאה</th>
+                  <th title="EC גלקון מול EC טפטפת ידני">EC גלקון</th>
+                  <th title="pH גלקון מול pH טפטפת ידני">pH גלקון</th>
                 </tr>
               </thead>
               <tbody id="dayBody"></tbody>
@@ -371,9 +398,27 @@
       };
     }
 
+    // ---- gaps vs. the manual measurement (the field reference) ----
+    // EC/pH: relative gap (source − manual) ÷ manual. Drain is already a percent,
+    // so its gap is the plain difference in percentage points.
+    const GAP_ALERT = 15;
+    const relGap = (v, ref) => (v == null || ref == null || !(ref > 0)) ? null : (v - ref) / ref * 100;
+    function gapsFor(r) {
+      const { man, st, gal } = r;
+      return {
+        drain: (st?.drainPct != null && man?.drainPct != null) ? st.drainPct - man.drainPct : null,
+        ecIn: relGap(st?.ecIn, man?.dripEc),
+        ecOut: relGap(st?.ecOut, man?.drainEc),
+        galEc: relGap(gal?.ec, man?.dripEc),
+        galPh: relGap(gal?.ph, man?.dripPh),
+      };
+    }
+    const fmtGap = (g) => g == null ? "—"
+      : `<span class="${Math.abs(g) > GAP_ALERT ? "gap-bad" : ""}" dir="ltr">${g > 0 ? "+" : ""}${g.toFixed(1)}%</span>`;
+
     // ---- charts ----
     const charts = {};
-    function drawLineChart(id, labels, datasets, unit, dec) {
+    function drawLineChart(id, labels, datasets, unit, dec, fromZero = unit === "%") {
       if (charts[id]) charts[id].destroy();
       charts[id] = new Chart(document.getElementById(id), {
         type: "line",
@@ -390,7 +435,7 @@
           },
           scales: {
             x: { grid: { display: false }, ticks: { font: { size: 11 } } },
-            y: { grid: { color: "rgba(0,0,0,0.06)" }, ticks: { font: { size: 11 } }, beginAtZero: unit === "%" },
+            y: { grid: { color: (c) => c.tick.value === 0 ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.06)" }, ticks: { font: { size: 11 } }, beginAtZero: fromZero },
           },
         },
       });
@@ -447,6 +492,13 @@
         { label: "טפטפת", backgroundColor: C_MAN, data: col(r => r.man?.dripMl) },
         { label: "נקז", backgroundColor: "rgba(27,175,122,0.35)", data: col(r => r.man?.drainMl) },
       ], "מ״ל", 0);
+      drawLineChart("chGap", L, [
+        { label: "נקז תחנה", borderColor: C_ST, borderDash: [2, 3], data: col(r => gapsFor(r).drain) },
+        { label: "EC כניסה", borderColor: C_ST, data: col(r => gapsFor(r).ecIn) },
+        { label: "EC יציאה", borderColor: C_ST, borderDash: DASH, data: col(r => gapsFor(r).ecOut) },
+        { label: "EC גלקון", borderColor: C_GAL, data: col(r => gapsFor(r).galEc) },
+        { label: "pH גלקון", borderColor: C_GAL, borderDash: DASH, data: col(r => gapsFor(r).galPh) },
+      ], "%", 1, false);
     }
 
     // ---- table ----
@@ -457,6 +509,7 @@
       const pair2 = (a, b, dec) => (a == null && b == null) ? "—" : `${fmt(a, dec)} / ${fmt(b, dec)}`;
       body.innerHTML = shown.map(day => {
         const { man, st, gal } = rows.get(day);
+        const g = gapsFor(rows.get(day));
         return `<tr class="day-row" data-day="${day}">
           <td>${fmtDay(day)}</td>
           <td class="num">${man ? man.n : "—"}</td>
@@ -476,6 +529,11 @@
           <td class="num">${gal ? fmt(gal.m3, 2) : "—"}</td>
           <td class="num">${gal ? fmt(gal.ec, 2) : "—"}</td>
           <td class="num">${gal ? fmt(gal.ph, 2) : "—"}</td>
+          <td class="num">${fmtGap(g.drain)}</td>
+          <td class="num">${fmtGap(g.ecIn)}</td>
+          <td class="num">${fmtGap(g.ecOut)}</td>
+          <td class="num">${fmtGap(g.galEc)}</td>
+          <td class="num">${fmtGap(g.galPh)}</td>
         </tr>`;
       }).join("");
     }
@@ -573,11 +631,37 @@
         const day = tr.dataset.day;
         const d = document.createElement("tr");
         d.className = "detail-row";
-        d.innerHTML = `<td colspan="18">${detailHtml(day, manual.get(day), galcon.get(day))}</td>`;
+        d.innerHTML = `<td colspan="23">${detailHtml(day, manual.get(day), galcon.get(day))}</td>`;
         tr.after(d);
       };
 
     }
+
+    // ---- full screen ----
+    function setFullscreen(card, on) {
+      document.querySelectorAll(".fs-open").forEach(c => { if (c !== card) setFullscreen(c, false); });
+      card.classList.toggle("fs-open", on);
+      document.body.classList.toggle("fs-lock", on);
+      const btn = card.querySelector(".fs-btn");
+      if (btn) { btn.textContent = on ? "✕" : "⛶"; btn.title = on ? "סגור" : "מסך מלא"; }
+      const canvas = card.querySelector("canvas");
+      if (canvas && charts[canvas.id]) requestAnimationFrame(() => charts[canvas.id].resize());
+    }
+    document.addEventListener("click", (ev) => {
+      const btn = ev.target.closest(".fs-btn");
+      if (btn) {
+        const card = btn.closest(".chart-card, .card");
+        setFullscreen(card, !card.classList.contains("fs-open"));
+        return;
+      }
+      // A click on a chart opens it full screen (not on the table — rows expand there).
+      const box = ev.target.closest(".chart-box");
+      if (box && !box.closest(".fs-open")) setFullscreen(box.closest(".chart-card"), true);
+    });
+    document.addEventListener("keydown", (ev) => {
+      const open = document.querySelector(".fs-open");
+      if (ev.key === "Escape" && open) setFullscreen(open, false);
+    });
 
     pairSel.addEventListener("change", () => {
       try { localStorage.setItem(PAIR_STORAGE_KEY, pairSel.value); } catch {}
