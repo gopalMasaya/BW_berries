@@ -2297,7 +2297,10 @@
     "stationId","serverTimestamp","time","deviceId","sortKey","resetReason",
     "waterIn","water_in","WaterIn","waterOut","water_out","WaterOut",
     "uptime","apiFails","modemFails","gps_lat","gps_lng","ec_dSm","ec2_dSm",
-    "tension1_v"
+    "tension1_v",
+    // Diagnostics from the Agrinovo water probes: the registers as received and
+    // the reason a reading was refused. For debugging a probe, not tiles.
+    "ec_raw","ec_raw_temp","ph1_raw","ec_err","ph1_err"
   ]);
 
   // Numeric sensor keys present in a reading, sorted, for the metric tiles.
