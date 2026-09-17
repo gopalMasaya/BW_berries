@@ -43,14 +43,20 @@ const DEFAULT_MAP = {
 // Guards — a correction outside these is a broken probe, not drift.
 const MATCH_WINDOW_MIN = 15;   // manual cup vs. station reading
 const EC_FACTOR_DEFAULT = 2;   // firmware K-factor mismatch, pre-calibration
-const EC_FACTOR_MIN = 0.5;
-const EC_FACTOR_MAX = 5;
+// Symmetric: a probe can read too low (station2's drain) or too high (its feed
+// probe reads almost exactly double, needing a factor of ~0.48).
+// 0.2 rather than 0.25: station1's EC asks for ~0.23 three days running, and a
+// repeatable figure is a gain error, not noise. A one-off wild value is caught
+// by the `unstable` check instead.
+const EC_FACTOR_MIN = 0.2;
+const EC_FACTOR_MAX = 4;
 const PH_OFFSET_MAX = 2;
 const SMOOTH_DAYS = 5;         // days averaged into the applied correction
 const UNSTABLE_PCT = 25;       // today vs. the average → flagged, not applied
 
 const isNum = (v) => Number.isFinite(Number(v)) && Number(v) !== 0;
 const round = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 /** GET a JSON URL, resolving to the parsed body. */
 function getJson(url, options, body) {
@@ -162,16 +168,28 @@ async function fetchStationReadings(db, stationId, dateStr) {
  * a frozen number into every reading, so those samples are refused.
  */
 const STUCK_WINDOW_MS = 2 * 3600 * 1000;
-const STUCK_TOLERANCE = 0.001; // 0.1% of the value
-function isStuck(rows, at, field) {
+const FLAT_TOLERANCE = 0.002; // 0.2% of the value over the window
+function spread(rows, at, field) {
   const vals = rows
       .filter((r) => Math.abs(r.t - at) <= STUCK_WINDOW_MS)
       .map((r) => Number(r.item[field]))
       .filter((v) => Number.isFinite(v));
-  if (vals.length < 5) return false;
+  if (vals.length < 5) return null;
   const min = Math.min(...vals);
   const max = Math.max(...vals);
-  return (max - min) <= Math.abs(max) * STUCK_TOLERANCE;
+  return {min, max, range: max - min};
+}
+// Not moving AT ALL is a dead reading. A small movement is not: a feed line is
+// held at a setpoint, so a probe that sits near-flat may simply be measuring a
+// stable solution — that case is flagged (`flat`) and still calibrated.
+function stuckState(rows, at, field) {
+  const sp = spread(rows, at, field);
+  if (!sp) return {stuck: false, flat: false};
+  return {
+    stuck: sp.range === 0,
+    flat: sp.range <= Math.abs(sp.max) * FLAT_TOLERANCE,
+    range: round(sp.range, 3),
+  };
 }
 
 /**
@@ -244,33 +262,48 @@ async function runCalibration(dateStr) {
       const applied = {};
       for (const [field, manualField] of Object.entries(map)) {
         // The morning round often skips pH (saved as 0), so each sensor takes
-        // the day's FIRST measurement that actually carries its value.
-        const rec = manual.find((r) => isNum(r[manualField]));
+        // the day's first measurement that carries its value — and if the probe
+        // was down at that hour (station2's ec reads 0 from ~09:00 to 16:00),
+        // the next measurement of the day is tried instead of giving up.
+        const candidates = manual.filter((r) => isNum(r[manualField]));
         const sample = {manualField};
-        if (!rec) {
+        if (!candidates.length) {
           result.samples[field] = {...sample, status: "no manual value"};
           continue;
         }
-        const at = ilToDate(rec.performedAt, day);
-        const match = matchReading(rows, at);
-        if (!match) {
+        let chosen = null;
+        let fallback = null;
+        for (const rec of candidates) {
+          const at = ilToDate(rec.performedAt, day);
+          const match = matchReading(rows, at);
+          if (!match) continue;
+          const cand = {rec, at, match, raw: Number(match.r.item[field])};
+          if (!fallback) fallback = cand;
+          if (isNum(cand.raw)) { chosen = cand; break; }
+        }
+        const use = chosen || fallback;
+        if (!use) {
           result.samples[field] = {
             ...sample,
-            manualAt: rec.performedAt,
+            manualAt: candidates[0].performedAt,
             status: `no station reading within ${MATCH_WINDOW_MIN} min`,
           };
           continue;
         }
-        const ref = Number(rec[manualField]);
-        const raw = Number(match.r.item[field]);
+        const ref = Number(use.rec[manualField]);
+        const raw = use.raw;
+        const state = stuckState(rows, use.at, field);
         Object.assign(sample, {
           ref, raw,
-          manualAt: rec.performedAt,
-          stationKey: match.r.key,
-          dtMin: round(match.dtMin, 1),
-          flow: !!match.r.flow,
+          manualAt: use.rec.performedAt,
+          stationKey: use.match.r.key,
+          dtMin: round(use.match.dtMin, 1),
+          flow: !!use.match.r.flow,
+          attempt: candidates.indexOf(use.rec) + 1,
+          windowRange: state.range,
+          flat: !!state.flat,
         });
-        if (isStuck(rows, at, field)) {
+        if (state.stuck) {
           sample.status = "sensor stuck";
         } else if (!isNum(raw)) {
           // A probe reporting 0 / nothing is broken; calibration must not hide
@@ -285,7 +318,7 @@ async function runCalibration(dateStr) {
             const sm = smooth(history, field, "offset", offset);
             sample.status = Math.abs(offset - sm) > PH_OFFSET_MAX / 2 ?
               "unstable" : "ok";
-            sample.applied = round(sm, 3);
+            sample.applied = round(clamp(sm, -PH_OFFSET_MAX, PH_OFFSET_MAX), 3);
             applied[field + "Offset"] = sample.applied;
           }
         } else {
@@ -298,7 +331,8 @@ async function runCalibration(dateStr) {
             sample.status =
               Math.abs(factor - sm) / sm * 100 > UNSTABLE_PCT ?
                 "unstable" : "ok";
-            sample.applied = round(sm, 4);
+            sample.applied =
+              round(clamp(sm, EC_FACTOR_MIN, EC_FACTOR_MAX), 4);
             applied[field + "Factor"] = sample.applied;
           }
         }
