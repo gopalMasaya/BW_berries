@@ -243,11 +243,35 @@ async function runCalibration(dateStr) {
 
       const applied = {};
       for (const [field, manualField] of Object.entries(map)) {
-        const ref = Number(first[manualField]);
+        // The morning round often skips pH (saved as 0), so each sensor takes
+        // the day's FIRST measurement that actually carries its value.
+        const rec = manual.find((r) => isNum(r[manualField]));
+        const sample = {manualField};
+        if (!rec) {
+          result.samples[field] = {...sample, status: "no manual value"};
+          continue;
+        }
+        const at = ilToDate(rec.performedAt, day);
+        const match = matchReading(rows, at);
+        if (!match) {
+          result.samples[field] = {
+            ...sample,
+            manualAt: rec.performedAt,
+            status: `no station reading within ${MATCH_WINDOW_MIN} min`,
+          };
+          continue;
+        }
+        const ref = Number(rec[manualField]);
         const raw = Number(match.r.item[field]);
-        const sample = {manualField, ref, raw};
-        if (!isNum(ref)) {
-          sample.status = "no manual value";
+        Object.assign(sample, {
+          ref, raw,
+          manualAt: rec.performedAt,
+          stationKey: match.r.key,
+          dtMin: round(match.dtMin, 1),
+          flow: !!match.r.flow,
+        });
+        if (isStuck(rows, at, field)) {
+          sample.status = "sensor stuck";
         } else if (!isNum(raw)) {
           // A probe reporting 0 / nothing is broken; calibration must not hide
           // that by inventing a huge factor.
