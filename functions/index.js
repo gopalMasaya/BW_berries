@@ -1,3 +1,4 @@
+const {onSchedule} = require("firebase-functions/scheduler");
 const {onRequest} = require("firebase-functions/https");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
@@ -922,3 +923,43 @@ galconApp.get("/programs", async (req, res) => {
 });
 
 exports.galcon = onRequest({cors: true, timeoutSeconds: 60}, galconApp);
+// ── Daily sensor calibration ────────────────────────────────────────────────
+// Compares the morning's first manual solution measurement (qrCode app) with
+// what the station reported at that moment and stores an EC factor / pH offset
+// the dashboard applies on display. See calibration.js for the reasoning.
+const {runCalibration} = require("./calibration");
+
+// 10:30 Israel time: after the morning round of measurements.
+exports.calibrateDaily = onSchedule({
+  schedule: "30 10 * * *",
+  timeZone: "Asia/Jerusalem",
+  timeoutSeconds: 120,
+}, async () => {
+  await runCalibration();
+});
+
+// Manual run / backfill: GET ?date=YYYY-MM-DD with a Firebase ID token.
+exports.calibrate = onRequest({cors: true, timeoutSeconds: 120},
+    async (req, res) => {
+      const auth = req.headers.authorization || "";
+      if (!auth.startsWith("Bearer ")) {
+        return res.status(401).json({ok: false, error: "missing auth token"});
+      }
+      try {
+        await verifyAnyProject(auth.split("Bearer ")[1]);
+      } catch (e) {
+        return res.status(401).json({ok: false, error: "invalid token"});
+      }
+      try {
+        const date = req.query.date ? String(req.query.date) : null;
+        if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          return res.status(400).json({ok: false, error: "bad date"});
+        }
+        const out = await runCalibration(date);
+        return res.json({ok: true, result: out});
+      } catch (err) {
+        logger.error("calibrate failed", err);
+        return res.status(500)
+            .json({ok: false, error: err.message || "server error"});
+      }
+    });

@@ -157,6 +157,24 @@ async function fetchStationReadings(db, stationId, dateStr) {
 }
 
 /**
+ * A probe whose value has not moved at all for hours is stuck, not stable:
+ * station2's ec2 sat on 2492-2494 for a week. Calibrating against it would bake
+ * a frozen number into every reading, so those samples are refused.
+ */
+const STUCK_WINDOW_MS = 2 * 3600 * 1000;
+const STUCK_TOLERANCE = 0.001; // 0.1% of the value
+function isStuck(rows, at, field) {
+  const vals = rows
+      .filter((r) => Math.abs(r.t - at) <= STUCK_WINDOW_MS)
+      .map((r) => Number(r.item[field]))
+      .filter((v) => Number.isFinite(v));
+  if (vals.length < 5) return false;
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  return (max - min) <= Math.abs(max) * STUCK_TOLERANCE;
+}
+
+/**
  * The station reading closest to the manual measurement. Water must have moved
  * (a probe sitting in stagnant solution measures yesterday, not the cup), but a
  * reading right at the sample time is accepted even without a flow tick.
