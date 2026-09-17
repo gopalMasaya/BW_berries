@@ -226,20 +226,12 @@ async function runCalibration(dateStr) {
         out[stationId] = result;
         continue;
       }
-      const first = manual[0];
-      const at = ilToDate(first.performedAt, day);
       const rows = await fetchStationReadings(db, stationId, day);
-      const match = matchReading(rows, at);
-      if (!match) {
-        result.notes.push("no station reading within " +
-          `${MATCH_WINDOW_MIN} min of ${first.performedAt}`);
+      if (!rows.length) {
+        result.notes.push("station sent nothing today");
         out[stationId] = result;
         continue;
       }
-      result.manualAt = first.performedAt;
-      result.stationKey = match.r.key;
-      result.dtMin = round(match.dtMin, 1);
-      result.flow = !!match.r.flow;
 
       // Previous days, newest first, for the smoothing window.
       const histSnap = await db.ref(`berries/${stationId}/calibration`)
