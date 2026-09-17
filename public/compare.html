@@ -124,14 +124,14 @@
               <thead>
                 <tr class="grp">
                   <th></th>
-                  <th colspan="7"><span class="src-dot src-manual"></span>מדידה ידנית</th>
+                  <th colspan="6"><span class="src-dot src-manual"></span>מדידה ידנית</th>
                   <th colspan="7"><span class="src-dot src-station"></span>תחנה</th>
                   <th colspan="4"><span class="src-dot src-galcon"></span>גלקון</th>
                 </tr>
                 <tr>
                   <th>תאריך</th>
                   <th>מדידות</th><th>טפטפת מ״ל</th><th>נקז מ״ל</th><th>נקז %</th>
-                  <th>EC טפ׳/נקז</th><th>pH טפ׳/נקז</th><th>משקל</th>
+                  <th>EC טפ׳/נקז</th><th>pH טפ׳/נקז</th>
                   <th>כניסה ל׳</th><th>יציאה ל׳</th><th>נקז %</th>
                   <th>EC כניסה</th><th>EC יציאה</th><th>pH1</th><th>pH2</th>
                   <th>השקיות</th><th>מ״ק</th><th>EC</th><th>pH</th>
@@ -339,14 +339,13 @@
       return resp.json();
     }
 
-    // Chunked by week so a long range doesn't hit the function timeout.
+    // Chunked by week so a long range doesn't hit the function timeout, and run
+    // one after another: the Galcon web-app API holds a single login session.
     async function fetchGalcon(pair, days) {
-      const chunks = [];
-      for (let i = 0; i < days.length; i += 7) chunks.push([days[i], days[Math.min(i + 6, days.length - 1)]]);
       const byDay = new Map();
-      const results = await Promise.all(chunks.map(([f, t]) =>
-        galconGet(`/valves?from=${f}&to=${t}&controllerSerial=${encodeURIComponent(pair.galconSerial)}`)));
-      for (const data of results) {
+      for (let i = 0; i < days.length; i += 7) {
+        const f = days[i], t = days[Math.min(i + 6, days.length - 1)];
+        const data = await galconGet(`/valves?from=${f}&to=${t}&controllerSerial=${encodeURIComponent(pair.galconSerial)}`);
         for (const v of (data.valves || [])) {
           if (String(v.SerialNumber).trim() !== pair.galconSerial || Number(v.ValveNo) !== pair.valve) continue;
           const day = String(v.DateTimeStartValve || v.DateTimeStopValve || "").slice(0, 10);
@@ -464,7 +463,6 @@
           <td class="num">${man ? fmt(man.drainPct) : "—"}</td>
           <td class="num">${man ? pair2(man.dripEc, man.drainEc, 2) : "—"}</td>
           <td class="num">${man ? pair2(man.dripPh, man.drainPh, 2) : "—"}</td>
-          <td class="num muted">—</td>
           <td class="num">${st ? fmt(st.inL) : "—"}</td>
           <td class="num">${st ? fmt(st.outL) : "—"}</td>
           <td class="num">${st ? fmt(st.drainPct) : "—"}</td>
@@ -546,6 +544,7 @@
           .catch(e => { console.error("station", e); warn.push(`תחנה: ${e.message}`); return { ml: null, n: 0, byDay: new Map() }; }),
         fetchGalcon(pair, days).catch(e => { console.error("galcon", e); warn.push(`גלקון: ${e.message}`); return new Map(); }),
       ]);
+      btn.disabled = false; btn.textContent = "טען";
       if (seq !== loadSeq) return;
 
       const rows = new Map(days.map(d => [d, {
@@ -572,11 +571,10 @@
         const day = tr.dataset.day;
         const d = document.createElement("tr");
         d.className = "detail-row";
-        d.innerHTML = `<td colspan="19">${detailHtml(day, manual.get(day), galcon.get(day))}</td>`;
+        d.innerHTML = `<td colspan="18">${detailHtml(day, manual.get(day), galcon.get(day))}</td>`;
         tr.after(d);
       };
 
-      btn.disabled = false; btn.textContent = "טען";
     }
 
     pairSel.addEventListener("change", () => {
