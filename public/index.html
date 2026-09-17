@@ -1159,6 +1159,74 @@
 
   // Read every station's calibration before the first render, then keep listening
   // so saving a new value in Settings reaches an open dashboard without a reload.
+  // ---- Daily sensor calibration (see functions/calibration.js) ------------
+  // The calibrateDaily function compares the morning's manual solution
+  // measurement with what the station reported at that moment and stores an EC
+  // factor / pH offset per day. Raw readings stay raw; the correction is applied
+  // here, on display. No calibration for a station/day → the historical
+  // defaults: ×2 for EC (firmware K-factor mismatch) and no pH offset.
+  const EC_FACTOR_DEFAULT = 2;
+  const calibByStation = {};   // deviceId → { current, days: [{date, applied}] }
+
+  async function loadCalibration(){
+    await Promise.all(STATIONS.map(async st => {
+      const path = "berries/" + st.deviceId + "/calibration";
+      const store = { current: null, days: [] };
+      calibByStation[st.deviceId] = store;
+      const read = snap => {
+        const val = snap.val() || {};
+        store.current = val.current || null;
+        store.days = Object.entries(val)
+          .filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && v && v.applied)
+          .map(([date, v]) => ({ date, applied: v.applied }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+      };
+      try { read(await database.ref(path).once("value")); }
+      catch(e){ console.error("calibration load", st.deviceId, e); }
+      database.ref(path).on("value", snap => {
+        read(snap);
+        try {
+          if (currentView === "squares") renderSquaresView();
+          else if (currentView === "chart") renderChartTable();
+          else if (currentView === "graphs") loadGraphData();
+        } catch(e){ console.error("calibration refresh", e); }
+      });
+    }));
+  }
+
+  // The correction in force on a given day: the last calibration on or before
+  // it, so history is drawn with the coefficients of its own time rather than
+  // with today's.
+  function calibAt(deviceId, dateLike){
+    const store = calibByStation[deviceId];
+    if (!store) return null;
+    const date = dateLike ? String(
+      dateLike instanceof Date ? dateLike.toLocaleDateString("en-CA") : dateLike
+    ).slice(0, 10) : null;
+    if (!date) return store.current;
+    let found = null;
+    for (const d of store.days){ if (d.date <= date) found = d.applied; else break; }
+    return found || store.current;
+  }
+  function rowStation(row){ return row && (row.stationId || row.deviceId); }
+  function rowDate(row){ return row && (row.tsISO || row.serverTimestamp || row.date); }
+  function ecFactorFor(field, row){
+    const c = calibAt(rowStation(row), rowDate(row));
+    const v = c && Number(c[field + "Factor"]);
+    return Number.isFinite(v) && v > 0 ? v : EC_FACTOR_DEFAULT;
+  }
+  function phOffsetFor(field, row){
+    const c = calibAt(rowStation(row), rowDate(row));
+    const v = c && Number(c[field + "Offset"]);
+    return Number.isFinite(v) ? v : 0;
+  }
+  // Squares tiles show the latest reading of one known station.
+  function phOffsetLatest(deviceId, field){
+    const c = calibAt(deviceId, null);
+    const v = c && Number(c[field + "Offset"]);
+    return Number.isFinite(v) ? v : 0;
+  }
+
   async function loadMlPerPulse(){
     await Promise.all(STATIONS.map(async st => {
       const path = "berries/" + st.deviceId + "/control/wateringConfig/mlPerPulse";
@@ -2290,11 +2358,18 @@
   // / Squares) view shows them in dS/m (÷1000). Unlike the ec/ec2 inline probes
   // these are a different sensor and need no ×2 K-factor fix.
   const SOIL_EC_FIELDS = new Set(["soil1_ec", "soil2_ec"]);
-  function sqTransform(field, raw){ return SOIL_EC_FIELDS.has(field) ? raw / 1000 : raw; }
+  function sqTransform(field, raw, deviceId){
+    if (SOIL_EC_FIELDS.has(field)) return raw / 1000;
+    // Solution pH only: the soil fork's pH is a different sensor, uncalibrated.
+    if ((field === "ph1" || field === "ph2") && deviceId) {
+      return raw + phOffsetLatest(deviceId, field);
+    }
+    return raw;
+  }
   function sqDecimals(field){ return SOIL_EC_FIELDS.has(field) ? 2 : decimalsFor(field); }
   function sqUnit(field){ return SOIL_EC_FIELDS.has(field) ? "dS/m" : unitFor(field); }
-  function sqFormat(field, raw){
-    const n = sqTransform(field, raw);
+  function sqFormat(field, raw, deviceId){
+    const n = sqTransform(field, raw, deviceId);
     return Number.isFinite(n) ? n.toFixed(sqDecimals(field)) : "—";
   }
 
@@ -2324,7 +2399,7 @@
       if (Number.isFinite(liveV)){
         return `<div class="sq-metric" data-field="${k}" title="הצג גרף של ${labelFor(k)}">
           <div class="m-k">${labelFor(k)}</div>
-          <div class="m-v">${sqFormat(k, liveV)}</div>
+          <div class="m-v">${sqFormat(k, liveV, deviceId)}</div>
           <div class="m-u">${sqUnit(k)}</div>
         </div>`;
       }
@@ -2336,13 +2411,13 @@
         const since = h.lastSeen ? h.lastSeen.toLocaleDateString("he-IL") : "";
         return `<div class="sq-metric stale" data-field="${k}" title="חיישן מזלג — מודד רק כשהאדמה רטובה. מדידה אחרונה: ${since}. לחץ להצגת גרף">
           <div class="m-k">${labelFor(k)}</div>
-          <div class="m-v">${sqFormat(k, Number(h.lastValue))}</div>
+          <div class="m-v">${sqFormat(k, Number(h.lastValue), deviceId)}</div>
           <div class="m-u">💧 ${since}</div>
         </div>`;
       }
 
       // A non-fork sensor that stopped reporting → genuine attention needed.
-      const vStr = h ? sqFormat(k, Number(h.lastValue)) : "—";
+      const vStr = h ? sqFormat(k, Number(h.lastValue), deviceId) : "—";
       const sub = h && h.lastSeen ? "מאז " + h.lastSeen.toLocaleDateString("he-IL") : "אין דיווח";
       return `<div class="sq-metric warn" data-field="${k}" title="חיישן לא תקין — לבדוק. לחץ להצגת גרף">
         <div class="m-k">⚠️ ${labelFor(k)}</div>
@@ -2483,7 +2558,11 @@
   function pickIrrigSensor(samples, candidates){
     for (const f of candidates){
       const v = sampleValue(samples, f);
-      if (Number.isFinite(v)) return { field:f, value:v };
+      // The station id rides along so the pH offset can be applied on display.
+      if (Number.isFinite(v)) {
+        const st = (samples || []).find(x => x.item && x.item.stationId);
+        return { field:f, value:v, deviceId: st && st.item.stationId };
+      }
     }
     return null;
   }
@@ -2491,7 +2570,7 @@
     if (!sensor) return `<td class="ir-sensor">—</td>`;
     const unit = sqUnit(sensor.field);
     const title = labelFor(sensor.field) + (unit ? " · " + unit : "");
-    return `<td class="ir-sensor" title="${title}">${sqFormat(sensor.field, sensor.value)}</td>`;
+    return `<td class="ir-sensor" title="${title}">${sqFormat(sensor.field, sensor.value, sensor.deviceId)}</td>`;
   }
 
   // All sensor values recorded at one sampling point, as chips (water first).
@@ -2502,7 +2581,7 @@
     ].join("");
     const sensors = squareMetricKeys(s.item).map(k => {
       const unit = sqUnit(k);
-      return `<span class="ir-chip"><b>${labelFor(k)}</b> ${sqFormat(k, parseFloat(s.item[k]))}${unit ? " " + unit : ""}</span>`;
+      return `<span class="ir-chip"><b>${labelFor(k)}</b> ${sqFormat(k, parseFloat(s.item[k]), s.item.stationId)}${unit ? " " + unit : ""}</span>`;
     }).join("");
     return water + sensors;
   }
@@ -2778,7 +2857,7 @@
       inL[i]  += dIn  * st.ml / 1000;
       outL[i] += dOut * st.ml / 1000;
       const sv = parseFloat(r.item ? r.item[st.sensorKey] : NaN);
-      if (Number.isFinite(sv)){ sSum[i] += sqTransform(st.sensorKey, sv); sN[i]++; }
+      if (Number.isFinite(sv)){ sSum[i] += sqTransform(st.sensorKey, sv, st.deviceId); sN[i]++; }
     }
 
     const at = i => first + i * bucketMs;
@@ -2913,7 +2992,7 @@
     const dayCol  = "rgba(0,0,0,0.28)";   // midnight gridline in a multi-day window
     const tickCol = "#5a6472";
     const st = {
-      readings, sensorKey, sensorLabel, ml: mlPerPulse(deviceId),
+      readings, sensorKey, sensorLabel, deviceId, ml: mlPerPulse(deviceId),
       fullMin: t0, fullMax: t1, viewMin: t0, viewMax: t1,
       bucketMs: sqBucketMs(t1 - t0), origin: t0,
       tickStep: 3600000, multiDay: !!multiDay,
@@ -5162,8 +5241,10 @@
   // EC sensor reads ~half of true value (firmware K-factor mismatch);
   // ×2 then µS/cm → dS/m. Soil EC sensors are different and not adjusted.
   const FIELD_CALIBRATION = {
-    ec:  { transform: v => v * 2 / 1000, unit: "dS/m", decimals: 2 },
-    ec2: { transform: v => v * 2 / 1000, unit: "dS/m", decimals: 2 }
+    ec:  { transform: (v, r) => v * ecFactorFor("ec", r) / 1000,  unit: "dS/m", decimals: 2 },
+    ec2: { transform: (v, r) => v * ecFactorFor("ec2", r) / 1000, unit: "dS/m", decimals: 2 },
+    ph1: { transform: (v, r) => v + phOffsetFor("ph1", r), decimals: 2 },
+    ph2: { transform: (v, r) => v + phOffsetFor("ph2", r), decimals: 2 }
   };
 
   // waterIn/waterOut are cumulative pulse counters on the device. For the table
@@ -5309,7 +5390,7 @@
           let num = parseFloat(raw);
           if (Number.isFinite(num)) {
             const cal = FIELD_CALIBRATION[f];
-            if (cal && cal.transform) num = cal.transform(num);
+            if (cal && cal.transform) num = cal.transform(num, row);
             const decimals = cal && cal.decimals != null ? cal.decimals : decimalsFor(f);
             val = num.toFixed(decimals);
             // Color-code EC fields (only the calibrated ec/ec2, not soil_ec)
@@ -5391,8 +5472,8 @@
       unit: "dS/m",
       agg: "avg",
       fields: [
-        { label: "EC יציאה", candidates: ["ec","ec1","EC1","ec_1"], transform: v => v * 2 / 1000, color: C_BLUE,  bg: F_BLUE },
-        { label: "EC כניסה", candidates: ["ec2","EC2","ec_2"],      transform: v => v * 2 / 1000, color: C_GREEN, bg: F_GREEN }
+        { label: "EC יציאה", candidates: ["ec","ec1","EC1","ec_1"], transform: (v, r) => v * ecFactorFor("ec", r) / 1000, color: C_BLUE,  bg: F_BLUE },
+        { label: "EC כניסה", candidates: ["ec2","EC2","ec_2"],      transform: (v, r) => v * ecFactorFor("ec2", r) / 1000, color: C_GREEN, bg: F_GREEN }
       ]
     },
     {
@@ -5571,7 +5652,7 @@
       const t = new Date(r.tsISO).getTime();
       let v = parseFloat(r[fieldKey]);
       if (!Number.isFinite(v)) return;
-      if (transform) v = transform(v);
+      if (transform) v = transform(v, r);
       let idx = Math.floor((t - t0) / step);
       if (idx >= numBuckets) idx = numBuckets - 1;
       const b = buckets[idx];
@@ -5855,7 +5936,7 @@
           if (v === undefined || v === null || v === "") return null;
           let num = parseFloat(v);
           if (!Number.isFinite(num)) return null;
-          if (f.transform) num = f.transform(num);
+          if (f.transform) num = f.transform(num, r);
           return num;
         });
       }
@@ -6021,6 +6102,8 @@
 
     // The ml/pulse calibration must be known before the first water figure is drawn.
     await loadMlPerPulse();
+    // Same for the EC/pH calibration and the first sensor value.
+    await loadCalibration();
 
     // Open on the main (squares) view by default.
     applyView("squares");

@@ -356,6 +356,38 @@
       return out;
     }
 
+    // ---- 3b. daily calibration (functions/calibration.js) ----
+    async function fetchCalibration(stationId) {
+      const snap = await get(ref(db, `berries/${stationId}/calibration`));
+      const val = snap.val() || {};
+      const byDay = new Map();
+      for (const [k, v] of Object.entries(val)) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(k)) byDay.set(k, v);
+      }
+      return byDay;
+    }
+
+    const CAL_STATUS = {
+      "ok": "✅", "unstable": "⚠️ לא יציב", "sensor stuck": "⛔ חיישן תקוע",
+      "sensor not reporting": "⛔ אין קריאה", "no manual value": "אין מדידה ידנית",
+      "factor out of range": "⛔ מקדם חריג", "offset out of range": "⛔ סטייה חריגה",
+    };
+    function calibHtml(cal) {
+      if (!cal) return `<div class="muted">לא חושב כיול ליום זה</div>`;
+      const rows = Object.entries(cal.samples || {}).map(([field, x]) => `<tr>
+          <td>${esc(field)}</td>
+          <td>${fmt(x.ref, 2)}</td>
+          <td>${x.raw == null ? "—" : fmt(x.raw, x.raw > 50 ? 0 : 2)}</td>
+          <td>${x.factor != null ? "×" + fmt(x.factor, 3) : x.offset != null ? (x.offset > 0 ? "+" : "") + fmt(x.offset, 2) : "—"}</td>
+          <td>${x.applied != null ? fmt(x.applied, 3) : "—"}</td>
+          <td>${esc(CAL_STATUS[x.status] || x.status || "")}</td>
+        </tr>`).join("");
+      const notes = (cal.notes || []).map(esc).join(" · ");
+      return rows ? `<table>
+          <thead><tr><th>חיישן</th><th>ידני</th><th>תחנה</th><th>מקדם/סטייה</th><th>מוחל</th><th>מצב</th></tr></thead>
+          <tbody>${rows}</tbody></table>` : `<div class="muted">${notes || "אין נתוני כיול"}</div>`;
+    }
+
     // ---- 3. Galcon (FinishIrrigation log via our Cloud Function) ----
     async function galconGet(path) {
       const token = await user.getIdToken();
@@ -538,7 +570,7 @@
       }).join("");
     }
 
-    function detailHtml(day, manualRecs, galconList) {
+    function detailHtml(day, manualRecs, galconList, cal) {
       const manRows = (manualRecs || []).map(r => `<tr>
           <td>${esc(String(r.performedAt || "").split("T")[1]?.slice(0, 5) || "—")}</td>
           <td>${fmt(Number(r.dripMl), 0)}</td><td>${fmt(Number(r.drainMl), 0)}</td>
@@ -561,6 +593,7 @@
         <div><h4><span class="src-dot src-galcon"></span>השקיות גלקון</h4>${galRows ? `<table>
           <thead><tr><th>שעות</th><th>תוכנית</th><th>מ״ק</th><th>ספיקה</th><th>EC (נדרש)</th><th>pH (נדרש)</th></tr></thead>
           <tbody>${galRows}</tbody></table>` : `<div class="muted">אין השקיות</div>`}</div>
+        <div><h4>🎯 כיול יומי</h4>${calibHtml(cal)}</div>
       </div>`;
     }
 
@@ -591,7 +624,7 @@
 
       // Each source fails independently so one outage doesn't blank the others.
       const warn = [];
-      const [manual, station, galcon] = await Promise.all([
+      const [manual, station, galcon, calib] = await Promise.all([
         fetchManual(pair.code, days).catch(e => {
           console.error("manual", e);
           warn.push(e.code === "auth/admin-restricted-operation" || e.code === "auth/operation-not-allowed"
@@ -603,6 +636,7 @@
           .then(([ml, readings]) => ({ ml, n: readings.length, byDay: summarizeStation(readings, ml) }))
           .catch(e => { console.error("station", e); warn.push(`תחנה: ${e.message}`); return { ml: null, n: 0, byDay: new Map() }; }),
         fetchGalcon(pair, days).catch(e => { console.error("galcon", e); warn.push(`גלקון: ${e.message}`); return new Map(); }),
+        fetchCalibration(pair.stationId).catch(e => { console.error("calibration", e); return new Map(); }),
       ]);
       btn.disabled = false; btn.textContent = "טען";
       if (seq !== loadSeq) return;
@@ -631,7 +665,7 @@
         const day = tr.dataset.day;
         const d = document.createElement("tr");
         d.className = "detail-row";
-        d.innerHTML = `<td colspan="23">${detailHtml(day, manual.get(day), galcon.get(day))}</td>`;
+        d.innerHTML = `<td colspan="23">${detailHtml(day, manual.get(day), galcon.get(day), calib.get(day))}</td>`;
         tr.after(d);
       };
 
