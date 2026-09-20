@@ -276,6 +276,124 @@ async function vpdHandler(req, res) {
 app.get("/vpd", vpdHandler);
 app.get("/api/vpd", vpdHandler);
 
+// ===================== LOGIN ACCOUNT PROVISIONING =====================
+// Adding a user in workers.html only writes an allowedPhones record -- the
+// pre-registration. With SMS that is enough, because Firebase creates the Auth
+// account itself the moment the OTP is verified. The email + password fallback
+// has nobody to create it, so a user who can't receive an SMS was left with an
+// address that looks registered in our table but doesn't exist in Firebase
+// Auth, and a sign-in that fails as "wrong password". This route closes that
+// gap: the manager saves the user, and the account exists.
+
+/**
+ * Resolve the caller's role the same way guard.mjs does: the users/{uid}
+ * record first, falling back to the allowedPhones entry (matched by phone for
+ * an SMS login, by email for an email login) when the profile hasn't been
+ * written yet.
+ * @param {string} uid
+ * @param {object} decoded verified ID token claims
+ * @return {Promise<string>} the role, or "" when none could be resolved
+ */
+async function resolveRole(uid, decoded) {
+  const db = admin.database();
+  const profSnap = await db.ref(`users/${uid}`).get();
+  const role = profSnap.val() && profSnap.val().role;
+  if (role) return String(role);
+
+  const allowed = (await db.ref("allowedPhones").get()).val() || {};
+  const phone = String(decoded.phone_number || "");
+  const email = String(decoded.email || "").trim().toLowerCase();
+  for (const entry of Object.values(allowed)) {
+    const entryPhone = String((entry && entry.phone) || "");
+    const entryMail = String((entry && entry.email) || "").trim().toLowerCase();
+    if ((phone && entryPhone === phone) || (email && entryMail === email)) {
+      return String((entry && entry.role) || "");
+    }
+  }
+  return "";
+}
+
+// A worker types this on a phone, in a field, read off a manager's screen --
+// so no lookalike characters and no symbols that hide behind a long-press.
+function tempPassword() {
+  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 10; i++) {
+    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return out;
+}
+
+async function ensureLoginHandler(req, res) {
+  try {
+    const m = /^Bearer (.+)$/.exec(req.get("Authorization") || "");
+    if (!m) return res.status(401).json({ok: false, error: "missing id token"});
+
+    let decoded;
+    try {
+      decoded = await admin.auth().verifyIdToken(m[1]);
+    } catch (err) {
+      return res.status(401).json({ok: false, error: "invalid id token"});
+    }
+
+    const role = await resolveRole(decoded.uid, decoded);
+    if (role !== "manager") {
+      return res.status(403).json({ok: false, error: "managers only"});
+    }
+
+    const email = String((req.body && req.body.email) || "")
+        .trim().toLowerCase();
+    const name = String((req.body && req.body.name) || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ok: false, error: "invalid email"});
+    }
+
+    // Only ever create an account for an address the manager has already put
+    // on an allowedPhones entry. Without this check the route would be a way
+    // to mint accounts for arbitrary addresses, and the sign-in path would
+    // then reject them anyway for having no profile to resolve.
+    const allowed = (await admin.database().ref("allowedPhones").get()).val() ||
+        {};
+    const registered = Object.values(allowed).some((entry) =>
+      String((entry && entry.email) || "").trim().toLowerCase() === email);
+    if (!registered) {
+      return res.status(400).json({
+        ok: false,
+        error: "email not on any allowedPhones entry",
+      });
+    }
+
+    try {
+      const existing = await admin.auth().getUserByEmail(email);
+      return res.status(200).json({
+        ok: true, existed: true, uid: existing.uid,
+      });
+    } catch (err) {
+      if (err.code !== "auth/user-not-found") throw err;
+    }
+
+    const password = tempPassword();
+    const created = await admin.auth().createUser({
+      email,
+      emailVerified: true,
+      password,
+      displayName: name || undefined,
+    });
+    logger.info("login account created", {email, uid: created.uid});
+    return res.status(200).json({
+      ok: true, existed: false, uid: created.uid, password,
+    });
+  } catch (err) {
+    logger.error("ensure-login failed", err);
+    return res.status(500).json({ok: false, error: "server error"});
+  }
+}
+
+// Same dual registration as /vpd: "/api/..." is what survives the hosting
+// rewrite, "/..." is the direct function URL.
+app.post("/ensure-login", ensureLoginHandler);
+app.post("/api/ensure-login", ensureLoginHandler);
+
 exports.api = onRequest({cors: true}, app);
 
 // ===================== GALCON PROXY =====================
