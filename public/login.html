@@ -530,8 +530,19 @@
       }
     }
 
+    // ── Show / hide the password ───────────────
+    function setPasswordVisible(visible) {
+      passwordInput.type = visible ? "text" : "password";
+      pwToggle.textContent = visible ? "הסתר" : "הצג";
+      pwToggle.setAttribute("aria-pressed", String(visible));
+      pwToggle.setAttribute("aria-label", visible ? "הסתר סיסמה" : "הצג סיסמה");
+    }
+
     function doEmailBack() {
       passwordInput.value = "";
+      // Don't leave a revealed password on screen for the next person to use
+      // this phone.
+      setPasswordVisible(false);
       emailFallbackNote.style.display = "none";
       // They chose SMS again — forget the earlier failures so the next visit
       // starts on the phone step as usual, and drop the "switch to email"
