@@ -109,6 +109,28 @@
       line-height:1.55;
       color:var(--text);
     }
+    /* Show/hide password. A worker types a manager-issued temp password off
+       another screen, on a phone keyboard that capitalises by itself — being
+       unable to see what landed in the box turns one typo into "wrong
+       password" with nothing to go on. */
+    .pw-wrap{ position:relative; }
+    .pw-wrap input{ padding-left:60px; }
+    .pw-toggle{
+      position:absolute;
+      left:8px;
+      top:50%;
+      transform:translateY(-50%);
+      background:none;
+      border:none;
+      padding:4px 6px;
+      font-size:13px;
+      font-weight:700;
+      color:var(--primary);
+      cursor:pointer;
+      border-radius:var(--radius-sm);
+    }
+    .pw-toggle:hover{ background:rgba(37,99,235,.10); }
+    .pw-toggle:focus-visible{ outline:2px solid var(--primary); outline-offset:1px; }
     .error-code{
       margin-top:6px;
       font-size:11px;
