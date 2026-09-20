@@ -298,6 +298,9 @@
         }
         closeModal();
         await loadWorkers();
+        // After the record exists — the backend refuses to create an account
+        // for an address that isn't on an allowedPhones entry.
+        if (email) await ensureLoginAccount(email, name);
       } catch (e) {
         modalError.textContent = "שגיאה: " + (e.message || e);
       } finally {
