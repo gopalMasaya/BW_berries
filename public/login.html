@@ -589,6 +589,15 @@
     emailLoginBtn.addEventListener("click", doEmailLogin);
     emailBackBtn.addEventListener("click", doEmailBack);
     forgotPwLink.addEventListener("click", doForgotPassword);
+    pwToggle.addEventListener("click", () => {
+      const nowVisible = passwordInput.type === "password";
+      setPasswordVisible(nowVisible);
+      // Tapping the button steals focus on mobile; put the caret back at the
+      // end of what they've typed so they can keep going.
+      passwordInput.focus();
+      const end = passwordInput.value.length;
+      try { passwordInput.setSelectionRange(end, end); } catch { /* not supported while type=password on some browsers */ }
+    });
     emailInput.addEventListener("keydown", (e) => { if (e.key === "Enter") passwordInput.focus(); });
     passwordInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doEmailLogin(); });
 
