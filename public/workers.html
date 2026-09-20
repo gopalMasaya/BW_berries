@@ -91,6 +91,58 @@
       document.getElementById("addBtn").addEventListener("click", () => openModal("add"));
     }
 
+    // ── Login account provisioning ──────────────
+    // Saving a user only writes the allowedPhones record. With SMS that's
+    // enough — Firebase creates the Auth account when the OTP is verified —
+    // but the email + password fallback has nobody to create one, so an
+    // address that looks registered here would fail at login as a wrong
+    // password. Ask the backend to create the account as part of the save.
+
+    const noticeEl = document.getElementById("loginNotice");
+
+    function showNotice(html, bad = false) {
+      noticeEl.style.display = "";
+      noticeEl.innerHTML = `
+        <div class="card" style="margin-bottom:14px;border-right:4px solid ${bad ? "var(--bad)" : "var(--good,#047857)"};">
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div style="flex:1;line-height:1.7;">${html}</div>
+            <button class="btn" id="noticeClose">סגור</button>
+          </div>
+        </div>`;
+      document.getElementById("noticeClose")
+        .addEventListener("click", () => { noticeEl.style.display = "none"; noticeEl.innerHTML = ""; });
+      noticeEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    async function ensureLoginAccount(email, name) {
+      try {
+        const u = currentUser();
+        if (!u) return;
+        const token = await u.getIdToken();
+        const resp = await fetch("/api/ensure-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ email, name })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) throw new Error(data.error || ("HTTP " + resp.status));
+
+        if (data.existed) {
+          showNotice(`חשבון הכניסה של <b dir="ltr">${email}</b> כבר קיים — אפשר להיכנס עם האימייל והסיסמה הקיימים.`);
+        } else {
+          showNotice(`
+            נוצר חשבון כניסה עבור <b dir="ltr">${email}</b>.<br>
+            סיסמה זמנית: <code dir="ltr" style="font-size:16px;font-weight:800;background:var(--bg,#f1f5f9);padding:2px 8px;border-radius:6px;">${data.password}</code><br>
+            <span style="color:var(--muted);font-size:13px;">העתק אותה עכשיו — היא לא נשמרת ולא תוצג שוב. המשתמש יכול להחליף אותה דרך "שכחתי סיסמה" במסך הכניסה.</span>`);
+        }
+      } catch (e) {
+        console.error("ensure-login failed", e);
+        showNotice(`
+          המשתמש נשמר, אבל לא הצלחנו ליצור לו חשבון כניסה עם אימייל (${e.message || e}).<br>
+          <span style="color:var(--muted);font-size:13px;">עד שזה יסודר, אפשר ליצור אותו ידנית בקונסולת Firebase — Authentication → Add user — עם הכתובת <b dir="ltr">${email}</b>. הכניסה עם SMS עובדת בכל מקרה.</span>`, true);
+      }
+    }
+
     // ── Data ────────────────────────────────────
 
     let workers = [];
