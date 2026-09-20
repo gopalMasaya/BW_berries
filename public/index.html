@@ -1162,9 +1162,11 @@
   // ---- Daily sensor calibration (see functions/calibration.js) ------------
   // The calibrateDaily function compares the morning's manual solution
   // measurement with what the station reported at that moment and stores an EC
-  // factor / pH offset per day. Raw readings stay raw; the correction is applied
-  // here, on display. No calibration for a station/day → the historical
-  // defaults: ×2 for EC (firmware K-factor mismatch) and no pH offset.
+  // factor / pH offset per day. Since ingest started applying it, readings are
+  // STORED corrected (they carry `cal`, the probe's own values sit in *Raw) and
+  // are shown as-is. Only older readings without `cal` are corrected here, on
+  // display. No calibration for a station/day → the historical defaults: ×2 for
+  // EC (firmware K-factor mismatch) and no pH offset.
   const EC_FACTOR_DEFAULT = 2;
   const calibByStation = {};   // deviceId → { current, days: [{date, applied}] }
 
@@ -1211,11 +1213,13 @@
   function rowStation(row){ return row && (row.stationId || row.deviceId); }
   function rowDate(row){ return row && (row.tsISO || row.serverTimestamp || row.date); }
   function ecFactorFor(field, row){
+    if (row && row.cal) return 1;
     const c = calibAt(rowStation(row), rowDate(row));
     const v = c && Number(c[field + "Factor"]);
     return Number.isFinite(v) && v > 0 ? v : EC_FACTOR_DEFAULT;
   }
   function phOffsetFor(field, row){
+    if (row && row.cal) return 0;
     const c = calibAt(rowStation(row), rowDate(row));
     const v = c && Number(c[field + "Offset"]);
     return Number.isFinite(v) ? v : 0;
@@ -2300,7 +2304,10 @@
     "tension1_v",
     // Diagnostics from the Agrinovo water probes: the registers as received and
     // the reason a reading was refused. For debugging a probe, not tiles.
-    "ec_raw","ec_raw_temp","ph1_raw","ec_err","ph1_err"
+    "ec_raw","ec_raw_temp","ph1_raw","ec_err","ph1_err",
+    // Pre-calibration probe values kept by ingest for the daily calibration
+    // only. The app shows calibrated readings exclusively.
+    "ecRaw","ec2Raw","ph1Raw","ph2Raw"
   ]);
 
   // Numeric sensor keys present in a reading, sorted, for the metric tiles.
@@ -2361,18 +2368,20 @@
   // / Squares) view shows them in dS/m (÷1000). Unlike the ec/ec2 inline probes
   // these are a different sensor and need no ×2 K-factor fix.
   const SOIL_EC_FIELDS = new Set(["soil1_ec", "soil2_ec"]);
-  function sqTransform(field, raw, deviceId){
+  function sqTransform(field, raw, deviceId, item){
     if (SOIL_EC_FIELDS.has(field)) return raw / 1000;
     // Solution pH only: the soil fork's pH is a different sensor, uncalibrated.
-    if ((field === "ph1" || field === "ph2") && deviceId) {
-      return raw + phOffsetLatest(deviceId, field);
+    // A reading stored calibrated (item.cal) is already corrected.
+    if (field === "ph1" || field === "ph2") {
+      if (item) return raw + phOffsetFor(field, item);
+      if (deviceId) return raw + phOffsetLatest(deviceId, field);
     }
     return raw;
   }
   function sqDecimals(field){ return SOIL_EC_FIELDS.has(field) ? 2 : decimalsFor(field); }
   function sqUnit(field){ return SOIL_EC_FIELDS.has(field) ? "dS/m" : unitFor(field); }
-  function sqFormat(field, raw, deviceId){
-    const n = sqTransform(field, raw, deviceId);
+  function sqFormat(field, raw, deviceId, item){
+    const n = sqTransform(field, raw, deviceId, item);
     return Number.isFinite(n) ? n.toFixed(sqDecimals(field)) : "—";
   }
 
@@ -2402,7 +2411,7 @@
       if (Number.isFinite(liveV)){
         return `<div class="sq-metric" data-field="${k}" title="הצג גרף של ${labelFor(k)}">
           <div class="m-k">${labelFor(k)}</div>
-          <div class="m-v">${sqFormat(k, liveV, deviceId)}</div>
+          <div class="m-v">${sqFormat(k, liveV, deviceId, item)}</div>
           <div class="m-u">${sqUnit(k)}</div>
         </div>`;
       }
@@ -2561,10 +2570,12 @@
   function pickIrrigSensor(samples, candidates){
     for (const f of candidates){
       const v = sampleValue(samples, f);
-      // The station id rides along so the pH offset can be applied on display.
+      // The station id and the reading itself ride along so the pH offset can
+      // be applied on display -- unless that reading was stored calibrated.
       if (Number.isFinite(v)) {
         const st = (samples || []).find(x => x.item && x.item.stationId);
-        return { field:f, value:v, deviceId: st && st.item.stationId };
+        const src = (samples || []).find(x => x.item && Number.isFinite(parseFloat(x.item[f])));
+        return { field:f, value:v, deviceId: st && st.item.stationId, item: src && src.item };
       }
     }
     return null;
@@ -2573,7 +2584,7 @@
     if (!sensor) return `<td class="ir-sensor">—</td>`;
     const unit = sqUnit(sensor.field);
     const title = labelFor(sensor.field) + (unit ? " · " + unit : "");
-    return `<td class="ir-sensor" title="${title}">${sqFormat(sensor.field, sensor.value, sensor.deviceId)}</td>`;
+    return `<td class="ir-sensor" title="${title}">${sqFormat(sensor.field, sensor.value, sensor.deviceId, sensor.item)}</td>`;
   }
 
   // All sensor values recorded at one sampling point, as chips (water first).
@@ -2584,7 +2595,7 @@
     ].join("");
     const sensors = squareMetricKeys(s.item).map(k => {
       const unit = sqUnit(k);
-      return `<span class="ir-chip"><b>${labelFor(k)}</b> ${sqFormat(k, parseFloat(s.item[k]), s.item.stationId)}${unit ? " " + unit : ""}</span>`;
+      return `<span class="ir-chip"><b>${labelFor(k)}</b> ${sqFormat(k, parseFloat(s.item[k]), s.item.stationId, s.item)}${unit ? " " + unit : ""}</span>`;
     }).join("");
     return water + sensors;
   }
@@ -2860,7 +2871,7 @@
       inL[i]  += dIn  * st.ml / 1000;
       outL[i] += dOut * st.ml / 1000;
       const sv = parseFloat(r.item ? r.item[st.sensorKey] : NaN);
-      if (Number.isFinite(sv)){ sSum[i] += sqTransform(st.sensorKey, sv, st.deviceId); sN[i]++; }
+      if (Number.isFinite(sv)){ sSum[i] += sqTransform(st.sensorKey, sv, st.deviceId, r.item); sN[i]++; }
     }
 
     const at = i => first + i * bucketMs;
@@ -3266,7 +3277,14 @@
     const item = latest.item;
 
     // Fields to skip in the drawer cards
-    const skipFields = ["stationId", "serverTimestamp", "time", "deviceId", "sortKey"];
+    const skipFields = ["stationId", "serverTimestamp", "time", "deviceId", "sortKey",
+      "ecRaw", "ec2Raw", "ph1Raw", "ph2Raw",    // pre-calibration, not for display
+      // Agrinovo probe register diagnostics. The firmware still sends them and
+      // ingest still stores them -- they are what tells "probe answered with
+      // nonsense" apart from "probe never answered" -- but the drawer shows
+      // final readings only. Already skipped by SQUARE_SKIP and HIDDEN_FIELDS;
+      // this list was the one place they leaked through.
+      "ec_raw", "ec_raw_temp", "ph1_raw", "ec_err", "ph1_err"];
 
     const keys = Object.keys(item)
       .filter(k => !skipFields.includes(k) && !k.toLowerCase().includes("timestamp"))
@@ -5319,7 +5337,12 @@
     const HIDDEN_FIELDS = new Set([
       "apifails", "apifail", "modemfails", "modemfail",
       "uptime", "charging", "voltage", "chargingvoltage",
-      "gps_lat", "gps_lng", "gps_lon", "gpslat", "gpslng"
+      "gps_lat", "gps_lng", "gps_lon", "gpslat", "gpslng",
+      // Pre-calibration probe values: only calibrated readings are shown.
+      // ec_dSm/ec2_dSm are the firmware's raw ÷1000 copies of ec/ec2, and the
+      // *_raw / *_err keys are probe register diagnostics.
+      "ecraw", "ec2raw", "ph1raw", "ph2raw", "ec_dsm", "ec2_dsm",
+      "ec_raw", "ec_raw_temp", "ph1_raw", "ec_err", "ph1_err"
     ]);
     const fieldSet = new Set();
     filteredChartData.forEach(row => {

@@ -142,8 +142,11 @@ async function fetchStationReadings(db, stationId, dateStr) {
       .orderByKey().startAt(d).endAt(d + "").get();
   const val = snap.val() || {};
   const rows = [];
-  for (const [key, item] of Object.entries(val)) {
-    if (!item || typeof item !== "object") continue;
+  for (const [key, stored] of Object.entries(val)) {
+    if (!stored || typeof stored !== "object") continue;
+    // The correction is always derived from what the probe itself said, never
+    // from a value that already carries an earlier correction.
+    const item = rawView(stored);
     const t = item.serverTimestamp ? new Date(item.serverTimestamp) : null;
     if (!t || isNaN(t.getTime())) continue;
     rows.push({t, key, item});
@@ -209,11 +212,17 @@ function matchReading(rows, at) {
 }
 
 /** Average of the last SMOOTH_DAYS raw corrections, newest included. */
-function smooth(history, field, kind, todayValue) {
+function smooth(history, field, kind, todayValue, since) {
   const vals = [todayValue];
   for (const day of history) {
+    // A replaced probe's corrections say nothing about the new one.
+    if (since && day && day.date < since) break;
     const s = day && day.samples && day.samples[field];
-    const v = s && s[kind];
+    // Only corrections that were accepted: a sample refused as out of range,
+    // stuck or unstable must not be averaged back in -- that is how station2's
+    // ph1 got an applied +2.0 on 08/09 from a day whose own offset was 1.87.
+    if (!s || s.status !== "ok") continue;
+    const v = s[kind];
     if (Number.isFinite(v)) vals.push(v);
     if (vals.length >= SMOOTH_DAYS) break;
   }
@@ -235,9 +244,21 @@ async function runCalibration(dateStr) {
   for (const stationId of Object.keys(PLOT_BY_STATION)) {
     const result = {date: day, station: stationId, samples: {}, notes: []};
     try {
+      // A station off its plot (on the bench, being rebuilt) measures
+      // something other than the solution the workers sample; calibrating it
+      // against them would store a meaningless correction. The flag lives in
+      // RTDB so it can be cleared the day the station goes back out.
+      const paused = (await db
+          .ref(`berries/${stationId}/control/calibrationPaused`).get()).val();
+      if (paused) {
+        result.notes.push("calibration paused: station not in the field");
+        out[stationId] = result;
+        continue;
+      }
       const mapSnap = await db
           .ref(`berries/${stationId}/control/calibrationMap`).get();
       const map = mapSnap.val() || DEFAULT_MAP[stationId] || {};
+      const probes = await stationProbes(db, stationId);
       const manual = await fetchManual(PLOT_BY_STATION[stationId], day);
       if (!manual.length) {
         result.notes.push("no manual measurement today");
@@ -315,7 +336,8 @@ async function runCalibration(dateStr) {
           if (Math.abs(offset) > PH_OFFSET_MAX) {
             sample.status = "offset out of range";
           } else {
-            const sm = smooth(history, field, "offset", offset);
+            const sm = smooth(history, field, "offset", offset,
+                probes[field] && probes[field].since);
             sample.status = Math.abs(offset - sm) > PH_OFFSET_MAX / 2 ?
               "unstable" : "ok";
             sample.applied = round(clamp(sm, -PH_OFFSET_MAX, PH_OFFSET_MAX), 3);
@@ -327,7 +349,8 @@ async function runCalibration(dateStr) {
           if (factor < EC_FACTOR_MIN || factor > EC_FACTOR_MAX) {
             sample.status = "factor out of range";
           } else {
-            const sm = smooth(history, field, "factor", factor);
+            const sm = smooth(history, field, "factor", factor,
+                probes[field] && probes[field].since);
             sample.status =
               Math.abs(factor - sm) / sm * 100 > UNSTABLE_PCT ?
                 "unstable" : "ok";
@@ -359,4 +382,138 @@ async function runCalibration(dateStr) {
   return out;
 }
 
-module.exports = {runCalibration, EC_FACTOR_DEFAULT, DEFAULT_MAP};
+// ── Calibration applied at ingest ───────────────────────────────────────────
+// Readings are stored ALREADY corrected, as if the probe had been calibrated
+// against a 1413 µS/cm buffer: ec/ec2 hold true µS/cm, ph1/ph2 true pH. What
+// the probe actually sent is kept beside it as ecRaw/ec2Raw/ph1Raw/ph2Raw, and
+// `cal` records the coefficients used, so a reading can always be recomputed.
+// A reading WITHOUT `cal` predates this and is still raw.
+const CAL_FIELDS = ["ec", "ec2", "ph1", "ph2"];
+const CAL_LOOKBACK_DAYS = 30;
+const CAL_CACHE_MS = 10 * 60 * 1000;
+const calCache = {};
+
+/** Stored reading → the raw view the probe sent. */
+function rawView(item) {
+  if (!item.cal) return item;
+  const out = {...item};
+  for (const f of CAL_FIELDS) {
+    if (item[f + "Raw"] !== undefined) out[f] = item[f + "Raw"];
+  }
+  return out;
+}
+
+// Probe swaps. A coefficient belongs to the probe it was measured on: once a
+// probe is replaced, everything calibrated before `since` is the old probe's
+// and must neither be applied nor averaged into the new probe's correction.
+// `ecFactor` is the new probe's starting factor until it earns its own: the
+// Agrinovo RS485 probes report true µS/cm (station1's read 1439 in 1413
+// buffer at 28 °C), so 1 -- not the ×2 the old analog probes needed.
+// Overridable per station at berries/{stationId}/control/probes.
+const DEFAULT_PROBES = {
+  station1: {
+    ec: {since: "2026-09-16", ecFactor: 1},
+    ph1: {since: "2026-09-16"},
+  },
+};
+
+async function stationProbes(db, stationId) {
+  const snap = await db.ref(`berries/${stationId}/control/probes`).get();
+  return snap.val() || DEFAULT_PROBES[stationId] || {};
+}
+
+/** Calibration days of a station that carry applied values, oldest first. */
+function appliedDays(calVal) {
+  return Object.entries(calVal || {})
+      .filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && v && v.applied)
+      .sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+/**
+ * Coefficients in force on `day` (null = latest), per field. Each field takes
+ * its own most recent applied value: a day where only some probes calibrated
+ * (the pH cup skipped, a probe unstable) must not throw the others back to the
+ * defaults, which is what calibration/current alone would do. Values from
+ * before the field's probe was installed are skipped.
+ */
+function coefficientsAt(days, probes, day) {
+  const coef = {};
+  for (const [date, v] of days) {
+    if (day && date > day) break;
+    for (const [k, x] of Object.entries(v.applied)) {
+      const field = k.replace(/(Factor|Offset)$/, "");
+      const since = probes[field] && probes[field].since;
+      if (since && date < since) continue;
+      if (Number.isFinite(Number(x))) coef[k] = {value: Number(x), date};
+    }
+  }
+  return coef;
+}
+
+async function currentCoefficients(stationId) {
+  const hit = calCache[stationId];
+  if (hit && Date.now() - hit.at < CAL_CACHE_MS) return hit;
+  const db = admin.database();
+  const [snap, probes] = await Promise.all([
+    db.ref(`berries/${stationId}/calibration`)
+        .orderByKey().limitToLast(CAL_LOOKBACK_DAYS + 1).get(),
+    stationProbes(db, stationId),
+  ]);
+  const coef = coefficientsAt(appliedDays(snap.val()), probes, null);
+  calCache[stationId] = {at: Date.now(), coef, probes};
+  return calCache[stationId];
+}
+
+/**
+ * Correct `item` in place from its raw values: sets field, fieldRaw and `cal`.
+ * Shared by ingest and the backfill so both follow one rule.
+ */
+function calibrateFields(item, coef, probes) {
+  const cal = {};
+  for (const f of CAL_FIELDS) {
+    const src = item[f + "Raw"] !== undefined ? item[f + "Raw"] : item[f];
+    const raw = Number(src);
+    // 0 / missing is a probe that isn't reporting; leave it visibly so.
+    if (!isNum(raw)) continue;
+    item[f + "Raw"] = src;
+    if (f.startsWith("ph")) {
+      const c = coef[f + "Offset"];
+      const offset = c ? c.value : 0;
+      item[f] = round(raw + offset, 2);
+      cal[f + "Offset"] = offset;
+      if (c) cal[f + "Date"] = c.date;
+    } else {
+      const c = coef[f + "Factor"];
+      const p = probes[f];
+      const factor = c ? c.value :
+        (p && Number.isFinite(p.ecFactor) ? p.ecFactor : EC_FACTOR_DEFAULT);
+      item[f] = Math.round(raw * factor);
+      cal[f + "Factor"] = factor;
+      if (c) cal[f + "Date"] = c.date;
+    }
+  }
+  if (Object.keys(cal).length) item.cal = cal;
+  else delete item.cal;
+  return item;
+}
+
+/**
+ * Correct payload in place. Never throws: a calibration lookup that fails
+ * falls back to the defaults (×2 EC, no pH offset), which is exactly what the
+ * dashboard showed before, so ingest cannot be lost to it.
+ */
+async function applyCalibration(stationId, payload) {
+  let coef = {};
+  let probes = DEFAULT_PROBES[stationId] || {};
+  try {
+    ({coef, probes} = await currentCoefficients(stationId));
+  } catch (e) {
+    logger.error("calibration lookup failed", {stationId, error: e.message});
+  }
+  return calibrateFields(payload, coef, probes);
+}
+
+module.exports = {
+  runCalibration, applyCalibration, rawView, calibrateFields, coefficientsAt,
+  appliedDays, stationProbes, EC_FACTOR_DEFAULT, DEFAULT_MAP,
+};

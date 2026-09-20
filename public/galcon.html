@@ -235,7 +235,9 @@
     // ── Our sensor readings (RTDB berries/{station}/{MMYYYY}/{tsKey}) ──
     // EC reads ~half of reality (firmware K-factor); ×2 then µS/cm→dS/m so it
     // sits on the same scale as Galcon's mS/cm. pH is raw.
-    const EC_CAL = v => (v == null ? null : v * 2 / 1000);
+    // µS/cm → dS/m. Readings stored since ingest began calibrating (`cal`) are
+    // already corrected; older ones get the historical ×2 K-factor fix.
+    const EC_CAL = (v, m) => (v == null ? null : v * (m && m.cal ? 1 : 2) / 1000);
     // Don't match an event to a reading more than 2h away — sensors report
     // every ~15-30 min, so a wider gap means we simply have no comparison.
     const MAX_MATCH_MS = 2 * 3600 * 1000;
@@ -270,7 +272,7 @@
             t = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mi}:00`).getTime();
           }
           if (t == null || isNaN(t)) continue;
-          rows.push({ t, ec: numOrNull(item.ec), ec2: numOrNull(item.ec2), ph1: numOrNull(item.ph1), ph2: numOrNull(item.ph2) });
+          rows.push({ t, ec: numOrNull(item.ec), ec2: numOrNull(item.ec2), ph1: numOrNull(item.ph1), ph2: numOrNull(item.ph2), cal: !!item.cal });
         }
       }
       rows.sort((a, b) => a.t - b.t);
@@ -405,7 +407,7 @@
 
         const ourCell = (m, keys, transform) => {
           if (!m) return "—";
-          const parts = keys.map(k => fmtNum(transform ? transform(m[k]) : m[k], transform ? 2 : 1));
+          const parts = keys.map(k => fmtNum(transform ? transform(m[k], m) : m[k], transform ? 2 : 1));
           return parts.every(p => p === "—") ? "—" : parts.join(" / ");
         };
 

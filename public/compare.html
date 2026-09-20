@@ -8,12 +8,11 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     /* Source identity is fixed across every chart: station = blue, manual
-       measurement = aqua, Galcon = orange (validated categorical slots 1–3).
+       measurement = aqua (validated categorical slots 1–2).
        In/out (טפטפת/נקז) is carried by line style, never by a 4th hue. */
     :root {
       --src-station: #2a78d6;
       --src-manual:  #1baf7a;
-      --src-galcon:  #eb6834;
     }
     .filters { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px; }
     .filters .field { margin:0; min-width:130px; }
@@ -25,7 +24,6 @@
     .src-dot { display:inline-block; width:10px; height:10px; border-radius:50%; vertical-align:middle; margin-inline-end:4px; }
     .src-station { background:var(--src-station); }
     .src-manual  { background:var(--src-manual); }
-    .src-galcon  { background:var(--src-galcon); }
 
     .charts { display:grid; grid-template-columns:repeat(auto-fit, minmax(420px, 1fr)); gap:16px; margin:16px 0; }
     @media (max-width: 520px) { .charts { grid-template-columns:1fr; } }
@@ -80,10 +78,9 @@
 
         <div class="card">
           <p class="hint">
-            מדידות תמיסת השקיה הידניות (אפליקציית העובדים) מול התחנה שלנו שיושבת באותה עמדה, ומול נתוני גלקון של אותו מגוף.
+            התחנה שלנו מול מדידות תמיסת ההשקיה הידניות (אפליקציית העובדים) באותה עמדה. המדידה הידנית היא הייחוס.
             <span class="src-dot src-station"></span>תחנה
             &nbsp;<span class="src-dot src-manual"></span>מדידה ידנית
-            &nbsp;<span class="src-dot src-galcon"></span>גלקון
           </p>
           <div class="filters">
             <div class="field">
@@ -132,14 +129,14 @@
           </div>
           <div class="chart-card">
             <div class="fs-head"><h3>פער מול המדידה הידנית (%)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
-            <p class="sub">EC / pH: (מקור − ידני) ÷ ידני · נקז: אחוז נקז בתחנה פחות אחוז נקז ידני</p>
+            <p class="sub">EC / pH: (תחנה − ידני) ÷ ידני · נקז: אחוז נקז בתחנה פחות אחוז נקז ידני</p>
             <div class="chart-box"><canvas id="chGap"></canvas></div>
           </div>
         </div>
 
         <div class="card" id="tableCard" style="display:none;">
           <div class="fs-head"><h3 style="font-size:15px;margin:0 0 4px;">טבלה יומית</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
-          <p class="hint">לחיצה על שורה מציגה את המדידות הידניות והשקיות גלקון של אותו יום. פער מעל 15% מסומן באדום.</p>
+          <p class="hint">לחיצה על שורה מציגה את המדידות הידניות והכיול של אותו יום. פער מעל 15% מסומן באדום.</p>
           <div class="table-wrap">
             <table class="crm">
               <thead>
@@ -147,7 +144,6 @@
                   <th></th>
                   <th colspan="6"><span class="src-dot src-manual"></span>מדידה ידנית</th>
                   <th colspan="7"><span class="src-dot src-station"></span>תחנה</th>
-                  <th colspan="4"><span class="src-dot src-galcon"></span>גלקון</th>
                   <th colspan="5">פער מול ידני</th>
                 </tr>
                 <tr>
@@ -156,12 +152,11 @@
                   <th>EC טפ׳/נקז</th><th>pH טפ׳/נקז</th>
                   <th>כניסה ל׳</th><th>יציאה ל׳</th><th>נקז %</th>
                   <th>EC כניסה</th><th>EC יציאה</th><th>pH1</th><th>pH2</th>
-                  <th>השקיות</th><th>מ״ק</th><th>EC</th><th>pH</th>
                   <th title="אחוז נקז בתחנה פחות אחוז נקז ידני (נקודות אחוז)">נקז תחנה</th>
                   <th title="EC כניסה בתחנה מול EC טפטפת ידני">EC כניסה</th>
                   <th title="EC יציאה בתחנה מול EC נקז ידני">EC יציאה</th>
-                  <th title="EC גלקון מול EC טפטפת ידני">EC גלקון</th>
-                  <th title="pH גלקון מול pH טפטפת ידני">pH גלקון</th>
+                  <th title="pH1 בתחנה מול pH טפטפת ידני">pH1</th>
+                  <th title="pH2 בתחנה מול pH נקז ידני">pH2</th>
                 </tr>
               </thead>
               <tbody id="dayBody"></tbody>
@@ -189,12 +184,13 @@
 
     // Our sensor stations sit inside these qrCode measurement stations (see the
     // GIS STATION_VALVE map in index.html: station1=B9, station2=B7). Both are on
-    // Galcon controller B, valve number = plot number.
     const PAIRS = [
-      { code: "B09", stationId: "station1", galconSerial: "GAL0000000001399", valve: 9 },
-      { code: "B07", stationId: "station2", galconSerial: "GAL0000000001399", valve: 7 },
+      // Which station field sits where. station1 has one EC and one pH probe,
+      // both on the dripper; station2 has feed (ec2/ph1) and drain (ec/ph2).
+      // Mirrors DEFAULT_MAP in functions/calibration.js.
+      { code: "B09", stationId: "station1", fields: { ecIn: "ec", ecOut: null, ph1: "ph1", ph2: null } },
+      { code: "B07", stationId: "station2", fields: { ecIn: "ec2", ecOut: "ec", ph1: "ph1", ph2: "ph2" } },
     ];
-    const GALCON_API = "https://us-central1-plantstracker-f1274.cloudfunctions.net/galcon";
     const PAIR_STORAGE_KEY = "compare.pair";
 
     // ---- qrCode project (song-cd1cd): irrigation-solution measurements ----
@@ -317,7 +313,43 @@
       return readings;
     }
 
-    function summarizeStation(readings, mlPerPulse) {
+    // Calibrated EC (dS/m) / pH of one reading. Readings stored since ingest began
+    // calibrating carry `cal` and are already corrected. Older ones are corrected
+    // here with the coefficients in force on their own day -- each field its own
+    // most recent applied value -- the same rule ingest uses, so old and new
+    // readings sit on one scale. No calibration yet → ×2 EC, no pH offset.
+    const EC_FACTOR_DEFAULT = 2;
+    function makeCalibrator(calByDay, fields) {
+      const days = [...calByDay.entries()].filter(([, v]) => v && v.applied)
+        .sort((a, b) => a[0].localeCompare(b[0]));
+      const memo = new Map();
+      const coefAt = (day) => {
+        if (memo.has(day)) return memo.get(day);
+        const c = {};
+        for (const [d, v] of days) { if (d > day) break; Object.assign(c, v.applied); }
+        memo.set(day, c);
+        return c;
+      };
+      return (item, day) => {
+        const c = item.cal ? null : coefAt(day);
+        const ec = (f) => {
+          if (!f) return null;
+          const v = pos(item[f]);
+          if (v == null) return null;
+          const k = c ? (Number(c[f + "Factor"]) || EC_FACTOR_DEFAULT) : 1;
+          return v * k / 1000;
+        };
+        const ph = (f) => {
+          if (!f) return null;
+          const v = pos(item[f]);
+          if (v == null) return null;
+          return c ? v + (Number(c[f + "Offset"]) || 0) : v;
+        };
+        return { ecIn: ec(fields.ecIn), ecOut: ec(fields.ecOut), ph1: ph(fields.ph1), ph2: ph(fields.ph2) };
+      };
+    }
+
+    function summarizeStation(readings, mlPerPulse, calibrate) {
       // waterIn/waterOut are cumulative counters: reset-aware delta vs. previous
       // reading (a drop = device reset, the new value is the post-reset total).
       const byDay = new Map();
@@ -332,12 +364,8 @@
         if (!d) { d = { inP: 0, outP: 0, all: [], flow: [] }; byDay.set(day, d); }
         d.inP += dIn; d.outP += dOut;
         // EC/pH are averaged over readings while water moves (that is what the
-        // manual cup and Galcon sample); a day with no flow falls back to all.
-        const s = {
-          ecIn: pos(item.ec2) != null ? item.ec2 * 2 / 1000 : null,   // ×2 calibration, µS/cm → dS/m
-          ecOut: pos(item.ec) != null ? item.ec * 2 / 1000 : null,
-          ph1: pos(item.ph1), ph2: pos(item.ph2),
-        };
+        // manual cup samples); a day with no flow falls back to all.
+        const s = calibrate(item, day);   // after calibration, EC in dS/m
         d.all.push(s);
         if (dIn > 0 || dOut > 0) d.flow.push(s);
       }
@@ -377,57 +405,14 @@
       const rows = Object.entries(cal.samples || {}).map(([field, x]) => `<tr>
           <td>${esc(field)}</td>
           <td>${fmt(x.ref, 2)}</td>
-          <td>${x.raw == null ? "—" : fmt(x.raw, x.raw > 50 ? 0 : 2)}</td>
           <td>${x.factor != null ? "×" + fmt(x.factor, 3) : x.offset != null ? (x.offset > 0 ? "+" : "") + fmt(x.offset, 2) : "—"}</td>
           <td>${x.applied != null ? fmt(x.applied, 3) : "—"}</td>
           <td>${esc(CAL_STATUS[x.status] || x.status || "")}</td>
         </tr>`).join("");
       const notes = (cal.notes || []).map(esc).join(" · ");
       return rows ? `<table>
-          <thead><tr><th>חיישן</th><th>ידני</th><th>תחנה</th><th>מקדם/סטייה</th><th>מוחל</th><th>מצב</th></tr></thead>
+          <thead><tr><th>חיישן</th><th>ידני</th><th>מקדם/סטייה</th><th>מוחל</th><th>מצב</th></tr></thead>
           <tbody>${rows}</tbody></table>` : `<div class="muted">${notes || "אין נתוני כיול"}</div>`;
-    }
-
-    // ---- 3. Galcon (FinishIrrigation log via our Cloud Function) ----
-    async function galconGet(path) {
-      const token = await user.getIdToken();
-      const resp = await fetch(GALCON_API + path, { headers: { Authorization: "Bearer " + token } });
-      if (!resp.ok) {
-        let msg = "HTTP " + resp.status;
-        try { const j = await resp.json(); if (j.error) msg += " — " + j.error; } catch {}
-        throw new Error(msg);
-      }
-      return resp.json();
-    }
-
-    // Chunked by week so a long range doesn't hit the function timeout, and run
-    // one after another: the Galcon web-app API holds a single login session.
-    async function fetchGalcon(pair, days) {
-      const byDay = new Map();
-      for (let i = 0; i < days.length; i += 7) {
-        const f = days[i], t = days[Math.min(i + 6, days.length - 1)];
-        const data = await galconGet(`/valves?from=${f}&to=${t}&controllerSerial=${encodeURIComponent(pair.galconSerial)}`);
-        for (const v of (data.valves || [])) {
-          if (String(v.SerialNumber).trim() !== pair.galconSerial || Number(v.ValveNo) !== pair.valve) continue;
-          const day = String(v.DateTimeStartValve || v.DateTimeStopValve || "").slice(0, 10);
-          if (!day) continue;
-          if (!byDay.has(day)) byDay.set(day, []);
-          byDay.get(day).push(v);
-        }
-      }
-      for (const list of byDay.values()) list.sort((a, b) => String(a.DateTimeStartValve).localeCompare(String(b.DateTimeStartValve)));
-      return byDay;
-    }
-
-    function summarizeGalcon(list) {
-      if (!list || !list.length) return null;
-      // ecLast/phLast: ONE value per irrigation, copied into Min/Med/Max.
-      return {
-        n: list.length,
-        m3: list.reduce((a, v) => a + (Number(v.VolumeM3Valve) || 0), 0),
-        ec: mean(list.map(v => pos(v.EcMed)).filter(x => x != null)),
-        ph: mean(list.map(v => pos(v.PhMed)).filter(x => x != null)),
-      };
     }
 
     // ---- gaps vs. the manual measurement (the field reference) ----
@@ -436,13 +421,13 @@
     const GAP_ALERT = 15;
     const relGap = (v, ref) => (v == null || ref == null || !(ref > 0)) ? null : (v - ref) / ref * 100;
     function gapsFor(r) {
-      const { man, st, gal } = r;
+      const { man, st } = r;
       return {
         drain: (st?.drainPct != null && man?.drainPct != null) ? st.drainPct - man.drainPct : null,
         ecIn: relGap(st?.ecIn, man?.dripEc),
         ecOut: relGap(st?.ecOut, man?.drainEc),
-        galEc: relGap(gal?.ec, man?.dripEc),
-        galPh: relGap(gal?.ph, man?.dripPh),
+        ph1: relGap(st?.ph1, man?.dripPh),
+        ph2: relGap(st?.ph2, man?.drainPh),
       };
     }
     const fmtGap = (g) => g == null ? "—"
@@ -492,7 +477,7 @@
       });
     }
 
-    const C_ST = "#2a78d6", C_MAN = "#1baf7a", C_GAL = "#eb6834";
+    const C_ST = "#2a78d6", C_MAN = "#1baf7a";
     const DASH = [6, 4];
 
     function renderCharts(days, rows) {
@@ -507,14 +492,12 @@
         { label: "תחנה יציאה", borderColor: C_ST, borderDash: DASH, data: col(r => r.st?.ecOut) },
         { label: "ידני טפטפת", borderColor: C_MAN, data: col(r => r.man?.dripEc) },
         { label: "ידני נקז", borderColor: C_MAN, borderDash: DASH, data: col(r => r.man?.drainEc) },
-        { label: "גלקון", borderColor: C_GAL, data: col(r => r.gal?.ec) },
       ], "", 2);
       drawLineChart("chPh", L, [
         { label: "תחנה pH1", borderColor: C_ST, data: col(r => r.st?.ph1) },
         { label: "תחנה pH2", borderColor: C_ST, borderDash: DASH, data: col(r => r.st?.ph2) },
         { label: "ידני טפטפת", borderColor: C_MAN, data: col(r => r.man?.dripPh) },
         { label: "ידני נקז", borderColor: C_MAN, borderDash: DASH, data: col(r => r.man?.drainPh) },
-        { label: "גלקון", borderColor: C_GAL, data: col(r => r.gal?.ph) },
       ], "", 2);
       drawBarChart("chWaterStation", L, [
         { label: "כניסה", backgroundColor: C_ST, data: col(r => r.st?.inL) },
@@ -528,19 +511,19 @@
         { label: "נקז תחנה", borderColor: C_ST, borderDash: [2, 3], data: col(r => gapsFor(r).drain) },
         { label: "EC כניסה", borderColor: C_ST, data: col(r => gapsFor(r).ecIn) },
         { label: "EC יציאה", borderColor: C_ST, borderDash: DASH, data: col(r => gapsFor(r).ecOut) },
-        { label: "EC גלקון", borderColor: C_GAL, data: col(r => gapsFor(r).galEc) },
-        { label: "pH גלקון", borderColor: C_GAL, borderDash: DASH, data: col(r => gapsFor(r).galPh) },
+        { label: "pH1", borderColor: C_MAN, data: col(r => gapsFor(r).ph1) },
+        { label: "pH2", borderColor: C_MAN, borderDash: DASH, data: col(r => gapsFor(r).ph2) },
       ], "%", 1, false);
     }
 
     // ---- table ----
     function renderTable(days, rows) {
       const body = document.getElementById("dayBody");
-      const shown = [...days].reverse().filter(d => { const r = rows.get(d); return r.man || r.st || r.gal; });
+      const shown = [...days].reverse().filter(d => { const r = rows.get(d); return r.man || r.st; });
       document.getElementById("dayEmpty").style.display = shown.length ? "none" : "";
       const pair2 = (a, b, dec) => (a == null && b == null) ? "—" : `${fmt(a, dec)} / ${fmt(b, dec)}`;
       body.innerHTML = shown.map(day => {
-        const { man, st, gal } = rows.get(day);
+        const { man, st } = rows.get(day);
         const g = gapsFor(rows.get(day));
         return `<tr class="day-row" data-day="${day}">
           <td>${fmtDay(day)}</td>
@@ -557,20 +540,16 @@
           <td class="num">${st ? fmt(st.ecOut, 2) : "—"}</td>
           <td class="num">${st ? fmt(st.ph1, 2) : "—"}</td>
           <td class="num">${st ? fmt(st.ph2, 2) : "—"}</td>
-          <td class="num">${gal ? gal.n : "—"}</td>
-          <td class="num">${gal ? fmt(gal.m3, 2) : "—"}</td>
-          <td class="num">${gal ? fmt(gal.ec, 2) : "—"}</td>
-          <td class="num">${gal ? fmt(gal.ph, 2) : "—"}</td>
           <td class="num">${fmtGap(g.drain)}</td>
           <td class="num">${fmtGap(g.ecIn)}</td>
           <td class="num">${fmtGap(g.ecOut)}</td>
-          <td class="num">${fmtGap(g.galEc)}</td>
-          <td class="num">${fmtGap(g.galPh)}</td>
+          <td class="num">${fmtGap(g.ph1)}</td>
+          <td class="num">${fmtGap(g.ph2)}</td>
         </tr>`;
       }).join("");
     }
 
-    function detailHtml(day, manualRecs, galconList, cal) {
+    function detailHtml(day, manualRecs, cal) {
       const manRows = (manualRecs || []).map(r => `<tr>
           <td>${esc(String(r.performedAt || "").split("T")[1]?.slice(0, 5) || "—")}</td>
           <td>${fmt(Number(r.dripMl), 0)}</td><td>${fmt(Number(r.drainMl), 0)}</td>
@@ -579,20 +558,10 @@
           <td>${fmt(pos(r.dripPh), 2)} / ${fmt(pos(r.drainPh), 2)}</td>
           <td>${esc(r.plantCount)}</td><td>${esc(r.workerId)}</td>
         </tr>`).join("");
-      const galRows = (galconList || []).map(v => `<tr>
-          <td>${esc(String(v.DateTimeStartValve || "").slice(11, 16))}–${esc(String(v.DateTimeStopValve || "").slice(11, 16))}</td>
-          <td>${esc(v.ProgNum)}</td><td>${fmt(Number(v.VolumeM3Valve), 2)}</td>
-          <td>${fmt(Number(v.FlowRateM3h), 2)}</td>
-          <td>${fmt(pos(v.EcMed), 2)}${pos(v.EcRequired) ? ` <span class="muted">(${fmt(pos(v.EcRequired), 2)})</span>` : ""}</td>
-          <td>${fmt(pos(v.PhMed), 2)}${pos(v.PhRequired) ? ` <span class="muted">(${fmt(pos(v.PhRequired), 2)})</span>` : ""}</td>
-        </tr>`).join("");
       return `<div class="detail">
         <div><h4><span class="src-dot src-manual"></span>מדידות ידניות</h4>${manRows ? `<table>
           <thead><tr><th>שעה</th><th>טפטפת מ״ל</th><th>נקז מ״ל</th><th>נקז %</th><th>EC טפ׳/נקז</th><th>pH טפ׳/נקז</th><th>צמחים</th><th>עובד</th></tr></thead>
           <tbody>${manRows}</tbody></table>` : `<div class="muted">אין מדידות</div>`}</div>
-        <div><h4><span class="src-dot src-galcon"></span>השקיות גלקון</h4>${galRows ? `<table>
-          <thead><tr><th>שעות</th><th>תוכנית</th><th>מ״ק</th><th>ספיקה</th><th>EC (נדרש)</th><th>pH (נדרש)</th></tr></thead>
-          <tbody>${galRows}</tbody></table>` : `<div class="muted">אין השקיות</div>`}</div>
         <div><h4>🎯 כיול יומי</h4>${calibHtml(cal)}</div>
       </div>`;
     }
@@ -619,12 +588,13 @@
       const warnings = document.getElementById("warnings");
       const btn = document.getElementById("fLoadBtn");
       btn.disabled = true; btn.textContent = "טוען...";
-      status.textContent = "טוען מדידות ידניות, נתוני תחנה וגלקון...";
+      status.textContent = "טוען מדידות ידניות ונתוני תחנה...";
       warnings.innerHTML = "";
 
       // Each source fails independently so one outage doesn't blank the others.
       const warn = [];
-      const [manual, station, galcon, calib] = await Promise.all([
+      const calibP = fetchCalibration(pair.stationId).catch(e => { console.error("calibration", e); return new Map(); });
+      const [manual, station, calib] = await Promise.all([
         fetchManual(pair.code, days).catch(e => {
           console.error("manual", e);
           warn.push(e.code === "auth/admin-restricted-operation" || e.code === "auth/operation-not-allowed"
@@ -632,11 +602,10 @@
             : `מדידות ידניות: ${e.message}`);
           return new Map();
         }),
-        Promise.all([loadMlPerPulse(pair.stationId), fetchStation(pair.stationId, from, to)])
-          .then(([ml, readings]) => ({ ml, n: readings.length, byDay: summarizeStation(readings, ml) }))
+        Promise.all([loadMlPerPulse(pair.stationId), fetchStation(pair.stationId, from, to), calibP])
+          .then(([ml, readings, cal]) => ({ ml, n: readings.length, byDay: summarizeStation(readings, ml, makeCalibrator(cal, pair.fields)) }))
           .catch(e => { console.error("station", e); warn.push(`תחנה: ${e.message}`); return { ml: null, n: 0, byDay: new Map() }; }),
-        fetchGalcon(pair, days).catch(e => { console.error("galcon", e); warn.push(`גלקון: ${e.message}`); return new Map(); }),
-        fetchCalibration(pair.stationId).catch(e => { console.error("calibration", e); return new Map(); }),
+        calibP,
       ]);
       btn.disabled = false; btn.textContent = "טען";
       if (seq !== loadSeq) return;
@@ -644,12 +613,10 @@
       const rows = new Map(days.map(d => [d, {
         man: summarizeManual(manual.get(d)),
         st: station.byDay.get(d) || null,
-        gal: summarizeGalcon(galcon.get(d)),
       }]));
 
       const nMan = [...manual.values()].reduce((a, l) => a + l.length, 0);
-      const nGal = [...galcon.values()].reduce((a, l) => a + l.length, 0);
-      status.textContent = `${nMan} מדידות ידניות · ${station.n} קריאות תחנה${station.ml ? ` (${station.ml} מ״ל/פולס)` : ""} · ${nGal} השקיות גלקון (מגוף B${pair.valve})`;
+      status.textContent = `${nMan} מדידות ידניות · ${station.n} קריאות תחנה${station.ml ? ` (${station.ml} מ״ל/פולס)` : ""}`;
       warnings.innerHTML = warn.map(w => `<div class="warn-line">⚠️ ${esc(w)}</div>`).join("");
 
       document.getElementById("charts").style.display = "";
@@ -665,7 +632,7 @@
         const day = tr.dataset.day;
         const d = document.createElement("tr");
         d.className = "detail-row";
-        d.innerHTML = `<td colspan="23">${detailHtml(day, manual.get(day), galcon.get(day), calib.get(day))}</td>`;
+        d.innerHTML = `<td colspan="19">${detailHtml(day, manual.get(day), calib.get(day))}</td>`;
         tr.after(d);
       };
 

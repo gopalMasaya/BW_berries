@@ -96,6 +96,8 @@ app.post("/ingest", async (req, res) => {
 
     payload.serverTimestamp = now.toISOString();
     payload.stationId = stationId;
+    // Stored already calibrated; the probe's own values ride along as *Raw.
+    await applyCalibration(stationId, payload);
 
     await admin.database()
         .ref(`/berries/${stationId}/${monthKey}/${tsKey}`)
@@ -927,7 +929,7 @@ exports.galcon = onRequest({cors: true, timeoutSeconds: 60}, galconApp);
 // Compares the morning's first manual solution measurement (qrCode app) with
 // what the station reported at that moment and stores an EC factor / pH offset
 // the dashboard applies on display. See calibration.js for the reasoning.
-const {runCalibration} = require("./calibration");
+const {runCalibration, applyCalibration} = require("./calibration");
 
 // 10:30 Israel time: after the morning round of measurements.
 exports.calibrateDaily = onSchedule({
