@@ -76,7 +76,7 @@
   <script type="module">
     import { requireAuth } from "./guard.mjs";
     import { initSidebar } from "./sidebar.mjs";
-    import { getAllPhones, registerPhone, updatePhone, deletePhone, phoneKey, normalizePhone } from "./auth.mjs";
+    import { getAllPhones, registerPhone, updatePhone, deletePhone, phoneKey, normalizePhone, currentUser } from "./auth.mjs";
 
     const { user, profile } = await requireAuth(["manager"]);
     initSidebar(profile);
