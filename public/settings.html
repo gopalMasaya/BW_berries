@@ -35,6 +35,20 @@
             </div>
 
             <div class="field" style="margin-bottom:18px;">
+              <label style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">סוג הברז</label>
+              <select id="fValveType" style="width:100%;max-width:420px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;">
+                <option value="dc">ברז DC מגנטי (3 חוטים) — פולס לפתיחה ופולס לסגירה</option>
+                <option value="ac">ברז AC 24V (2 חוטים) — ממסר סגור לאורך כל ההשקיה</option>
+              </select>
+              <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">
+                ברז DC מגנטי נשאר במקומו בלי חשמל, ולכן הבקר שולח לו פולס קצר בכל כיוון.
+                ברז AC פתוח רק כל עוד הממסר מופעל — הבקר מחזיק אותו ON מרגע פתיחת ההשקיה ועד סיומה,
+                וכל הפסקת חשמל או איתחול סוגרים את המים מעצמם.
+                חיווט ל־AC: שני חוטי הברז דרך מגע הממסר הראשון (פין 12) בלבד; הממסר השני אינו בשימוש.
+              </span>
+            </div>
+
+            <div class="field" style="margin-bottom:18px;">
               <label style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">מ״ל לפולס (כיול מד הזרימה)</label>
               <input id="fMlPerPulse" type="number" step="0.1" min="0.1" max="1000" dir="ltr" style="width:100%;max-width:300px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;" />
               <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">כל חישובי המים באפליקציה (השקיות, גרפים, טבלאות, משקל) ממירים פולסים לליטרים לפי הערך הזה. ברירת מחדל: 2.4</span>
@@ -214,6 +228,9 @@
       maxWateringMin: 25,
       postWateringWaitMin: 20,
       mlPerPulse: 2.4,
+      // The 3-wire latching valve every station shipped with. A farm on AC
+      // valves switches this once and the same firmware drives them.
+      valveType: "dc",
       // VPD is off until someone turns it on, so existing stations keep
       // behaving exactly as they did before this feature existed.
       vpdEnabled: false,
@@ -238,6 +255,7 @@
     const formSuccess = document.getElementById("formSuccess");
 
     const fOperationMode = document.getElementById("fOperationMode");
+    const fValveType = document.getElementById("fValveType");
     const fWateringEnabled = document.getElementById("fWateringEnabled");
     const wateringFields = document.getElementById("wateringFields");
     const fSoil1Threshold = document.getElementById("fSoil1Threshold");
@@ -277,6 +295,7 @@
         const config = snap.val() || {};
 
         fOperationMode.value = (config.monitorOnly ?? DEFAULTS.monitorOnly) ? "monitor" : "control";
+        fValveType.value = config.valveType ?? DEFAULTS.valveType;
         fWateringEnabled.checked = config.wateringEnabled ?? DEFAULTS.wateringEnabled;
         wateringFields.style.display = (fWateringEnabled.checked && fOperationMode.value === "control") ? "" : "none";
         fSoil1Threshold.value = config.soil1Threshold ?? DEFAULTS.soil1Threshold;
@@ -427,6 +446,7 @@
         const stationId = stationSelect.value;
         await set(ref(db, `berries/${stationId}/control/wateringConfig`), {
           monitorOnly: fOperationMode.value === "monitor",
+          valveType: fValveType.value,
           wateringEnabled: fWateringEnabled.checked,
           soil1Threshold,
           soil2RiseToStop,

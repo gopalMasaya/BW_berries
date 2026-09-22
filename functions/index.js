@@ -209,6 +209,21 @@ app.get("/watering", async (req, res) => {
       if (soloMode) vpdFields.vpdSolo = true;
     }
 
+    // Valve type, and the reason it travels as "vAc" rather than "valveAc":
+    // the MKR link truncates this body at 300 bytes, and the widest existing
+    // response -- local VPD in trigger mode -- already measures 285. The short
+    // key takes that to 296; the long one would take it to 300 exactly, with
+    // nothing left for the next field anyone adds.
+    //
+    // Omitting it on a DC farm is not byte-shaving for its own sake: an absent
+    // key is exactly what the firmware reads as "DC latching", so a station
+    // nobody has told about valve types keeps behaving as it always did.
+    //
+    // It goes in the base object rather than in vpdFields because what the link
+    // cuts is the tail, and the valve type is not something to lose to a long
+    // VPD section.
+    const valveFields = config.valveType === "ac" ? {vAc: true} : {};
+
     return res.status(200).json(Object.assign({
       ok: true,
       stationId,
@@ -220,7 +235,7 @@ app.get("/watering", async (req, res) => {
       noRiseTimeoutMin: config.noRiseTimeoutMin ?? 10,
       maxWateringMin: config.maxWateringMin ?? 25,
       postWateringWaitMin: config.postWateringWaitMin ?? 20,
-    }, vpdFields));
+    }, valveFields, vpdFields));
   } catch (err) {
     logger.error("watering failed", err);
     return res.status(500).json({ok: false, error: "server error"});
