@@ -35,21 +35,36 @@ function isAuthorizedQuery(req) {
 // payload.time in "DDMMYYYY_HHMMSS" format (same format we use for tsKey).
 // Prefer it so stored keys reflect local time, not the function's UTC clock.
 //
-// Guard: only trust the device clock if its date is within ~2 days of the
-// server clock. A failed NTP/RTC sync returns time_t = -1 (0xFFFFFFFF), which
-// renders as 2106-02-07 and was filing data under a bogus "022106" month node
-// the dashboard never reads (so the station showed as Offline). When the device
-// date is implausible we return null and fall back to buildKeysFromDate(now).
+// Guard: only trust the device clock if it is within 10 minutes of the server
+// clock (both compared as Israel-local wall time). A failed NTP/RTC sync returns
+// time_t = -1 (0xFFFFFFFF), which renders as 2106-02-07 and was filing data under
+// a bogus "022106" month node. A looser date-only check (+-2 days) then let
+// through a clock that was a clean 3 hours behind (station1, 2026-09-23: the
+// modem's CCLK timezone was applied twice), which filed every reading 3h early
+// and left the dashboard showing the station Offline. Readings are sent live,
+// never from a backlog, so a device clock that disagrees with the server by more
+// than a few minutes is wrong, not late. When rejected, return null and fall back
+// to buildKeysFromDate(now).
+const DEVICE_CLOCK_TOLERANCE_MS = 10 * 60 * 1000;
+
+// "DDMMYYYY_HHMMSS" -> ms, treating the wall time as UTC. Only used to compare
+// two keys in the same zone, so the zone itself cancels out.
+function keyToWallMs(key) {
+  return Date.UTC(Number(key.slice(4, 8)), Number(key.slice(2, 4)) - 1,
+      Number(key.slice(0, 2)), Number(key.slice(9, 11)),
+      Number(key.slice(11, 13)), Number(key.slice(13, 15)));
+}
+
 function buildKeysFromDeviceTime(timeStr, now) {
   if (typeof timeStr !== "string" || !/^\d{8}_\d{6}$/.test(timeStr)) {
     return null;
   }
-  const dd = Number(timeStr.slice(0, 2));
-  const mm = Number(timeStr.slice(2, 4));
-  const yyyy = Number(timeStr.slice(4, 8));
-  const devDate = new Date(yyyy, mm - 1, dd);
-  if (Math.abs(devDate.getTime() - now.getTime()) > 2 * 864e5) {
-    logger.warn("device time rejected (implausible date)", {timeStr});
+  const serverKey = buildKeysFromDate(now).tsKey;
+  const skewMs = keyToWallMs(timeStr) - keyToWallMs(serverKey);
+  if (!Number.isFinite(skewMs) ||
+      Math.abs(skewMs) > DEVICE_CLOCK_TOLERANCE_MS) {
+    logger.warn("device time rejected (clock skew)",
+        {timeStr, serverKey, skewMin: Math.round(skewMs / 60000)});
     return null;
   }
   return {monthKey: `${timeStr.slice(2, 4)}${timeStr.slice(4, 8)}`, tsKey: timeStr};

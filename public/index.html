@@ -1584,6 +1584,7 @@
   function unitFor(fieldName){
     const lower = fieldName.toLowerCase();
     if (lower.includes("npk")) return "mg/kg";
+    if (lower === "rssi") return "dBm";
     if (lower.includes("tension")) return lower.endsWith("_v") ? "V" : "kPa";
     if (lower.includes("temp")) return "\u00B0C";
     if (lower.includes("humidity")) return "%";
@@ -1600,6 +1601,7 @@
   function decimalsFor(fieldName){
     const lower = fieldName.toLowerCase();
     if (lower.includes("npk")) return 0;
+    if (lower === "rssi") return 0;
     if (lower.includes("tension")) return lower.endsWith("_v") ? 2 : 3;
     if (lower.includes("ec")) return 0;
     if (lower.includes("voltage")) return 2;
@@ -2289,7 +2291,9 @@
     npk_n:"חנקן N", npk_p:"זרחן P", npk_k:"אשלגן K",
     temp:"טמפ׳ אוויר", scale1:"משקל", voltage:"מתח",
     // IRROMETER RSU-V tensiometer (station1, A6): kPa, 0 = saturated, rises as soil dries.
-    tension1:"מתח מים בקרקע"
+    tension1:"מתח מים בקרקע",
+    // Cellular signal at send time (MKR modem, AT+CSQ mapped to dBm).
+    rssi:"קליטה סלולרית"
   };
   // Note: scale1 is simulated while the load cell is unwired (see SCALE_SIM), but
   // it is deliberately labelled like any other sensor.
@@ -2301,7 +2305,7 @@
     "stationId","serverTimestamp","time","deviceId","sortKey","resetReason",
     "waterIn","water_in","WaterIn","waterOut","water_out","WaterOut",
     "uptime","apiFails","modemFails","gps_lat","gps_lng","ec_dSm","ec2_dSm",
-    "tension1_v",
+    "tension1_v","csq",
     // Diagnostics from the Agrinovo water probes: the registers as received and
     // the reason a reading was refused. For debugging a probe, not tiles.
     "ec_raw","ec_raw_temp","ph1_raw","ec_err","ph1_err",
@@ -2330,7 +2334,7 @@
   const SENSOR_FIELDS = [
     "soil1_humidity","soil2_humidity","ec","ec2","ph1","ph2",
     "soil1_temp","soil2_temp","soil1_ec","soil2_ec","soil1_ph","soil2_ph",
-    "npk_n","npk_p","npk_k","temp","scale1","voltage","tension1"
+    "npk_n","npk_p","npk_k","temp","scale1","voltage","tension1","rssi"
   ];
 
   // Per-station history of the last time each numeric field was seen (+ its last
@@ -5336,7 +5340,7 @@
     // Matched case-insensitively against the raw field name.
     const HIDDEN_FIELDS = new Set([
       "apifails", "apifail", "modemfails", "modemfail",
-      "uptime", "charging", "voltage", "chargingvoltage",
+      "uptime", "charging", "voltage", "chargingvoltage", "csq",
       "gps_lat", "gps_lng", "gps_lon", "gpslat", "gpslng",
       // Pre-calibration probe values: only calibrated readings are shown.
       // ec_dSm/ec2_dSm are the firmware's raw ÷1000 copies of ec/ec2, and the
