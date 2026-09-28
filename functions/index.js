@@ -327,8 +327,8 @@ app.get("/api/vpd-history", async (req, res) => {
     if (!dayRe.test(from) || !dayRe.test(to) || from > to) {
       return res.status(400).json({ok: false, error: "bad from/to"});
     }
-    if ((Date.parse(to) - Date.parse(from)) / 86400000 > 62) {
-      return res.status(400).json({ok: false, error: "range too long (max 62 days)"});
+    if ((Date.parse(to) - Date.parse(from)) / 86400000 > 31) {
+      return res.status(400).json({ok: false, error: "range too long (max 31 days)"});
     }
 
     const configSnap = await admin.database()
