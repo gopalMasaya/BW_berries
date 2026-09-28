@@ -285,8 +285,9 @@ async function readVpdHistory(db, stationId, fcStationId, fromDay, toDay) {
   missing.sort();
   // A day padded on both sides covers the Israel/UTC offset either way.
   const fromSec = Math.floor(Date.parse(missing[0] + "T00:00:00Z") / 1000) - 86400;
-  const toSec = Math.min(Math.floor(Date.now() / 1000),
-      Math.floor(Date.parse(missing[missing.length - 1] + "T23:59:59Z") / 1000) + 86400);
+  // Not clipped to "now": FieldClimate reads from/to as station-local time, so
+  // a UTC "now" would cut off the last 3 hours (Israel is UTC+2/+3).
+  const toSec = Math.floor(Date.parse(missing[missing.length - 1] + "T23:59:59Z") / 1000) + 86400;
   // FieldClimate refuses a raw request spanning more than 7 days, so the range
   // goes out in 6-day chunks (the padding above can push a chunk past 6).
   const CHUNK = 6 * 86400;

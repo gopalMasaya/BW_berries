@@ -6,6 +6,9 @@
   <title>השוואת מדידות — Plants Tracker</title>
   <link rel="stylesheet" href="app.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Pan (drag / swipe) and zoom (wheel / pinch) for the VPD timeline. -->
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   <style>
     /* Source identity is fixed across every chart: station = blue, manual
        measurement = aqua (validated categorical slots 1–2).
@@ -64,6 +67,25 @@
     .fs-open thead tr.grp th { position:sticky; top:0; background:var(--card); z-index:2; height:30px; }
     .fs-open thead tr:not(.grp) th { position:sticky; top:30px; background:var(--card); z-index:2; }
     body.fs-lock { overflow:hidden; }
+
+    /* VPD timeline (TEMPORARY FieldClimate comparison) */
+    .vpd-bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:8px 0; }
+    .vpd-bar button { border:1px solid var(--border); background:var(--card); border-radius:var(--radius-sm);
+                      padding:5px 10px; font-size:13px; cursor:pointer; color:var(--text-secondary); }
+    .vpd-bar button:hover { background:var(--primary-bg); }
+    .vpd-bar button.on { background:var(--primary, #2a78d6); border-color:var(--primary, #2a78d6); color:#fff; }
+    .vpd-bar .sep { width:1px; height:22px; background:var(--border); margin:0 4px; }
+    .vpd-range { font-size:13px; font-weight:600; margin-inline-start:auto; }
+    .vpd-main { position:relative; height:340px; cursor:grab; }
+    .vpd-gap  { position:relative; height:170px; cursor:grab; margin-top:6px; }
+    .vpd-main:active, .vpd-gap:active { cursor:grabbing; }
+    .vpd-scroll { width:100%; margin:8px 0 4px; direction:ltr; }
+    .vpd-lbl { font-size:12.5px; font-weight:600; color:var(--text-secondary); margin:10px 0 2px; }
+    .fs-open .vpd-main { height:auto; flex:2; min-height:280px; }
+    .fs-open .vpd-gap  { height:auto; flex:1; min-height:150px; }
+    #vpdBody tr { cursor:pointer; }
+    #vpdBody tr:hover td { background:var(--primary-bg); }
+    #vpdBody tr.sel td { background:#fff4e8; }
   </style>
 </head>
 <body>
@@ -103,6 +125,53 @@
           <div id="warnings"></div>
         </div>
 
+        <!-- TEMPORARY: station SHT3x VPD vs FieldClimate. Remove this block, the
+             vpd-* CSS, the zoom/hammer scripts and the "VPD" section of the
+             script once the comparison is done. -->
+        <div class="card" id="vpdCard" style="display:none;">
+          <div class="fs-head"><h3 style="font-size:15px;margin:0 0 4px;">VPD — התחנה שלנו מול FieldClimate</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
+          <p class="hint">
+            <span class="src-dot src-station"></span>התחנה שלנו &nbsp;<span class="src-dot src-fc"></span>FieldClimate.
+            שני המקורות מודדים כל 5 דקות.
+            <b>גרירה</b> = גלילה בזמן · <b>גלגלת / צביטה</b> = זום · או הכפתורים והפס למטה.
+          </p>
+          <div id="vpdStatus" class="hint"></div>
+          <div class="vpd-bar" id="vpdBar">
+            <button data-win="6">6 שעות</button>
+            <button data-win="24">יום</button>
+            <button data-win="72">3 ימים</button>
+            <button data-win="168">שבוע</button>
+            <button data-win="all">הכל</button>
+            <span class="sep"></span>
+            <button data-step="-1" title="אחורה">◀ מוקדם</button>
+            <button data-step="1" title="קדימה">מאוחר ▶</button>
+            <span class="vpd-range" id="vpdRange"></span>
+          </div>
+          <div class="vpd-lbl">VPD (kPa)</div>
+          <div class="vpd-main"><canvas id="chVpd"></canvas></div>
+          <div class="vpd-lbl">סטייה של התחנה מ-FieldClimate (%) — רק כש-FieldClimate ≥ 0.5 kPa, כי בלילה VPD קרוב לאפס והאחוז חסר משמעות</div>
+          <div class="vpd-gap"><canvas id="chVpdGap"></canvas></div>
+          <input type="range" class="vpd-scroll" id="vpdScroll" min="0" max="1000" value="1000" step="1" />
+
+          <div class="vpd-lbl" style="margin-top:14px;">סיכום יומי — לחיצה על שורה מציגה את היום בגרף</div>
+          <div class="table-wrap">
+            <table class="crm">
+              <thead>
+                <tr>
+                  <th>תאריך</th>
+                  <th><span class="src-dot src-station"></span>ממוצע תחנה</th>
+                  <th><span class="src-dot src-fc"></span>ממוצע FieldClimate</th>
+                  <th>סטייה</th>
+                  <th><span class="src-dot src-station"></span>שיא תחנה</th>
+                  <th><span class="src-dot src-fc"></span>שיא FieldClimate</th>
+                  <th>סטייה בשיא</th>
+                </tr>
+              </thead>
+              <tbody id="vpdBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="charts" id="charts" style="display:none;">
           <div class="chart-card">
             <div class="fs-head"><h3>אחוז נקז יומי</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
@@ -133,50 +202,6 @@
             <div class="fs-head"><h3>פער מול המדידה הידנית (%)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
             <p class="sub">EC / pH: (תחנה − ידני) ÷ ידני · נקז: אחוז נקז בתחנה פחות אחוז נקז ידני</p>
             <div class="chart-box"><canvas id="chGap"></canvas></div>
-          </div>
-        </div>
-
-        <!-- TEMPORARY: station SHT3x VPD vs FieldClimate. Remove this block and
-             the "VPD" section of the script once the comparison is done. -->
-        <div class="card" id="vpdCard" style="display:none;">
-          <div class="fs-head"><h3 style="font-size:15px;margin:0 0 4px;">VPD — תחנה מול FieldClimate</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
-          <p class="hint">
-            <span class="src-dot src-station"></span>תחנה (SHT3x) &nbsp;<span class="src-dot src-fc"></span>FieldClimate (ייחוס).
-            ההשוואה נעשית שעה מול שעה, רק בשעות שיש בהן נתון משני המקורות.
-            סטייה = (תחנה − FieldClimate) ÷ FieldClimate. פער מעל 15% מסומן באדום.
-          </p>
-          <div id="vpdStatus" class="hint"></div>
-          <div class="charts" style="margin:8px 0;">
-            <div class="chart-card">
-              <div class="fs-head"><h3>VPD שעתי (kPa)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
-              <p class="sub">ממוצע שעתי של התחנה מול הערך השעתי של FieldClimate</p>
-              <div class="chart-box"><canvas id="chVpd"></canvas></div>
-            </div>
-            <div class="chart-card">
-              <div class="fs-head"><h3>סטיית VPD יומית (%)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
-              <p class="sub">ממוצע יומי · שיא יומי · ממוצע הסטיות השעתיות בשעות היום (FieldClimate ≥ 0.5 kPa)</p>
-              <div class="chart-box"><canvas id="chVpdGap"></canvas></div>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table class="crm">
-              <thead>
-                <tr class="grp">
-                  <th></th><th></th>
-                  <th colspan="3">ממוצע יומי (kPa)</th>
-                  <th colspan="3">שיא יומי (kPa)</th>
-                  <th colspan="2">שעות היום</th>
-                </tr>
-                <tr>
-                  <th>תאריך</th><th title="שעות שיש בהן נתון משני המקורות">שעות</th>
-                  <th><span class="src-dot src-station"></span>תחנה</th><th><span class="src-dot src-fc"></span>FC</th><th>סטייה</th>
-                  <th><span class="src-dot src-station"></span>תחנה</th><th><span class="src-dot src-fc"></span>FC</th><th>סטייה</th>
-                  <th title="ממוצע הסטיות השעתיות (%) בשעות שבהן FieldClimate ≥ 0.5 kPa — בלילה VPD קרוב לאפס והאחוז מתנפח">סטייה ממוצעת</th>
-                  <th title="ממוצע ההפרש המוחלט השעתי, kPa">הפרש מוחלט kPa</th>
-                </tr>
-              </thead>
-              <tbody id="vpdBody"></tbody>
-            </table>
           </div>
         </div>
 
@@ -462,24 +487,38 @@
     }
 
     // ---- VPD: station SHT3x vs FieldClimate (TEMPORARY) ----
-    // FieldClimate labels an hourly value with the END of its hour, in Israel
-    // time ("2026-09-28 10:00" = 09:00–10:00). Station readings are bucketed the
-    // same way so the two series line up hour for hour.
-    const VPD_DAY_MIN = 0.5;   // below this the hourly % gap is noise (night)
-    const IL_HOUR = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hour: "2-digit", hour12: false });
-    function stationVpdHourly(readings) {
-      const acc = new Map();   // "YYYY-MM-DD HH" -> [sum, n]
+    // Both sources log every 5 minutes, so they are compared point for point:
+    // each station reading is paired with the FieldClimate reading nearest in
+    // time (within PAIR_TOL_MS). FieldClimate timestamps are Israel local time.
+    if (window.ChartZoom) Chart.register(window.ChartZoom);
+    const VPD_DAY_MIN = 0.5;          // below this the % gap is noise (night)
+    const PAIR_TOL_MS = 3 * 60000;
+    const GAP_BREAK_MS = 20 * 60000;  // a longer silence is drawn as a break
+    const HOUR = 3600000;
+
+    const IL_PARTS = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hourCycle: "h23",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    function ilOffsetMs(t) {
+      const p = Object.fromEntries(IL_PARTS.formatToParts(new Date(t)).map(x => [x.type, x.value]));
+      const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute);
+      return asUtc - Math.floor(t / 60000) * 60000;
+    }
+    function ilToMs(day, hhmm) {
+      const guess = Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), +hhmm.slice(0, 2), +hhmm.slice(2, 4));
+      return guess - ilOffsetMs(guess - ilOffsetMs(guess));
+    }
+    const fmtIL = (t, withDay) => {
+      const p = Object.fromEntries(IL_PARTS.formatToParts(new Date(t)).map(x => [x.type, x.value]));
+      return withDay ? `${p.day}/${p.month} ${p.hour}:${p.minute}` : `${p.hour}:${p.minute}`;
+    };
+
+    function stationVpdPoints(readings) {
+      const out = [];
       for (const { t, item } of readings) {
         const v = Number(item.vpd);
         if (item.vpd == null || !Number.isFinite(v) || v < 0 || v > 10) continue;
-        const end = new Date(t.getTime() + 3599999);
-        const key = `${ilDay(end)} ${IL_HOUR.format(end).replace("24", "00")}`;
-        const a = acc.get(key) || [0, 0];
-        a[0] += v; a[1]++;
-        acc.set(key, a);
+        out.push({ x: t.getTime(), y: v });
       }
-      const out = new Map();
-      for (const [k, [sum, n]] of acc) out.set(k, sum / n);
       return out;
     }
 
@@ -489,84 +528,232 @@
         { headers: { Authorization: "Bearer " + token } });
       const j = await resp.json().catch(() => ({}));
       if (!resp.ok || !j.ok) throw new Error(j.error || `HTTP ${resp.status}`);
-      const out = new Map();
-      for (const [day, hours] of Object.entries(j.byDay || {})) {
-        for (const [hh, v] of Object.entries(hours || {})) {
-          if (typeof v === "number") out.set(`${day} ${hh}`, v);
+      const out = [];
+      for (const [day, pts] of Object.entries(j.byDay || {})) {
+        for (const [hhmm, v] of Object.entries(pts || {})) {
+          if (typeof v === "number" && /^\d{4}$/.test(hhmm)) out.push({ x: ilToMs(day, hhmm), y: v });
         }
+      }
+      return out.sort((a, b) => a.x - b.x);
+    }
+
+    // Insert a null wherever the series goes quiet, so Chart.js breaks the line
+    // instead of drawing a straight bridge across the outage.
+    function withBreaks(pts) {
+      const out = [];
+      for (let i = 0; i < pts.length; i++) {
+        if (i && pts[i].x - pts[i - 1].x > GAP_BREAK_MS) out.push({ x: pts[i - 1].x + 1, y: null });
+        out.push(pts[i]);
       }
       return out;
     }
 
-    function summarizeVpd(days, st, fc) {
-      const byDay = new Map();
-      for (const day of days) {
-        const pairs = [];
-        for (let h = 0; h < 24; h++) {
-          const k = `${day} ${String(h).padStart(2, "0")}`;
-          if (st.has(k) && fc.has(k)) pairs.push({ s: st.get(k), f: fc.get(k) });
-        }
-        if (!pairs.length) { byDay.set(day, null); continue; }
-        const sMean = mean(pairs.map(p => p.s)), fMean = mean(pairs.map(p => p.f));
-        const sMax = Math.max(...pairs.map(p => p.s)), fMax = Math.max(...pairs.map(p => p.f));
-        const dayPairs = pairs.filter(p => p.f >= VPD_DAY_MIN);
-        byDay.set(day, {
-          n: pairs.length, sMean, fMean, sMax, fMax,
-          gapMean: relGap(sMean, fMean),
-          gapMax: relGap(sMax, fMax),
-          gapDay: dayPairs.length ? mean(dayPairs.map(p => (p.s - p.f) / p.f * 100)) : null,
-          mae: mean(pairs.map(p => Math.abs(p.s - p.f))),
-        });
+    function pairVpd(st, fc) {
+      const pairs = [];
+      let j = 0;
+      for (const p of st) {
+        while (j + 1 < fc.length && Math.abs(fc[j + 1].x - p.x) <= Math.abs(fc[j].x - p.x)) j++;
+        if (fc.length && Math.abs(fc[j].x - p.x) <= PAIR_TOL_MS) pairs.push({ x: p.x, s: p.y, f: fc[j].y });
       }
-      return byDay;
+      return pairs;
     }
 
-    function renderVpd(days, st, fc, byDay) {
-      const hourKeys = [];
-      for (const day of days) for (let h = 0; h < 24; h++) hourKeys.push(`${day} ${String(h).padStart(2, "0")}`);
-      // Trim empty hours at both ends so a range ending today doesn't draw a
-      // long blank tail.
-      const has = (k) => st.has(k) || fc.has(k);
-      let a = 0, b = hourKeys.length - 1;
-      while (a <= b && !has(hourKeys[a])) a++;
-      while (b >= a && !has(hourKeys[b])) b--;
-      const keys = hourKeys.slice(a, b + 1);
-      const L = keys.map(k => `${fmtDay(k.slice(0, 10))} ${k.slice(11)}:00`);
-      const val = (m, k) => m.has(k) ? m.get(k) : null;
-      drawLineChart("chVpd", L, [
-        { label: "תחנה", borderColor: C_ST, data: keys.map(k => val(st, k)), pointRadius: 0, spanGaps: false },
-        { label: "FieldClimate", borderColor: C_FC, data: keys.map(k => val(fc, k)), pointRadius: 0, spanGaps: false },
-      ], " kPa", 2, true);
+    function dailyVpd(days, pairs) {
+      const byDay = new Map();
+      for (const p of pairs) {
+        const d = ilDay(new Date(p.x));
+        if (!byDay.has(d)) byDay.set(d, []);
+        byDay.get(d).push(p);
+      }
+      return days.map(day => {
+        const ps = byDay.get(day);
+        if (!ps || !ps.length) return null;
+        const sMean = mean(ps.map(p => p.s)), fMean = mean(ps.map(p => p.f));
+        const sMax = Math.max(...ps.map(p => p.s)), fMax = Math.max(...ps.map(p => p.f));
+        return { day, sMean, fMean, sMax, fMax, gapMean: relGap(sMean, fMean), gapMax: relGap(sMax, fMax) };
+      }).filter(Boolean);
+    }
 
-      const DL = days.map(fmtDay);
-      const dcol = (f) => days.map(d => { const r = byDay.get(d); const v = r ? r[f] : null; return v == null || !Number.isFinite(v) ? null : v; });
-      drawLineChart("chVpdGap", DL, [
-        { label: "ממוצע יומי", borderColor: C_FC, data: dcol("gapMean") },
-        { label: "שיא יומי", borderColor: C_FC, borderDash: DASH, data: dcol("gapMax") },
-        { label: "שעות היום", borderColor: C_ST, borderDash: [2, 3], data: dcol("gapDay") },
-      ], "%", 1, false);
+    // Round-hour ticks in Israel time, spaced to give ~8 labels per window.
+    const TICK_STEPS = [0.5, 1, 2, 3, 6, 12, 24, 48].map(h => h * HOUR);
+    function timeTicks(scale) {
+      const span = scale.max - scale.min;
+      const step = TICK_STEPS.find(s => span / s <= 9) || 96 * HOUR;
+      const off = ilOffsetMs(scale.min);
+      const first = Math.ceil((scale.min + off) / step) * step - off;
+      const ticks = [];
+      for (let t = first; t <= scale.max; t += step) ticks.push({ value: t });
+      scale.ticks = ticks;
+    }
 
-      const body = document.getElementById("vpdBody");
-      const shown = [...days].reverse().filter(d => byDay.get(d));
-      body.innerHTML = shown.length ? shown.map(day => {
-        const r = byDay.get(day);
-        return `<tr>
-          <td>${fmtDay(day)}</td><td class="num">${r.n}</td>
+    const vpd = { charts: [], min: 0, max: 0, win: 24 * HOUR, pairs: [] };
+
+    function vpdXScale(showLabels) {
+      return {
+        type: "linear", min: vpd.min, max: vpd.max,
+        afterBuildTicks: timeTicks,
+        ticks: {
+          display: showLabels, maxRotation: 0, font: { size: 11 },
+          callback: (v) => {
+            const span = vpd.charts[0] ? vpd.charts[0].scales.x.max - vpd.charts[0].scales.x.min : vpd.win;
+            return fmtIL(v, span > 30 * HOUR || fmtIL(v) === "00:00");
+          },
+        },
+        grid: { color: (c) => fmtIL(c.tick.value) === "00:00" ? "rgba(0,0,0,0.25)" : "rgba(0,0,0,0.06)" },
+      };
+    }
+
+    function zoomOpts() {
+      return {
+        limits: { x: { min: vpd.min, max: vpd.max, minRange: HOUR } },
+        pan: { enabled: true, mode: "x", onPan: ({ chart }) => syncFrom(chart) },
+        zoom: { mode: "x", wheel: { enabled: true }, pinch: { enabled: true }, onZoom: ({ chart }) => syncFrom(chart) },
+      };
+    }
+
+    // Same y-axis width on both charts, so their time axes line up exactly.
+    const vpdYWidth = (scale) => { scale.width = 52; };
+
+    function tooltipOpts(unit, dec) {
+      return {
+        callbacks: {
+          title: (items) => items.length ? fmtIL(items[0].parsed.x, true) : "",
+          label: (c) => ` ${c.dataset.label}: ‎${c.parsed.y == null ? "—" : c.parsed.y.toFixed(dec)}${unit}`,
+        },
+      };
+    }
+
+    // Keep both charts, the scroll bar and the range label on one window.
+    let syncing = false;
+    function syncFrom(src) {
+      if (syncing) return;
+      syncing = true;
+      const { min, max } = src.scales.x;
+      for (const c of vpd.charts) {
+        if (c === src) continue;
+        c.options.scales.x.min = min; c.options.scales.x.max = max;
+        c.update("none");
+      }
+      syncing = false;
+      paintVpdNav(min, max);
+    }
+    function setVpdWindow(min, max) {
+      const w = Math.min(max - min, vpd.max - vpd.min);
+      min = Math.max(vpd.min, Math.min(min, vpd.max - w));
+      max = min + w;
+      for (const c of vpd.charts) {
+        c.options.scales.x.min = min; c.options.scales.x.max = max;
+        c.update("none");
+      }
+      paintVpdNav(min, max);
+    }
+    function paintVpdNav(min, max) {
+      const sc = document.getElementById("vpdScroll");
+      const room = (vpd.max - vpd.min) - (max - min);
+      sc.disabled = room <= 0;
+      sc.value = room > 0 ? Math.round((min - vpd.min) / room * 1000) : 1000;
+      document.getElementById("vpdRange").textContent = `${fmtIL(min, true)} — ${fmtIL(max, true)}`;
+      const w = max - min;
+      document.querySelectorAll("#vpdBar [data-win]").forEach(b => {
+        const bw = b.dataset.win === "all" ? vpd.max - vpd.min : +b.dataset.win * HOUR;
+        b.classList.toggle("on", Math.abs(bw - w) < 60000);
+      });
+      document.querySelectorAll("#vpdBody tr").forEach(tr => {
+        const d0 = ilToMs(tr.dataset.day, "0000");
+        tr.classList.toggle("sel", Math.abs(min - d0) < 60000 && w <= 24 * HOUR + 60000);
+      });
+    }
+
+    function renderVpd(days, st, fc) {
+      vpd.charts.forEach(c => c.destroy());
+      vpd.charts = [];
+      // The station fetch starts a day early (pulse-counter baseline); keep the
+      // timeline to the chosen range.
+      const t0 = ilToMs(days[0], "0000");
+      st = st.filter(p => p.x >= t0); fc = fc.filter(p => p.x >= t0);
+      vpd.pairs = pairVpd(st, fc);
+
+      const xs = [...st, ...fc].map(p => p.x);
+      vpd.min = xs.length ? Math.min(...xs) : Date.now() - 24 * HOUR;
+      vpd.max = xs.length ? Math.max(...xs) : Date.now();
+
+      const gapPts = withBreaks(vpd.pairs.map(p => ({ x: p.x, y: p.f >= VPD_DAY_MIN ? (p.s - p.f) / p.f * 100 : null })));
+      const common = { maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
+        interaction: { mode: "nearest", axis: "x", intersect: false } };
+
+      vpd.charts.push(new Chart(document.getElementById("chVpd"), {
+        type: "line",
+        data: { datasets: [
+          { label: "התחנה שלנו", borderColor: C_ST, backgroundColor: C_ST, data: withBreaks(st), borderWidth: 1.6, pointRadius: 0, tension: 0 },
+          { label: "FieldClimate", borderColor: C_FC, backgroundColor: C_FC, data: withBreaks(fc), borderWidth: 1.6, pointRadius: 0, tension: 0 },
+        ] },
+        options: { ...common,
+          plugins: { legend: { position: "top", align: "end", labels: { boxWidth: 18, boxHeight: 2, font: { size: 11 } } },
+                     tooltip: tooltipOpts(" kPa", 2), zoom: zoomOpts() },
+          scales: { x: vpdXScale(true), y: { beginAtZero: true, afterFit: vpdYWidth, ticks: { font: { size: 11 } }, grid: { color: "rgba(0,0,0,0.06)" } } },
+        },
+      }));
+      vpd.charts.push(new Chart(document.getElementById("chVpdGap"), {
+        type: "line",
+        data: { datasets: [
+          { label: "סטייה", borderColor: C_FC, backgroundColor: "rgba(224,123,36,0.12)", fill: "origin",
+            data: gapPts, borderWidth: 1.4, pointRadius: 0, tension: 0 },
+        ] },
+        options: { ...common,
+          plugins: { legend: { display: false }, tooltip: tooltipOpts("%", 1), zoom: zoomOpts() },
+          scales: { x: vpdXScale(true),
+            y: { suggestedMin: -30, suggestedMax: 30, afterFit: vpdYWidth, ticks: { font: { size: 11 }, callback: (v) => "‎" + v + "%" },
+                 grid: { color: (c) => c.tick.value === 0 ? "rgba(0,0,0,0.4)" : Math.abs(c.tick.value) === GAP_ALERT ? "rgba(217,45,32,0.35)" : "rgba(0,0,0,0.06)" } } },
+        },
+      }));
+
+      const rows = dailyVpd(days, vpd.pairs).reverse();
+      document.getElementById("vpdBody").innerHTML = rows.length ? rows.map(r => `<tr data-day="${r.day}">
+          <td>${fmtDay(r.day)}</td>
           <td class="num">${fmt(r.sMean, 2)}</td><td class="num">${fmt(r.fMean, 2)}</td><td class="num">${fmtGap(r.gapMean)}</td>
           <td class="num">${fmt(r.sMax, 2)}</td><td class="num">${fmt(r.fMax, 2)}</td><td class="num">${fmtGap(r.gapMax)}</td>
-          <td class="num">${fmtGap(r.gapDay)}</td><td class="num" dir="ltr">${fmt(r.mae, 2)}</td>
-        </tr>`;
-      }).join("") : `<tr><td colspan="10" class="no-data">אין שעות עם נתון משני המקורות בטווח שנבחר</td></tr>`;
+        </tr>`).join("") : `<tr><td colspan="7" class="no-data">אין נקודות משותפות לשני המקורות בטווח שנבחר</td></tr>`;
 
-      // Whole-range summary over every paired hour.
-      const all = keys.filter(k => st.has(k) && fc.has(k));
-      const sAll = mean(all.map(k => st.get(k))), fAll = mean(all.map(k => fc.get(k)));
-      const dayAll = all.filter(k => fc.get(k) >= VPD_DAY_MIN).map(k => (st.get(k) - fc.get(k)) / fc.get(k) * 100);
-      document.getElementById("vpdStatus").innerHTML = all.length
-        ? `${all.length} שעות משותפות · ממוצע תחנה ${fmt(sAll, 2)} מול FieldClimate ${fmt(fAll, 2)} kPa · ` +
-          `סטייה כוללת ${fmtGap(relGap(sAll, fAll))} · בשעות היום ${fmtGap(mean(dayAll))}`
-        : `אין שעות משותפות (תחנה: ${st.size} שעות, FieldClimate: ${fc.size} שעות)`;
+      // Start on the last day of the range (after the table, so its row lights up).
+      setVpdWindow(vpd.max - vpd.win, vpd.max);
+
+      const ps = vpd.pairs, day = ps.filter(p => p.f >= VPD_DAY_MIN);
+      const sAll = mean(ps.map(p => p.s)), fAll = mean(ps.map(p => p.f));
+      document.getElementById("vpdStatus").innerHTML = ps.length
+        ? `בכל הטווח: ממוצע התחנה <b>${fmt(sAll, 2)}</b> מול FieldClimate <b>${fmt(fAll, 2)}</b> kPa — סטייה ${fmtGap(relGap(sAll, fAll))}` +
+          (day.length ? ` · בשעות היום ${fmtGap(relGap(mean(day.map(p => p.s)), mean(day.map(p => p.f))))}` : "") +
+          ` <span class="muted">(${ps.length} נקודות משותפות)</span>`
+        : `אין נקודות משותפות (תחנה: ${st.length} קריאות, FieldClimate: ${fc.length} קריאות)`;
     }
+
+    document.getElementById("vpdBar").addEventListener("click", (ev) => {
+      const b = ev.target.closest("button");
+      if (!b || !vpd.charts.length) return;
+      const { min, max } = vpd.charts[0].scales.x;
+      if (b.dataset.win) {
+        const w = b.dataset.win === "all" ? vpd.max - vpd.min : +b.dataset.win * HOUR;
+        vpd.win = w;
+        const mid = (min + max) / 2;
+        setVpdWindow(mid - w / 2, mid + w / 2);
+      } else if (b.dataset.step) {
+        const w = max - min;
+        setVpdWindow(min + Math.sign(+b.dataset.step) * w * 0.8, max + Math.sign(+b.dataset.step) * w * 0.8);
+      }
+    });
+    document.getElementById("vpdScroll").addEventListener("input", (ev) => {
+      if (!vpd.charts.length) return;
+      const { min, max } = vpd.charts[0].scales.x;
+      const w = max - min, room = (vpd.max - vpd.min) - w;
+      const a = vpd.min + room * (+ev.target.value / 1000);
+      setVpdWindow(a, a + w);
+    });
+    document.getElementById("vpdBody").addEventListener("click", (ev) => {
+      const tr = ev.target.closest("tr[data-day]");
+      if (!tr) return;
+      const a = ilToMs(tr.dataset.day, "0000");
+      setVpdWindow(a, Math.min(a + 24 * HOUR, vpd.max));
+      document.getElementById("chVpd").scrollIntoView({ behavior: "smooth", block: "center" });
+    });
 
     // ---- gaps vs. the manual measurement (the field reference) ----
     // EC/pH: relative gap (source − manual) ÷ manual. Drain is already a percent,
@@ -750,7 +937,7 @@
       const fcP = fetchFcVpd(pair.stationId, from, to).catch(e => {
         console.error("fieldclimate", e);
         warn.push(`FieldClimate VPD: ${e.message}`);
-        return new Map();
+        return [];
       });
       const [manual, station, calib, fcVpd] = await Promise.all([
         fetchManual(pair.code, days).catch(e => {
@@ -761,8 +948,8 @@
           return new Map();
         }),
         Promise.all([loadMlPerPulse(pair.stationId), fetchStation(pair.stationId, from, to), calibP])
-          .then(([ml, readings, cal]) => ({ ml, n: readings.length, byDay: summarizeStation(readings, ml, makeCalibrator(cal, pair.fields)), vpd: stationVpdHourly(readings) }))
-          .catch(e => { console.error("station", e); warn.push(`תחנה: ${e.message}`); return { ml: null, n: 0, byDay: new Map(), vpd: new Map() }; }),
+          .then(([ml, readings, cal]) => ({ ml, n: readings.length, byDay: summarizeStation(readings, ml, makeCalibrator(cal, pair.fields)), vpd: stationVpdPoints(readings) }))
+          .catch(e => { console.error("station", e); warn.push(`תחנה: ${e.message}`); return { ml: null, n: 0, byDay: new Map(), vpd: [] }; }),
         calibP,
         fcP,
       ]);
@@ -784,7 +971,7 @@
       renderTable(days, rows);
 
       document.getElementById("vpdCard").style.display = "";
-      renderVpd(days, station.vpd, fcVpd, summarizeVpd(days, station.vpd, fcVpd));
+      renderVpd(days, station.vpd, fcVpd);
 
       document.getElementById("dayBody").onclick = (ev) => {
         const tr = ev.target.closest("tr.day-row");
@@ -807,8 +994,10 @@
       document.body.classList.toggle("fs-lock", on);
       const btn = card.querySelector(".fs-btn");
       if (btn) { btn.textContent = on ? "✕" : "⛶"; btn.title = on ? "סגור" : "מסך מלא"; }
-      const canvas = card.querySelector("canvas");
-      if (canvas && charts[canvas.id]) requestAnimationFrame(() => charts[canvas.id].resize());
+      requestAnimationFrame(() => card.querySelectorAll("canvas").forEach(cv => {
+        const ch = charts[cv.id] || Chart.getChart(cv);
+        if (ch) ch.resize();
+      }));
     }
     document.addEventListener("click", (ev) => {
       const btn = ev.target.closest(".fs-btn");
@@ -819,7 +1008,7 @@
       }
       // A click on a chart opens it full screen (not on the table — rows expand there).
       const box = ev.target.closest(".chart-box");
-      if (box && !box.closest(".fs-open")) setFullscreen(box.closest(".chart-card"), true);
+      if (box && !box.closest(".fs-open") && box.closest(".chart-card")) setFullscreen(box.closest(".chart-card"), true);
     });
     document.addEventListener("keydown", (ev) => {
       const open = document.querySelector(".fs-open");
