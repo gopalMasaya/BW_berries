@@ -216,6 +216,96 @@ async function readVpd(db, stationId, fcStationId) {
   }
 }
 
+// --------------------------------------------------------- VPD history ----
+//
+// Hourly VPD over a date range, for the compare page (station SHT3x vs
+// FieldClimate). FieldClimate dates are station-local ("YYYY-MM-DD HH:mm:ss",
+// Israel time here) and an hourly value is labelled with the END of its hour.
+//
+// Completed days never change, so each is cached under
+// /berries/{stationId}/fieldclimate/hourly/{YYYY-MM-DD} = {HH: vpd} and only the
+// missing ones (plus today) are fetched -- in a single range call, so a page
+// load spends at most one request of the 48/day budget.
+
+async function fetchVpdRange(fcStationId, fromSec, toSec) {
+  const data = await apiGet("/data/" + fcStationId + "/hourly/from/" + fromSec + "/to/" + toSec);
+  const sensors = Array.isArray(data.data) ? data.data : [];
+  const dates = Array.isArray(data.dates) ? data.dates : [];
+
+  const pick = (unit, re, code, ch) => pickChannel(sensors, unit, re, code, ch);
+  const vpdS = pick("kPa", /^vpd$/i, process.env.FC_VPD_CODE, process.env.FC_VPD_CH);
+  const tS = pick("C", /air.*temp|temp.*air|^temperature$/i, process.env.FC_TEMP_CODE, process.env.FC_TEMP_CH);
+  const rhS = pick("%", /humidit|relative|\brh\b/i, process.env.FC_RH_CODE, process.env.FC_RH_CH);
+  const series = (sen) => {
+    const v = sen && sen.values && sen.values.avg;
+    return Array.isArray(v) ? v : [];
+  };
+  const vpdA = series(vpdS), tA = series(tS), rhA = series(rhS);
+
+  const byDay = {};
+  dates.forEach((d, i) => {
+    const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2})/.exec(String(d));
+    if (!m) return;
+    let v = typeof vpdA[i] === "number" ? vpdA[i] : null;
+    if (v === null && typeof tA[i] === "number" && typeof rhA[i] === "number") {
+      v = computeVpd(tA[i], rhA[i]);
+    }
+    if (v === null) return;
+    (byDay[m[1]] = byDay[m[1]] || {})[m[2]] = Number(v.toFixed(3));
+  });
+  return byDay;
+}
+
+function ilDayKey(date) {
+  return new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Jerusalem",
+    year: "numeric", month: "2-digit", day: "2-digit"}).format(date);
+}
+
+async function readVpdHistory(db, stationId, fcStationId, fromDay, toDay) {
+  const cacheRef = db.ref("/berries/" + stationId + "/fieldclimate/hourly");
+  const today = ilDayKey(new Date());
+
+  const days = [];
+  for (let d = new Date(fromDay + "T12:00:00Z"); ; d.setUTCDate(d.getUTCDate() + 1)) {
+    const k = d.toISOString().slice(0, 10);
+    if (k > toDay || k > today) break;
+    days.push(k);
+  }
+
+  const out = {};
+  const missing = [];
+  await Promise.all(days.map(async (k) => {
+    const v = k < today ? (await cacheRef.child(k).get()).val() : null;
+    if (v) out[k] = v;
+    else missing.push(k);
+  }));
+  if (!missing.length) return {byDay: out, fetched: false};
+
+  missing.sort();
+  // A day padded on both sides covers the Israel/UTC offset either way.
+  const fromSec = Math.floor(Date.parse(missing[0] + "T00:00:00Z") / 1000) - 86400;
+  const toSec = Math.min(Math.floor(Date.now() / 1000),
+      Math.floor(Date.parse(missing[missing.length - 1] + "T23:59:59Z") / 1000) + 86400);
+  const fresh = await fetchVpdRange(fcStationId, fromSec, toSec);
+
+  const writes = {};
+  for (const k of missing) {
+    const hours = fresh[k];
+    if (!hours) continue;
+    out[k] = hours;
+    // Cache only a finished day that FieldClimate has filled in.
+    if (k < today && Object.keys(hours).length >= 20) writes[k] = hours;
+  }
+  if (Object.keys(writes).length) {
+    try {
+      await cacheRef.update(writes);
+    } catch (err) {
+      logger.warn("vpd history cache write failed", {stationId, err: err.message});
+    }
+  }
+  return {byDay: out, fetched: true};
+}
+
 /**
  * Turn a VPD reading into a relay decision, with hysteresis.
  *
@@ -284,4 +374,4 @@ async function decideVpd(db, stationId, reading, cfg) {
   return {high, fire};
 }
 
-module.exports = {computeVpd, fetchVpd, readVpd, decideVpd, apiGet};
+module.exports = {computeVpd, fetchVpd, readVpd, readVpdHistory, decideVpd, apiGet};

@@ -306,6 +306,47 @@ async function vpdHandler(req, res) {
 app.get("/vpd", vpdHandler);
 app.get("/api/vpd", vpdHandler);
 
+// Hourly FieldClimate VPD for a date range -- TEMPORARY, feeds the station-vs-
+// FieldClimate comparison on compare.html. Same auth as /api/vpd.
+app.get("/api/vpd-history", async (req, res) => {
+  try {
+    const m = /^Bearer (.+)$/.exec(req.get("Authorization") || "");
+    if (!m) return res.status(401).json({ok: false, error: "missing id token"});
+    try {
+      await admin.auth().verifyIdToken(m[1]);
+    } catch (err) {
+      return res.status(401).json({ok: false, error: "invalid id token"});
+    }
+
+    const stationId = String(req.query.stationId || "");
+    if (!DEVICE_SECRETS[stationId]) {
+      return res.status(400).json({ok: false, error: "unknown stationId"});
+    }
+    const from = String(req.query.from || ""), to = String(req.query.to || "");
+    const dayRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dayRe.test(from) || !dayRe.test(to) || from > to) {
+      return res.status(400).json({ok: false, error: "bad from/to"});
+    }
+    if ((Date.parse(to) - Date.parse(from)) / 86400000 > 62) {
+      return res.status(400).json({ok: false, error: "range too long (max 62 days)"});
+    }
+
+    const configSnap = await admin.database()
+        .ref(`/berries/${stationId}/control/wateringConfig`).get();
+    const config = configSnap.val() || {};
+    const fcStationId = config.fcStationId || process.env.FC_STATION_ID || "";
+    if (!fcStationId) {
+      return res.status(200).json({ok: false, error: "no fieldclimate station configured"});
+    }
+
+    const h = await fc.readVpdHistory(admin.database(), stationId, fcStationId, from, to);
+    return res.status(200).json(Object.assign({ok: true, stationId, fcStationId}, h));
+  } catch (err) {
+    logger.error("vpd-history failed", err);
+    return res.status(500).json({ok: false, error: err.message});
+  }
+});
+
 // ===================== LOGIN ACCOUNT PROVISIONING =====================
 // Adding a user in workers.html only writes an allowedPhones record -- the
 // pre-registration. With SMS that is enough, because Firebase creates the Auth

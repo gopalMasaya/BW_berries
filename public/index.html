@@ -319,6 +319,13 @@
     .station-square .sq-vpdbox .vb-value{ font-size:40px; font-weight:800; line-height:1.05; }
     .station-square .sq-vpdbox .vb-value span{ font-size:17px; font-weight:600; margin-inline-start:5px; }
     .station-square .sq-vpdbox .vb-meta{ font-size:12.5px; color:var(--muted); margin-top:3px; }
+    /* TEMPORARY (FieldClimate comparison): the box splits into two columns,
+       our SHT3x on one side and FieldClimate on the other, with the gap below.
+       Remove with FC_VPD_COMPARE in the script. */
+    .station-square .sq-vpdbox .vb-cols{ display:flex; gap:22px; justify-content:center; align-items:flex-start; }
+    .station-square .sq-vpdbox .vb-col + .vb-col{ border-inline-start:1px solid var(--border, #e4e7ec); padding-inline-start:22px; }
+    .station-square .sq-vpdbox .vb-src{ font-size:11.5px; font-weight:700; opacity:0.8; }
+    .station-square .sq-vpdbox .vb-gap{ font-size:13px; font-weight:700; margin-top:6px; color:#344054; }
     /* Valve position badge. The same markup is used on the dark station list and
        on the light squares card, so it carries its own background and ink rather
        than inheriting either theme's. */
@@ -1340,6 +1347,43 @@
 
     renderStationList();
     paintVpdIntoSquares();
+    if (FC_VPD_COMPARE) refreshFcVpd();
+  }
+
+  // ===============================
+  // TEMPORARY: FieldClimate VPD beside the station's own, for comparison.
+  // Set FC_VPD_COMPARE to false (or delete this block and the vb-cols CSS)
+  // once the SHT3x has been trusted. /api/vpd shares the 30-minute RTDB cache
+  // with the watering path, so polling it every 10 minutes costs no extra
+  // FieldClimate calls beyond one per half hour.
+  // ===============================
+  const FC_VPD_COMPARE = true;
+  const FC_VPD_POLL_MS = 10 * 60 * 1000;
+  const fcVpdByDevice = {};   // deviceId -> {vpd, tempC, rh, ageSec} | null
+  let fcVpdLastMs = 0, fcVpdInFlight = false;
+
+  async function refreshFcVpd(){
+    if (fcVpdInFlight || Date.now() - fcVpdLastMs < FC_VPD_POLL_MS) return;
+    const user = auth.currentUser;
+    if (!user) return;
+    fcVpdInFlight = true;
+    try {
+      const token = await user.getIdToken();
+      await Promise.all(STATIONS.map(async st => {
+        try {
+          const resp = await fetch("/api/vpd?stationId=" + encodeURIComponent(st.deviceId),
+            { headers: { Authorization: "Bearer " + token } });
+          const j = await resp.json();
+          fcVpdByDevice[st.deviceId] = (j && j.ok && typeof j.vpd === "number") ? j : null;
+        } catch (e) {
+          console.warn("fieldclimate vpd", st.deviceId, e);
+        }
+      }));
+      fcVpdLastMs = Date.now();
+    } finally {
+      fcVpdInFlight = false;
+    }
+    paintVpdIntoSquares();
   }
 
   // ===============================
@@ -1433,9 +1477,11 @@
       const box = el.querySelector(".sq-vpdbox");
       if (!box) return;
       const r = vpdByDevice[el.dataset.device];
+      const fc = FC_VPD_COMPARE ? fcVpdByDevice[el.dataset.device] : null;
 
       // Explicit "none"/"block", never "" -- see the CSS note on .sq-vpdbox.
-      if (!r){ box.style.display = "none"; box.innerHTML = ""; return; }
+      if (!r && !fc){ box.style.display = "none"; box.innerHTML = ""; return; }
+      if (FC_VPD_COMPARE){ paintVpdCompare(box, r, fc); return; }
 
       const age = Number.isFinite(r.ageSec) ? Math.round(r.ageSec / 60) : null;
       const air = (typeof r.tempC === "number" && typeof r.rh === "number") ?
@@ -1449,6 +1495,34 @@
         `<div class="vb-value">${r.vpd.toFixed(2)}<span>kPa</span></div>` +
         `<div class="vb-meta">${[air, when].filter(Boolean).join(" · ")}</div>`;
     });
+  }
+
+  // TEMPORARY (FC_VPD_COMPARE): station and FieldClimate side by side, with the
+  // station's deviation from FieldClimate as a percentage.
+  function paintVpdCompare(box, r, fc){
+    const fmtAir = (t, h) => (typeof t === "number" && typeof h === "number") ?
+      `${Number(t).toFixed(1)}°C · ${Math.round(h)}%` : "";
+    const fmtAge = (sec) => Number.isFinite(sec) ? `לפני ${Math.round(sec / 60)} דק׳` : "";
+    const col = (label, x) => {
+      if (!x) return `<div class="vb-col"><div class="vb-src">${label}</div>` +
+        `<div class="vb-value" style="color:var(--muted)">—</div></div>`;
+      return `<div class="vb-col" style="color:${vpdToneLight(x.vpd)}">` +
+        `<div class="vb-src">${label}</div>` +
+        `<div class="vb-value">${x.vpd.toFixed(2)}<span>kPa</span></div>` +
+        `<div class="vb-meta">${[fmtAir(x.tempC, x.rh), fmtAge(x.ageSec)].filter(Boolean).join(" · ")}</div>` +
+        `</div>`;
+    };
+    let gap = "";
+    if (r && fc && fc.vpd > 0){
+      const pct = (r.vpd - fc.vpd) / fc.vpd * 100;
+      gap = `<div class="vb-gap">סטייה מ-FieldClimate: <span dir="ltr">${pct > 0 ? "+" : ""}${pct.toFixed(1)}%</span>` +
+            ` (<span dir="ltr">${r.vpd - fc.vpd > 0 ? "+" : ""}${(r.vpd - fc.vpd).toFixed(2)}</span> kPa)</div>`;
+    }
+    box.style.color = r ? vpdToneLight(r.vpd) : "#667085";
+    box.style.display = "block";
+    box.innerHTML =
+      `<div class="vb-label">VPD</div>` +
+      `<div class="vb-cols">${col("תחנה", r)}${col("FieldClimate", fc)}</div>` + gap;
   }
 
   // ===============================
