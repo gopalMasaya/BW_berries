@@ -13,6 +13,7 @@
     :root {
       --src-station: #2a78d6;
       --src-manual:  #1baf7a;
+      --src-fc:      #e07b24;   /* FieldClimate (VPD comparison only) */
     }
     .filters { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px; }
     .filters .field { margin:0; min-width:130px; }
@@ -24,6 +25,7 @@
     .src-dot { display:inline-block; width:10px; height:10px; border-radius:50%; vertical-align:middle; margin-inline-end:4px; }
     .src-station { background:var(--src-station); }
     .src-manual  { background:var(--src-manual); }
+    .src-fc      { background:var(--src-fc); }
 
     .charts { display:grid; grid-template-columns:repeat(auto-fit, minmax(420px, 1fr)); gap:16px; margin:16px 0; }
     @media (max-width: 520px) { .charts { grid-template-columns:1fr; } }
@@ -131,6 +133,50 @@
             <div class="fs-head"><h3>פער מול המדידה הידנית (%)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
             <p class="sub">EC / pH: (תחנה − ידני) ÷ ידני · נקז: אחוז נקז בתחנה פחות אחוז נקז ידני</p>
             <div class="chart-box"><canvas id="chGap"></canvas></div>
+          </div>
+        </div>
+
+        <!-- TEMPORARY: station SHT3x VPD vs FieldClimate. Remove this block and
+             the "VPD" section of the script once the comparison is done. -->
+        <div class="card" id="vpdCard" style="display:none;">
+          <div class="fs-head"><h3 style="font-size:15px;margin:0 0 4px;">VPD — תחנה מול FieldClimate</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
+          <p class="hint">
+            <span class="src-dot src-station"></span>תחנה (SHT3x) &nbsp;<span class="src-dot src-fc"></span>FieldClimate (ייחוס).
+            ההשוואה נעשית שעה מול שעה, רק בשעות שיש בהן נתון משני המקורות.
+            סטייה = (תחנה − FieldClimate) ÷ FieldClimate. פער מעל 15% מסומן באדום.
+          </p>
+          <div id="vpdStatus" class="hint"></div>
+          <div class="charts" style="margin:8px 0;">
+            <div class="chart-card">
+              <div class="fs-head"><h3>VPD שעתי (kPa)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
+              <p class="sub">ממוצע שעתי של התחנה מול הערך השעתי של FieldClimate</p>
+              <div class="chart-box"><canvas id="chVpd"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="fs-head"><h3>סטיית VPD יומית (%)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
+              <p class="sub">ממוצע יומי · שיא יומי · ממוצע הסטיות השעתיות בשעות היום (FieldClimate ≥ 0.5 kPa)</p>
+              <div class="chart-box"><canvas id="chVpdGap"></canvas></div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="crm">
+              <thead>
+                <tr class="grp">
+                  <th></th><th></th>
+                  <th colspan="3">ממוצע יומי (kPa)</th>
+                  <th colspan="3">שיא יומי (kPa)</th>
+                  <th colspan="2">שעות היום</th>
+                </tr>
+                <tr>
+                  <th>תאריך</th><th title="שעות שיש בהן נתון משני המקורות">שעות</th>
+                  <th><span class="src-dot src-station"></span>תחנה</th><th><span class="src-dot src-fc"></span>FC</th><th>סטייה</th>
+                  <th><span class="src-dot src-station"></span>תחנה</th><th><span class="src-dot src-fc"></span>FC</th><th>סטייה</th>
+                  <th title="ממוצע הסטיות השעתיות (%) בשעות שבהן FieldClimate ≥ 0.5 kPa — בלילה VPD קרוב לאפס והאחוז מתנפח">סטייה ממוצעת</th>
+                  <th title="ממוצע ההפרש המוחלט השעתי, kPa">הפרש מוחלט kPa</th>
+                </tr>
+              </thead>
+              <tbody id="vpdBody"></tbody>
+            </table>
           </div>
         </div>
 
@@ -415,6 +461,113 @@
           <tbody>${rows}</tbody></table>` : `<div class="muted">${notes || "אין נתוני כיול"}</div>`;
     }
 
+    // ---- VPD: station SHT3x vs FieldClimate (TEMPORARY) ----
+    // FieldClimate labels an hourly value with the END of its hour, in Israel
+    // time ("2026-09-28 10:00" = 09:00–10:00). Station readings are bucketed the
+    // same way so the two series line up hour for hour.
+    const VPD_DAY_MIN = 0.5;   // below this the hourly % gap is noise (night)
+    const IL_HOUR = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hour: "2-digit", hour12: false });
+    function stationVpdHourly(readings) {
+      const acc = new Map();   // "YYYY-MM-DD HH" -> [sum, n]
+      for (const { t, item } of readings) {
+        const v = Number(item.vpd);
+        if (item.vpd == null || !Number.isFinite(v) || v < 0 || v > 10) continue;
+        const end = new Date(t.getTime() + 3599999);
+        const key = `${ilDay(end)} ${IL_HOUR.format(end).replace("24", "00")}`;
+        const a = acc.get(key) || [0, 0];
+        a[0] += v; a[1]++;
+        acc.set(key, a);
+      }
+      const out = new Map();
+      for (const [k, [sum, n]] of acc) out.set(k, sum / n);
+      return out;
+    }
+
+    async function fetchFcVpd(stationId, from, to) {
+      const token = await user.getIdToken();
+      const resp = await fetch(`/api/vpd-history?stationId=${encodeURIComponent(stationId)}&from=${from}&to=${to}`,
+        { headers: { Authorization: "Bearer " + token } });
+      const j = await resp.json().catch(() => ({}));
+      if (!resp.ok || !j.ok) throw new Error(j.error || `HTTP ${resp.status}`);
+      const out = new Map();
+      for (const [day, hours] of Object.entries(j.byDay || {})) {
+        for (const [hh, v] of Object.entries(hours || {})) {
+          if (typeof v === "number") out.set(`${day} ${hh}`, v);
+        }
+      }
+      return out;
+    }
+
+    function summarizeVpd(days, st, fc) {
+      const byDay = new Map();
+      for (const day of days) {
+        const pairs = [];
+        for (let h = 0; h < 24; h++) {
+          const k = `${day} ${String(h).padStart(2, "0")}`;
+          if (st.has(k) && fc.has(k)) pairs.push({ s: st.get(k), f: fc.get(k) });
+        }
+        if (!pairs.length) { byDay.set(day, null); continue; }
+        const sMean = mean(pairs.map(p => p.s)), fMean = mean(pairs.map(p => p.f));
+        const sMax = Math.max(...pairs.map(p => p.s)), fMax = Math.max(...pairs.map(p => p.f));
+        const dayPairs = pairs.filter(p => p.f >= VPD_DAY_MIN);
+        byDay.set(day, {
+          n: pairs.length, sMean, fMean, sMax, fMax,
+          gapMean: relGap(sMean, fMean),
+          gapMax: relGap(sMax, fMax),
+          gapDay: dayPairs.length ? mean(dayPairs.map(p => (p.s - p.f) / p.f * 100)) : null,
+          mae: mean(pairs.map(p => Math.abs(p.s - p.f))),
+        });
+      }
+      return byDay;
+    }
+
+    function renderVpd(days, st, fc, byDay) {
+      const hourKeys = [];
+      for (const day of days) for (let h = 0; h < 24; h++) hourKeys.push(`${day} ${String(h).padStart(2, "0")}`);
+      // Trim empty hours at both ends so a range ending today doesn't draw a
+      // long blank tail.
+      const has = (k) => st.has(k) || fc.has(k);
+      let a = 0, b = hourKeys.length - 1;
+      while (a <= b && !has(hourKeys[a])) a++;
+      while (b >= a && !has(hourKeys[b])) b--;
+      const keys = hourKeys.slice(a, b + 1);
+      const L = keys.map(k => `${fmtDay(k.slice(0, 10))} ${k.slice(11)}:00`);
+      const val = (m, k) => m.has(k) ? m.get(k) : null;
+      drawLineChart("chVpd", L, [
+        { label: "תחנה", borderColor: C_ST, data: keys.map(k => val(st, k)), pointRadius: 0, spanGaps: false },
+        { label: "FieldClimate", borderColor: C_FC, data: keys.map(k => val(fc, k)), pointRadius: 0, spanGaps: false },
+      ], " kPa", 2, true);
+
+      const DL = days.map(fmtDay);
+      const dcol = (f) => days.map(d => { const r = byDay.get(d); const v = r ? r[f] : null; return v == null || !Number.isFinite(v) ? null : v; });
+      drawLineChart("chVpdGap", DL, [
+        { label: "ממוצע יומי", borderColor: C_FC, data: dcol("gapMean") },
+        { label: "שיא יומי", borderColor: C_FC, borderDash: DASH, data: dcol("gapMax") },
+        { label: "שעות היום", borderColor: C_ST, borderDash: [2, 3], data: dcol("gapDay") },
+      ], "%", 1, false);
+
+      const body = document.getElementById("vpdBody");
+      const shown = [...days].reverse().filter(d => byDay.get(d));
+      body.innerHTML = shown.length ? shown.map(day => {
+        const r = byDay.get(day);
+        return `<tr>
+          <td>${fmtDay(day)}</td><td class="num">${r.n}</td>
+          <td class="num">${fmt(r.sMean, 2)}</td><td class="num">${fmt(r.fMean, 2)}</td><td class="num">${fmtGap(r.gapMean)}</td>
+          <td class="num">${fmt(r.sMax, 2)}</td><td class="num">${fmt(r.fMax, 2)}</td><td class="num">${fmtGap(r.gapMax)}</td>
+          <td class="num">${fmtGap(r.gapDay)}</td><td class="num" dir="ltr">${fmt(r.mae, 2)}</td>
+        </tr>`;
+      }).join("") : `<tr><td colspan="10" class="no-data">אין שעות עם נתון משני המקורות בטווח שנבחר</td></tr>`;
+
+      // Whole-range summary over every paired hour.
+      const all = keys.filter(k => st.has(k) && fc.has(k));
+      const sAll = mean(all.map(k => st.get(k))), fAll = mean(all.map(k => fc.get(k)));
+      const dayAll = all.filter(k => fc.get(k) >= VPD_DAY_MIN).map(k => (st.get(k) - fc.get(k)) / fc.get(k) * 100);
+      document.getElementById("vpdStatus").innerHTML = all.length
+        ? `${all.length} שעות משותפות · ממוצע תחנה ${fmt(sAll, 2)} מול FieldClimate ${fmt(fAll, 2)} kPa · ` +
+          `סטייה כוללת ${fmtGap(relGap(sAll, fAll))} · בשעות היום ${fmtGap(mean(dayAll))}`
+        : `אין שעות משותפות (תחנה: ${st.size} שעות, FieldClimate: ${fc.size} שעות)`;
+    }
+
     // ---- gaps vs. the manual measurement (the field reference) ----
     // EC/pH: relative gap (source − manual) ÷ manual. Drain is already a percent,
     // so its gap is the plain difference in percentage points.
@@ -477,7 +630,7 @@
       });
     }
 
-    const C_ST = "#2a78d6", C_MAN = "#1baf7a";
+    const C_ST = "#2a78d6", C_MAN = "#1baf7a", C_FC = "#e07b24";
     const DASH = [6, 4];
 
     function renderCharts(days, rows) {
@@ -594,7 +747,12 @@
       // Each source fails independently so one outage doesn't blank the others.
       const warn = [];
       const calibP = fetchCalibration(pair.stationId).catch(e => { console.error("calibration", e); return new Map(); });
-      const [manual, station, calib] = await Promise.all([
+      const fcP = fetchFcVpd(pair.stationId, from, to).catch(e => {
+        console.error("fieldclimate", e);
+        warn.push(`FieldClimate VPD: ${e.message}`);
+        return new Map();
+      });
+      const [manual, station, calib, fcVpd] = await Promise.all([
         fetchManual(pair.code, days).catch(e => {
           console.error("manual", e);
           warn.push(e.code === "auth/admin-restricted-operation" || e.code === "auth/operation-not-allowed"
@@ -603,9 +761,10 @@
           return new Map();
         }),
         Promise.all([loadMlPerPulse(pair.stationId), fetchStation(pair.stationId, from, to), calibP])
-          .then(([ml, readings, cal]) => ({ ml, n: readings.length, byDay: summarizeStation(readings, ml, makeCalibrator(cal, pair.fields)) }))
-          .catch(e => { console.error("station", e); warn.push(`תחנה: ${e.message}`); return { ml: null, n: 0, byDay: new Map() }; }),
+          .then(([ml, readings, cal]) => ({ ml, n: readings.length, byDay: summarizeStation(readings, ml, makeCalibrator(cal, pair.fields)), vpd: stationVpdHourly(readings) }))
+          .catch(e => { console.error("station", e); warn.push(`תחנה: ${e.message}`); return { ml: null, n: 0, byDay: new Map(), vpd: new Map() }; }),
         calibP,
+        fcP,
       ]);
       btn.disabled = false; btn.textContent = "טען";
       if (seq !== loadSeq) return;
@@ -623,6 +782,9 @@
       document.getElementById("tableCard").style.display = "";
       renderCharts(days, rows);
       renderTable(days, rows);
+
+      document.getElementById("vpdCard").style.display = "";
+      renderVpd(days, station.vpd, fcVpd, summarizeVpd(days, station.vpd, fcVpd));
 
       document.getElementById("dayBody").onclick = (ev) => {
         const tr = ev.target.closest("tr.day-row");
