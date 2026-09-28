@@ -218,17 +218,18 @@ async function readVpd(db, stationId, fcStationId) {
 
 // --------------------------------------------------------- VPD history ----
 //
-// Hourly VPD over a date range, for the compare page (station SHT3x vs
+// Raw (5-minute) VPD over a date range, for the compare page (station SHT3x vs
 // FieldClimate). FieldClimate dates are station-local ("YYYY-MM-DD HH:mm:ss",
-// Israel time here) and an hourly value is labelled with the END of its hour.
+// Israel time here). The station logs every 5 minutes, same as ours, so the
+// two can be compared point for point rather than as hourly averages.
 //
 // Completed days never change, so each is cached under
-// /berries/{stationId}/fieldclimate/hourly/{YYYY-MM-DD} = {HH: vpd} and only the
+// /berries/{stationId}/fieldclimate/raw/{YYYY-MM-DD} = {HHmm: vpd} and only the
 // missing ones (plus today) are fetched -- in a single range call, so a page
 // load spends at most one request of the 48/day budget.
 
 async function fetchVpdRange(fcStationId, fromSec, toSec) {
-  const data = await apiGet("/data/" + fcStationId + "/hourly/from/" + fromSec + "/to/" + toSec);
+  const data = await apiGet("/data/" + fcStationId + "/raw/from/" + fromSec + "/to/" + toSec);
   const sensors = Array.isArray(data.data) ? data.data : [];
   const dates = Array.isArray(data.dates) ? data.dates : [];
 
@@ -244,14 +245,14 @@ async function fetchVpdRange(fcStationId, fromSec, toSec) {
 
   const byDay = {};
   dates.forEach((d, i) => {
-    const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2})/.exec(String(d));
+    const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/.exec(String(d));
     if (!m) return;
     let v = typeof vpdA[i] === "number" ? vpdA[i] : null;
     if (v === null && typeof tA[i] === "number" && typeof rhA[i] === "number") {
       v = computeVpd(tA[i], rhA[i]);
     }
     if (v === null) return;
-    (byDay[m[1]] = byDay[m[1]] || {})[m[2]] = Number(v.toFixed(3));
+    (byDay[m[1]] = byDay[m[1]] || {})[m[2] + m[3]] = Number(v.toFixed(3));
   });
   return byDay;
 }
@@ -262,7 +263,7 @@ function ilDayKey(date) {
 }
 
 async function readVpdHistory(db, stationId, fcStationId, fromDay, toDay) {
-  const cacheRef = db.ref("/berries/" + stationId + "/fieldclimate/hourly");
+  const cacheRef = db.ref("/berries/" + stationId + "/fieldclimate/raw");
   const today = ilDayKey(new Date());
 
   const days = [];
@@ -286,15 +287,22 @@ async function readVpdHistory(db, stationId, fcStationId, fromDay, toDay) {
   const fromSec = Math.floor(Date.parse(missing[0] + "T00:00:00Z") / 1000) - 86400;
   const toSec = Math.min(Math.floor(Date.now() / 1000),
       Math.floor(Date.parse(missing[missing.length - 1] + "T23:59:59Z") / 1000) + 86400);
-  const fresh = await fetchVpdRange(fcStationId, fromSec, toSec);
+  // FieldClimate refuses a raw request spanning more than 7 days, so the range
+  // goes out in 6-day chunks (the padding above can push a chunk past 6).
+  const CHUNK = 6 * 86400;
+  const fresh = {};
+  for (let a = fromSec; a < toSec; a += CHUNK) {
+    const part = await fetchVpdRange(fcStationId, a, Math.min(toSec, a + CHUNK));
+    for (const [day, pts] of Object.entries(part)) Object.assign(fresh[day] = fresh[day] || {}, pts);
+  }
 
   const writes = {};
   for (const k of missing) {
-    const hours = fresh[k];
-    if (!hours) continue;
-    out[k] = hours;
-    // Cache only a finished day that FieldClimate has filled in.
-    if (k < today && Object.keys(hours).length >= 20) writes[k] = hours;
+    const pts = fresh[k];
+    if (!pts) continue;
+    out[k] = pts;
+    // Cache only a finished day that FieldClimate has filled in (288 = full).
+    if (k < today && Object.keys(pts).length >= 250) writes[k] = pts;
   }
   if (Object.keys(writes).length) {
     try {
