@@ -178,15 +178,25 @@
             <p class="sub">נקז ÷ טפטפת, סכום יומי</p>
             <div class="chart-box"><canvas id="chDrain"></canvas></div>
           </div>
-          <div class="chart-card">
-            <div class="fs-head"><h3>EC (dS/m)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
-            <p class="sub">קו מלא = טפטפת/כניסה · מקווקו = נקז/יציאה · ממוצע יומי</p>
-            <div class="chart-box"><canvas id="chEc"></canvas></div>
+          <div class="chart-card" id="cardEcIn">
+            <div class="fs-head"><h3>EC טפטפת (dS/m) — כניסה בתחנה</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
+            <p class="sub"><span class="src-dot src-station"></span>תחנה מול <span class="src-dot src-manual"></span>מדידה ידנית · ממוצע יומי · מעל העמודות: פער התחנה מהידני (אדום = מעל 15%)</p>
+            <div class="chart-box"><canvas id="chEcIn"></canvas></div>
           </div>
-          <div class="chart-card">
-            <div class="fs-head"><h3>pH</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
-            <p class="sub">קו מלא = טפטפת/כניסה · מקווקו = נקז/יציאה · ממוצע יומי</p>
-            <div class="chart-box"><canvas id="chPh"></canvas></div>
+          <div class="chart-card" id="cardEcOut">
+            <div class="fs-head"><h3>EC נקז (dS/m) — יציאה בתחנה</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
+            <p class="sub"><span class="src-dot src-station"></span>תחנה מול <span class="src-dot src-manual"></span>מדידה ידנית · ממוצע יומי · מעל העמודות: פער התחנה מהידני (אדום = מעל 15%)</p>
+            <div class="chart-box"><canvas id="chEcOut"></canvas></div>
+          </div>
+          <div class="chart-card" id="cardPhIn">
+            <div class="fs-head"><h3>pH טפטפת — pH1 בתחנה</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
+            <p class="sub"><span class="src-dot src-station"></span>תחנה מול <span class="src-dot src-manual"></span>מדידה ידנית · ממוצע יומי · מעל העמודות: פער התחנה מהידני (אדום = מעל 15%)</p>
+            <div class="chart-box"><canvas id="chPhIn"></canvas></div>
+          </div>
+          <div class="chart-card" id="cardPhOut">
+            <div class="fs-head"><h3>pH נקז — pH2 בתחנה</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
+            <p class="sub"><span class="src-dot src-station"></span>תחנה מול <span class="src-dot src-manual"></span>מדידה ידנית · ממוצע יומי · מעל העמודות: פער התחנה מהידני (אדום = מעל 15%)</p>
+            <div class="chart-box"><canvas id="chPhOut"></canvas></div>
           </div>
           <div class="chart-card">
             <div class="fs-head"><h3>מים — תחנה (ליטר ליום)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
@@ -197,11 +207,6 @@
             <div class="fs-head"><h3>מים — מדידה ידנית (מ״ל ליום)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
             <p class="sub">סכום כל המדידות באותו יום</p>
             <div class="chart-box"><canvas id="chWaterManual"></canvas></div>
-          </div>
-          <div class="chart-card">
-            <div class="fs-head"><h3>פער מול המדידה הידנית (%)</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
-            <p class="sub">EC / pH: (תחנה − ידני) ÷ ידני · נקז: אחוז נקז בתחנה פחות אחוז נקז ידני</p>
-            <div class="chart-box"><canvas id="chGap"></canvas></div>
           </div>
         </div>
 
@@ -818,6 +823,65 @@
     }
 
     const C_ST = "#2a78d6", C_MAN = "#1baf7a", C_FC = "#e07b24";
+
+    // Writes each day's gap (%) above its pair of bars. Reads the gaps from
+    // options.plugins.gapLabels.gaps, one per label (null = nothing to show).
+    const gapLabelsPlugin = {
+      id: "gapLabels",
+      afterDatasetsDraw(chart, _args, opts) {
+        const gaps = opts && opts.gaps;
+        if (!gaps) return;
+        const { ctx, chartArea } = chart;
+        const metas = chart.data.datasets.map((_, i) => chart.getDatasetMeta(i)).filter(m => !m.hidden);
+        ctx.save();
+        ctx.font = "600 11px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        gaps.forEach((g, i) => {
+          if (g == null || !Number.isFinite(g)) return;
+          const bars = metas.map(m => m.data[i]).filter(b => b && Number.isFinite(b.y) && Number.isFinite(b.x));
+          if (!bars.length) return;
+          const x = bars.reduce((a, b) => a + b.x, 0) / bars.length;
+          const y = Math.max(chartArea.top + 12, Math.min(...bars.map(b => b.y)) - 4);
+          ctx.fillStyle = Math.abs(g) > GAP_ALERT ? "#d92d20" : "#344054";
+          ctx.fillText(`\u200E${g > 0 ? "+" : ""}${g.toFixed(Math.abs(g) < 10 ? 1 : 0)}%`, x, y);
+        });
+        ctx.restore();
+      },
+    };
+
+    // Station bar beside manual bar for each day, gap % written above the pair.
+    // pH bars start from a floor just under the data rather than zero -- from
+    // zero every pH bar would look the same height.
+    function drawPairBars(id, labels, stVals, manVals, gaps, dec, fromZero) {
+      if (charts[id]) charts[id].destroy();
+      const vals = [...stVals, ...manVals].filter(v => v != null);
+      const y = { grid: { color: "rgba(0,0,0,0.06)" }, ticks: { font: { size: 11 } }, grace: "12%" };
+      if (fromZero) y.beginAtZero = true;
+      else if (vals.length) y.min = Math.max(0, Math.floor(Math.min(...vals) - 0.5));
+      charts[id] = new Chart(document.getElementById(id), {
+        type: "bar",
+        data: { labels, datasets: [
+          { label: "תחנה", backgroundColor: C_ST, data: stVals, borderRadius: 3, maxBarThickness: 22 },
+          { label: "מדידה ידנית", backgroundColor: C_MAN, data: manVals, borderRadius: 3, maxBarThickness: 22 },
+        ] },
+        options: {
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          layout: { padding: { top: 14 } },
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } },
+            tooltip: { callbacks: {
+              label: (c) => ` ${c.dataset.label}: ${c.parsed.y == null ? "—" : c.parsed.y.toFixed(dec)}`,
+              footer: (items) => { const g = gaps[items[0].dataIndex]; return g == null ? "" : `פער: ${g > 0 ? "+" : ""}${g.toFixed(1)}%`; },
+            } },
+            gapLabels: { gaps },
+          },
+          scales: { x: { grid: { display: false }, ticks: { font: { size: 11 } } }, y },
+        },
+        plugins: [gapLabelsPlugin],
+      });
+    }
     const DASH = [6, 4];
 
     function renderCharts(days, rows) {
@@ -827,18 +891,18 @@
         { label: "תחנה", borderColor: C_ST, data: col(r => r.st?.drainPct) },
         { label: "מדידה ידנית", borderColor: C_MAN, data: col(r => r.man?.drainPct) },
       ], "%", 1);
-      drawLineChart("chEc", L, [
-        { label: "תחנה כניסה", borderColor: C_ST, data: col(r => r.st?.ecIn) },
-        { label: "תחנה יציאה", borderColor: C_ST, borderDash: DASH, data: col(r => r.st?.ecOut) },
-        { label: "ידני טפטפת", borderColor: C_MAN, data: col(r => r.man?.dripEc) },
-        { label: "ידני נקז", borderColor: C_MAN, borderDash: DASH, data: col(r => r.man?.drainEc) },
-      ], "", 2);
-      drawLineChart("chPh", L, [
-        { label: "תחנה pH1", borderColor: C_ST, data: col(r => r.st?.ph1) },
-        { label: "תחנה pH2", borderColor: C_ST, borderDash: DASH, data: col(r => r.st?.ph2) },
-        { label: "ידני טפטפת", borderColor: C_MAN, data: col(r => r.man?.dripPh) },
-        { label: "ידני נקז", borderColor: C_MAN, borderDash: DASH, data: col(r => r.man?.drainPh) },
-      ], "", 2);
+      // One bar chart per probe, each against the manual value it is calibrated to.
+      // A probe this station doesn't have hides its card.
+      const f = (PAIRS.find(p => p.code === pairSel.value) || PAIRS[0]).fields;
+      const pairChart = (card, id, stF, manF, gapF, field, dec, fromZero) => {
+        document.getElementById(card).style.display = field ? "" : "none";
+        if (!field) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } return; }
+        drawPairBars(id, L, col(r => r.st?.[stF]), col(r => r.man?.[manF]), col(r => gapsFor(r)[gapF]), dec, fromZero);
+      };
+      pairChart("cardEcIn", "chEcIn", "ecIn", "dripEc", "ecIn", f.ecIn, 2, true);
+      pairChart("cardEcOut", "chEcOut", "ecOut", "drainEc", "ecOut", f.ecOut, 2, true);
+      pairChart("cardPhIn", "chPhIn", "ph1", "dripPh", "ph1", f.ph1, 2, false);
+      pairChart("cardPhOut", "chPhOut", "ph2", "drainPh", "ph2", f.ph2, 2, false);
       drawBarChart("chWaterStation", L, [
         { label: "כניסה", backgroundColor: C_ST, data: col(r => r.st?.inL) },
         { label: "יציאה (נקז)", backgroundColor: "rgba(42,120,214,0.35)", data: col(r => r.st?.outL) },
@@ -847,13 +911,6 @@
         { label: "טפטפת", backgroundColor: C_MAN, data: col(r => r.man?.dripMl) },
         { label: "נקז", backgroundColor: "rgba(27,175,122,0.35)", data: col(r => r.man?.drainMl) },
       ], "מ״ל", 0);
-      drawLineChart("chGap", L, [
-        { label: "נקז תחנה", borderColor: C_ST, borderDash: [2, 3], data: col(r => gapsFor(r).drain) },
-        { label: "EC כניסה", borderColor: C_ST, data: col(r => gapsFor(r).ecIn) },
-        { label: "EC יציאה", borderColor: C_ST, borderDash: DASH, data: col(r => gapsFor(r).ecOut) },
-        { label: "pH1", borderColor: C_MAN, data: col(r => gapsFor(r).ph1) },
-        { label: "pH2", borderColor: C_MAN, borderDash: DASH, data: col(r => gapsFor(r).ph2) },
-      ], "%", 1, false);
     }
 
     // ---- table ----
