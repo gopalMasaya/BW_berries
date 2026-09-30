@@ -11,7 +11,12 @@
  * factor; the historical hard-coded ×2 is simply the default factor).
  * pH drifts as a ZERO-POINT error → correction is an offset (displayed = raw +
  * offset). A single field point cannot fix the electrode's slope; it needs two
- * buffers.
+ * buffers -- see calSession.js, whose buffer calibration also stores a slope
+ * (displayed = raw × slope + offset).
+ *
+ * Once a station has been calibrated in buffers (control/calibrationSource =
+ * "buffer"), this daily run no longer changes anything: it only records how far
+ * the calibrated station is from the manual cup, under calibration/{day}/check.
  *
  * Raw readings are never modified — the correction lives under
  * berries/{stationId}/calibration/ and can be dropped at any time.
@@ -29,15 +34,25 @@ const QR_API_KEY = "AIzaSyBurfVKNSyFTQBJM8_8wb0WttZ3_HqhYMc";
 const QR_DB = "song-cd1cd-default-rtdb.europe-west1.firebasedatabase.app";
 
 // Which measurement station of the farm app each of our stations sits in, and
-// which manual field each sensor is compared against. A station with a single
-// EC/pH probe on the dripper line only maps those two. Overridable per station
-// at berries/{stationId}/control/calibrationMap.
-const PLOT_BY_STATION = {station1: "B09", station2: "B07"};
-const DEFAULT_MAP = {
-  // station1 is being rebuilt: one EC + one pH probe, both on the dripper.
-  station1: {ec: "dripEc", ph1: "dripPh"},
+// which manual field each sensor is compared against. A moved station keeps
+// its history, newest first: each plot applies from its `from` day
+// (YYYY-MM-DD) on, so recalibrating an old day uses the old plot and probe
+// placement. The map is overridable per station at
+// berries/{stationId}/control/calibrationMap.
+const PLOTS_BY_STATION = {
+  station1: [
+    // Moved to B01; its one EC + one pH probe now sit on the drain.
+    {from: "2026-09-25", code: "B01", map: {ec: "drainEc", ph1: "drainPh"}},
+    // Rebuilt in B09: one EC + one pH probe, both on the dripper.
+    {from: "", code: "B09", map: {ec: "dripEc", ph1: "dripPh"}},
+  ],
   // station2: ec/ph2 sit on the drain, ec2/ph1 on the feed line.
-  station2: {ec2: "dripEc", ec: "drainEc", ph1: "dripPh", ph2: "drainPh"},
+  station2: [{from: "", code: "B07",
+    map: {ec2: "dripEc", ec: "drainEc", ph1: "dripPh", ph2: "drainPh"}}],
+};
+const plotOn = (stationId, day) => {
+  const plots = PLOTS_BY_STATION[stationId];
+  return plots.find((p) => day >= p.from) || plots[plots.length - 1];
 };
 
 // Guards — a correction outside these is a broken probe, not drift.
@@ -146,6 +161,8 @@ async function fetchStationReadings(db, stationId, dateStr) {
     if (!stored || typeof stored !== "object") continue;
     // The correction is always derived from what the probe itself said, never
     // from a value that already carries an earlier correction.
+    // Readings taken with the probes in a buffer, not in the drain.
+    if (stored.calMode) continue;
     const item = rawView(stored);
     const t = item.serverTimestamp ? new Date(item.serverTimestamp) : null;
     if (!t || isNaN(t.getTime())) continue;
@@ -241,7 +258,7 @@ async function runCalibration(dateStr) {
   });
   const out = {};
 
-  for (const stationId of Object.keys(PLOT_BY_STATION)) {
+  for (const stationId of Object.keys(PLOTS_BY_STATION)) {
     const result = {date: day, station: stationId, samples: {}, notes: []};
     try {
       // A station off its plot (on the bench, being rebuilt) measures
@@ -255,11 +272,19 @@ async function runCalibration(dateStr) {
         out[stationId] = result;
         continue;
       }
+      // Buffer-calibrated stations: the manual cup is a check, not a source.
+      const [srcSnap, daySnap] = await Promise.all([
+        db.ref(`berries/${stationId}/control/calibrationSource`).get(),
+        db.ref(`berries/${stationId}/calibration/${day}`).get(),
+      ]);
+      const checkOnly = srcSnap.val() === "buffer" ||
+        (daySnap.val() && daySnap.val().source === "buffer");
       const mapSnap = await db
           .ref(`berries/${stationId}/control/calibrationMap`).get();
-      const map = mapSnap.val() || DEFAULT_MAP[stationId] || {};
+      const plot = plotOn(stationId, day);
+      const map = mapSnap.val() || plot.map || {};
       const probes = await stationProbes(db, stationId);
-      const manual = await fetchManual(PLOT_BY_STATION[stationId], day);
+      const manual = await fetchManual(plot.code, day);
       if (!manual.length) {
         result.notes.push("no manual measurement today");
         out[stationId] = result;
@@ -279,6 +304,11 @@ async function runCalibration(dateStr) {
           .filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && k < day)
           .sort((a, b) => b[0].localeCompare(a[0]))
           .map(([, v]) => v);
+      // Coefficients in force today: the pH slope a buffer run left behind,
+      // and what a check-only day compares the cup against.
+      const calSnap = await db.ref(`berries/${stationId}/calibration`)
+          .orderByKey().endAt(day).limitToLast(CAL_LOOKBACK_DAYS + 1).get();
+      const coefNow = coefficientsAt(appliedDays(calSnap.val()), probes, day);
 
       const applied = {};
       for (const [field, manualField] of Object.entries(map)) {
@@ -331,7 +361,13 @@ async function runCalibration(dateStr) {
           // that by inventing a huge factor.
           sample.status = "sensor not reporting";
         } else if (field.startsWith("ph")) {
-          const offset = ref - raw;
+          const c = coefNow[field + "Slope"];
+          const slope = c ? c.value : 1;
+          const co = coefNow[field + "Offset"];
+          sample.station = round(raw * slope + (co ? co.value : 0), 2);
+          sample.gap = round(sample.station - ref, 2);
+          // Offset on top of the buffer slope, so the two stay one model.
+          const offset = ref - raw * slope;
           sample.offset = round(offset, 3);
           if (Math.abs(offset) > PH_OFFSET_MAX) {
             sample.status = "offset out of range";
@@ -344,6 +380,12 @@ async function runCalibration(dateStr) {
             applied[field + "Offset"] = sample.applied;
           }
         } else {
+          const cf = coefNow[field + "Factor"];
+          const p = probes[field];
+          const inForce = cf ? cf.value :
+            (p && Number.isFinite(p.ecFactor) ? p.ecFactor : EC_FACTOR_DEFAULT);
+          sample.station = round(raw * inForce / 1000, 3);
+          sample.gapPct = round((sample.station - ref) / ref * 100, 1);
           const factor = ref / (raw / 1000);
           sample.factor = round(factor, 4);
           if (factor < EC_FACTOR_MIN || factor > EC_FACTOR_MAX) {
@@ -361,8 +403,19 @@ async function runCalibration(dateStr) {
         }
         result.samples[field] = sample;
       }
-      result.applied = applied;
       result.computedAt = new Date().toISOString();
+
+      if (checkOnly) {
+        // Leave the buffer calibration alone; just record the comparison.
+        result.checkOnly = true;
+        await db.ref(`berries/${stationId}/calibration/${day}/check`).set({
+          samples: result.samples, notes: result.notes,
+          computedAt: result.computedAt,
+        });
+        out[stationId] = result;
+        continue;
+      }
+      result.applied = applied;
 
       await db.ref(`berries/${stationId}/calibration/${day}`).set(result);
       if (Object.keys(applied).length) {
@@ -412,8 +465,10 @@ function rawView(item) {
 // Overridable per station at berries/{stationId}/control/probes.
 const DEFAULT_PROBES = {
   station1: {
-    ec: {since: "2026-09-16", ecFactor: 1},
-    ph1: {since: "2026-09-16"},
+    // Moved from the B09 dripper to the B01 drain on 2026-09-25: a new
+    // calibration series, the dripper corrections don't carry over.
+    ec: {since: "2026-09-25", ecFactor: 1},
+    ph1: {since: "2026-09-25"},
   },
 };
 
@@ -441,7 +496,7 @@ function coefficientsAt(days, probes, day) {
   for (const [date, v] of days) {
     if (day && date > day) break;
     for (const [k, x] of Object.entries(v.applied)) {
-      const field = k.replace(/(Factor|Offset)$/, "");
+      const field = k.replace(/(Factor|Offset|Slope)$/, "");
       const since = probes[field] && probes[field].since;
       if (since && date < since) continue;
       if (Number.isFinite(Number(x))) coef[k] = {value: Number(x), date};
@@ -450,9 +505,14 @@ function coefficientsAt(days, probes, day) {
   return coef;
 }
 
-async function currentCoefficients(stationId) {
+async function currentCoefficients(stationId, freshAfter) {
   const hit = calCache[stationId];
-  if (hit && Date.now() - hit.at < CAL_CACHE_MS) return hit;
+  // freshAfter: a buffer calibration finished at this time (ms) -- a cache
+  // older than that holds the previous coefficients.
+  if (hit && Date.now() - hit.at < CAL_CACHE_MS &&
+      !(freshAfter && hit.at < freshAfter)) {
+    return hit;
+  }
   const db = admin.database();
   const [snap, probes] = await Promise.all([
     db.ref(`berries/${stationId}/calibration`)
@@ -478,9 +538,12 @@ function calibrateFields(item, coef, probes) {
     item[f + "Raw"] = src;
     if (f.startsWith("ph")) {
       const c = coef[f + "Offset"];
+      const cs = coef[f + "Slope"];
       const offset = c ? c.value : 0;
-      item[f] = round(raw + offset, 2);
+      const slope = cs ? cs.value : 1;
+      item[f] = round(raw * slope + offset, 2);
       cal[f + "Offset"] = offset;
+      if (cs) cal[f + "Slope"] = slope;
       if (c) cal[f + "Date"] = c.date;
     } else {
       const c = coef[f + "Factor"];
@@ -502,11 +565,11 @@ function calibrateFields(item, coef, probes) {
  * falls back to the defaults (×2 EC, no pH offset), which is exactly what the
  * dashboard showed before, so ingest cannot be lost to it.
  */
-async function applyCalibration(stationId, payload) {
+async function applyCalibration(stationId, payload, freshAfter) {
   let coef = {};
   let probes = DEFAULT_PROBES[stationId] || {};
   try {
-    ({coef, probes} = await currentCoefficients(stationId));
+    ({coef, probes} = await currentCoefficients(stationId, freshAfter));
   } catch (e) {
     logger.error("calibration lookup failed", {stationId, error: e.message});
   }
@@ -515,5 +578,6 @@ async function applyCalibration(stationId, payload) {
 
 module.exports = {
   runCalibration, applyCalibration, rawView, calibrateFields, coefficientsAt,
-  appliedDays, stationProbes, EC_FACTOR_DEFAULT, DEFAULT_MAP,
+  appliedDays, stationProbes, EC_FACTOR_DEFAULT, PLOTS_BY_STATION,
+  currentCoefficients, CAL_FIELDS,
 };

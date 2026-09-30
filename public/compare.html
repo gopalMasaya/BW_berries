@@ -258,15 +258,29 @@
     const { user, profile } = await requireAuth(["manager"]);
     initSidebar(profile);
 
-    // Our sensor stations sit inside these qrCode measurement stations (see the
-    // GIS STATION_VALVE map in index.html: station1=B9, station2=B7). Both are on
+    // Our sensor stations sit inside these qrCode measurement stations. A
+    // station that was moved keeps its history: `plots` lists where it stood,
+    // newest first, each from its `from` day (YYYY-MM-DD) on, so a range that
+    // spans a move compares every day against the plot it was really in.
+    // `fields` says which station field sits where (ecIn/ph1 = dripper,
+    // ecOut/ph2 = drain). Mirrors PLOTS_BY_STATION in functions/calibration.js.
     const PAIRS = [
-      // Which station field sits where. station1 has one EC and one pH probe,
-      // both on the dripper; station2 has feed (ec2/ph1) and drain (ec/ph2).
-      // Mirrors DEFAULT_MAP in functions/calibration.js.
-      { code: "B09", stationId: "station1", fields: { ecIn: "ec", ecOut: null, ph1: "ph1", ph2: null } },
-      { code: "B07", stationId: "station2", fields: { ecIn: "ec2", ecOut: "ec", ph1: "ph1", ph2: "ph2" } },
+      { stationId: "station1", plots: [
+        // B01: one EC + one pH probe, both on the drain.
+        { from: "2026-09-25", code: "B01", fields: { ecIn: null, ecOut: "ec", ph1: null, ph2: "ph1" } },
+        // B09: the same two probes on the dripper.
+        { from: "", code: "B09", fields: { ecIn: "ec", ecOut: null, ph1: "ph1", ph2: null } },
+      ] },
+      // station2: feed (ec2/ph1) and drain (ec/ph2).
+      { stationId: "station2", plots: [
+        { from: "", code: "B07", fields: { ecIn: "ec2", ecOut: "ec", ph1: "ph1", ph2: "ph2" } },
+      ] },
     ];
+    const plotAt = (pair, day) => pair.plots.find(p => day >= p.from) || pair.plots[pair.plots.length - 1];
+    const plotOn = (pair, day) => plotAt(pair, day).code;
+    // A chart card shows if the probe existed in any of the station's plots.
+    const anyFields = (pair) => Object.fromEntries(["ecIn", "ecOut", "ph1", "ph2"]
+      .map(k => [k, pair.plots.some(p => p.fields[k]) ? k : null]));
     const PAIR_STORAGE_KEY = "compare.pair";
 
     // ---- qrCode project (song-cd1cd): irrigation-solution measurements ----
@@ -315,11 +329,11 @@
     }
 
     // ---- 1. manual measurements (qrCode testsByDate/{YYYY-MM-DD}) ----
-    async function fetchManual(code, days) {
+    async function fetchManual(pair, days) {
       await ensureQrAuth();
-      const prefix = code + ".";
       const byDay = new Map();
       await Promise.all(days.map(async (day) => {
+        const prefix = plotOn(pair, day) + ".";
         const snap = await get(ref(qrDb, `testsByDate/${day}`));
         const val = snap.val() || {};
         const recs = Object.values(val).filter(r => String(r.stationName || "").toUpperCase().startsWith(prefix));
@@ -395,7 +409,7 @@
     // most recent applied value -- the same rule ingest uses, so old and new
     // readings sit on one scale. No calibration yet → ×2 EC, no pH offset.
     const EC_FACTOR_DEFAULT = 2;
-    function makeCalibrator(calByDay, fields) {
+    function makeCalibrator(calByDay, fieldsAt) {
       const days = [...calByDay.entries()].filter(([, v]) => v && v.applied)
         .sort((a, b) => a[0].localeCompare(b[0]));
       const memo = new Map();
@@ -407,6 +421,7 @@
         return c;
       };
       return (item, day) => {
+        const fields = fieldsAt(day);
         const c = item.cal ? null : coefAt(day);
         const ec = (f) => {
           if (!f) return null;
@@ -893,7 +908,7 @@
       ], "%", 1);
       // One bar chart per probe, each against the manual value it is calibrated to.
       // A probe this station doesn't have hides its card.
-      const f = (PAIRS.find(p => p.code === pairSel.value) || PAIRS[0]).fields;
+      const f = anyFields(PAIRS.find(p => p.stationId === pairSel.value) || PAIRS[0]);
       const pairChart = (card, id, stF, manF, gapF, field, dec, fromZero) => {
         document.getElementById(card).style.display = field ? "" : "none";
         if (!field) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } return; }
@@ -967,15 +982,20 @@
     const pairSel = document.getElementById("fPair");
     for (const p of PAIRS) {
       const o = document.createElement("option");
-      o.value = p.code;
-      o.textContent = `${p.code} ↔ ${p.stationId}`;
+      o.value = p.stationId;
+      // Current plot first, earlier ones after it: "B01 (לפני 25/09: B09) ↔ station1".
+      const prev = p.plots.slice(1).map((q, i) => {
+        const [, m, d] = p.plots[i].from.split("-");
+        return `לפני ${d}/${m}: ${q.code}`;
+      });
+      o.textContent = `${p.plots[0].code}${prev.length ? ` (${prev.join(", ")})` : ""} ↔ ${p.stationId}`;
       pairSel.appendChild(o);
     }
-    try { const saved = localStorage.getItem(PAIR_STORAGE_KEY); if (PAIRS.some(p => p.code === saved)) pairSel.value = saved; } catch {}
+    try { const saved = localStorage.getItem(PAIR_STORAGE_KEY); if (PAIRS.some(p => p.stationId === saved)) pairSel.value = saved; } catch {}
 
     let loadSeq = 0;
     async function load() {
-      const pair = PAIRS.find(p => p.code === pairSel.value);
+      const pair = PAIRS.find(p => p.stationId === pairSel.value);
       let from = document.getElementById("fFrom").value, to = document.getElementById("fTo").value;
       if (!pair || !from || !to) return;
       if (from > to) [from, to] = [to, from];
@@ -997,7 +1017,7 @@
         return [];
       });
       const [manual, station, calib, fcVpd] = await Promise.all([
-        fetchManual(pair.code, days).catch(e => {
+        fetchManual(pair, days).catch(e => {
           console.error("manual", e);
           warn.push(e.code === "auth/admin-restricted-operation" || e.code === "auth/operation-not-allowed"
             ? `מדידות ידניות: יש להפעיל "Anonymous" ב-Authentication של הפרויקט song-cd1cd.`
@@ -1005,7 +1025,7 @@
           return new Map();
         }),
         Promise.all([loadMlPerPulse(pair.stationId), fetchStation(pair.stationId, from, to), calibP])
-          .then(([ml, readings, cal]) => ({ ml, n: readings.length, byDay: summarizeStation(readings, ml, makeCalibrator(cal, pair.fields)), vpd: stationVpdPoints(readings) }))
+          .then(([ml, readings, cal]) => ({ ml, n: readings.length, byDay: summarizeStation(readings, ml, makeCalibrator(cal, day => plotAt(pair, day).fields)), vpd: stationVpdPoints(readings) }))
           .catch(e => { console.error("station", e); warn.push(`תחנה: ${e.message}`); return { ml: null, n: 0, byDay: new Map(), vpd: [] }; }),
         calibP,
         fcP,
