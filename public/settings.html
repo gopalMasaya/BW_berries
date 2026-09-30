@@ -521,8 +521,219 @@
       }
     });
 
+    // ===================== Buffer calibration =====================
+    // The server (functions/calSession.js) owns the session and does the math;
+    // this card starts it, shows the station's readings live, and sends points.
+    const CAL_PROBES = {
+      station1: ["ec", "ph1"],
+      station2: ["ec2", "ec", "ph1", "ph2"],
+    };
+    // Common bottles; any other value can be typed.
+    const CAL_PRESETS = {
+      ec: ["1.413", "2.76", "5.00", "12.88"],
+      ph: ["4.00", "4.01", "6.86", "7.00", "9.18", "10.01"],
+    };
+    const isPh = (f) => f.startsWith("ph");
+    const calEls = Object.fromEntries(["calStatus", "calStartBtn", "calCancelBtn", "calPanel",
+      "calLive", "calField", "calRef", "calRefLabel", "calRefPresets", "calStable",
+      "calPointBtn", "calForceBtn", "calPoints", "calFinishBtn", "calMsg"]
+      .map(id => [id, document.getElementById(id)]));
+    let calSession = null, calReadings = [], calUnsubs = [];
+
+    const IL_PARTS = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+      second: "2-digit", hourCycle: "h23" });
+    const ilParts = (d) => Object.fromEntries(IL_PARTS.formatToParts(d).map(x => [x.type, x.value]));
+    const rawOf = (item, f) => {
+      const v = Number(item[f + "Raw"] ?? item[f]);
+      return Number.isFinite(v) && v !== 0 ? v : null;
+    };
+    const fmtVal = (f, v) => v == null ? "—" : isPh(f) ? v.toFixed(2) : (v / 1000).toFixed(3);
+    const unitOf = (f) => isPh(f) ? "pH" : "mS/cm";
+    const calActive = () => calSession && calSession.status === "active" && Date.now() < calSession.expiresAt;
+
+    async function calApi(body) {
+      const token = await user.getIdToken();
+      const r = await fetch("/api/cal-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ stationId: stationSelect.value, ...body }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok && !j.error) throw new Error(`HTTP ${r.status}`);
+      return j;
+    }
+    function calSay(text, bad) {
+      calEls.calMsg.textContent = text || "";
+      calEls.calMsg.style.color = bad ? "var(--bad)" : "var(--good)";
+    }
+
+    // The last four session readings of a field, and whether they have settled
+    // (same rule the server applies before accepting a point).
+    function calRecent(f) {
+      if (!calSession) return [];
+      return calReadings.filter(r => r.item.calMode === calSession.id)
+        .map(r => rawOf(r.item, f)).filter(v => v != null).slice(-4);
+    }
+    function calStability(f) {
+      const v = calRecent(f);
+      if (v.length < 3) return { ok: false, text: `ממתין לקריאות (${v.length}/3)…` };
+      const s = [...v].sort((a, b) => a - b), med = s[Math.floor(s.length / 2)];
+      const spread = s[s.length - 1] - s[0];
+      const ok = isPh(f) ? spread <= 0.05 : spread / med * 100 <= 3;
+      return { ok, text: `${ok ? "✅ יציב" : "⏳ עדיין זז"} — ${v.map(x => fmtVal(f, x)).join(" → ")} ${unitOf(f)}` };
+    }
+
+    function renderCal() {
+      const active = calActive();
+      const probes = CAL_PROBES[stationSelect.value] || ["ec", "ph1"];
+      calEls.calStartBtn.style.display = active ? "none" : "";
+      calEls.calCancelBtn.style.display = active ? "" : "none";
+      calEls.calPanel.style.display = active ? "" : "none";
+
+      const inSession = active ? calReadings.filter(r => r.item.calMode === calSession.id) : [];
+      if (active) {
+        const left = Math.max(0, Math.round((calSession.expiresAt - Date.now()) / 60000));
+        calEls.calStatus.textContent = inSession.length
+          ? `🟢 התחנה במצב כיול — ${inSession.length} קריאות התקבלו (הכיול ייסגר אוטומטית בעוד ${left} דק׳)`
+          : "🟡 ממתין לתחנה — הפקודה תגיע בשליחה הבאה (עד 5 דקות)";
+      } else if (calSession && calSession.status === "done" && calSession.result) {
+        const d = calSession.result.detail || {};
+        calEls.calStatus.textContent = "כיול אחרון: " + new Date(calSession.finishedAt).toLocaleString("he-IL") + " — " +
+          Object.entries(d).map(([f, x]) => x.factor != null ? `${f} ×${x.factor}` : `${f} שיפוע ${x.slope} היסט ${x.offset}`).join(" · ");
+      } else {
+        calEls.calStatus.textContent = "";
+      }
+      if (!active) return;
+
+      // Probe choice (kept across refreshes).
+      if (calEls.calField.options.length !== probes.length ||
+          [...calEls.calField.options].some((o, i) => o.value !== probes[i])) {
+        calEls.calField.innerHTML = probes.map(f => `<option value="${f}">${f} (${unitOf(f)})</option>`).join("");
+        onCalFieldChange();
+      }
+
+      // Live table: newest first.
+      const rows = calReadings.slice(-8).reverse().map(r => {
+        const p = ilParts(r.t);
+        const mark = r.item.calMode === calSession.id ? "🧪" : "";
+        return `<tr><td>${mark} ${p.hour}:${p.minute}:${p.second}</td>` +
+          probes.map(f => `<td dir="ltr">${fmtVal(f, rawOf(r.item, f))}</td>`).join("") + "</tr>";
+      }).join("");
+      calEls.calLive.innerHTML = `<thead><tr><th>שעה</th>${probes.map(f => `<th>${f} (${unitOf(f)})</th>`).join("")}</tr></thead>` +
+        `<tbody>${rows || `<tr><td colspan="${probes.length + 1}">אין קריאות עדיין</td></tr>`}</tbody>`;
+
+      const st = calStability(calEls.calField.value);
+      calEls.calStable.textContent = st.text;
+      calEls.calStable.style.color = st.ok ? "var(--good)" : "var(--muted)";
+
+      const pts = Object.entries(calSession.points || {});
+      calEls.calPoints.innerHTML = pts.length
+        ? "<b>נקודות שנשמרו:</b><br>" + pts.map(([id, p]) =>
+            `${p.field}: תמיסה ${fmtVal(p.field, p.ref)} ← חיישן ${fmtVal(p.field, p.raw)} ${unitOf(p.field)}` +
+            `${p.stable ? "" : " ⚠️ לא יציב"} <a href="#" data-pt="${id}" style="color:var(--bad)">מחק</a>`).join("<br>")
+        : `<span style="color:var(--muted)">עדיין לא נשמרו נקודות</span>`;
+    }
+
+    function onCalFieldChange() {
+      const f = calEls.calField.value || "ec";
+      calEls.calRefLabel.textContent = `ערך התמיסה (${unitOf(f)}, לפי הבקבוק)`;
+      calEls.calRefPresets.innerHTML = CAL_PRESETS[isPh(f) ? "ph" : "ec"].map(v => `<option value="${v}">`).join("");
+      calEls.calRef.step = isPh(f) ? "0.01" : "0.001";
+      calEls.calForceBtn.style.display = "none";
+      renderCal();
+    }
+    calEls.calField.addEventListener("change", onCalFieldChange);
+
+    // Live session + readings for the selected station. The month node is keyed
+    // by the station's own timestamp, so the last few keys are the newest.
+    function watchCal(stationId) {
+      calUnsubs.forEach(u => u());
+      calUnsubs = [];
+      calSession = null; calReadings = [];
+      calSay("");
+      calUnsubs.push(onValue(ref(db, `berries/${stationId}/control/calSession`), snap => {
+        calSession = snap.val();
+        renderCal();
+      }));
+      const p = ilParts(new Date());
+      const q = query(ref(db, `berries/${stationId}/${p.month}${p.year}`), orderByKey(), limitToLast(12));
+      calUnsubs.push(onValue(q, snap => {
+        calReadings = Object.values(snap.val() || {})
+          .filter(it => it && it.serverTimestamp)
+          .map(item => ({ t: new Date(item.serverTimestamp), item }))
+          .sort((a, b) => a.t - b.t);
+        renderCal();
+      }));
+    }
+    setInterval(() => { if (calActive()) renderCal(); }, 30000);
+
+    async function calRun(btn, fn) {
+      btn.disabled = true;
+      try { await fn(); } catch (e) { calSay("שגיאה: " + (e.message || e), true); }
+      finally { btn.disabled = false; }
+    }
+
+    calEls.calStartBtn.addEventListener("click", () => calRun(calEls.calStartBtn, async () => {
+      const j = await calApi({ action: "start" });
+      if (!j.ok) throw new Error(j.error);
+      calSay("הכיול התחיל. שטוף את החיישנים וטבול אותם בתמיסה הראשונה.");
+    }));
+
+    calEls.calCancelBtn.addEventListener("click", () => calRun(calEls.calCancelBtn, async () => {
+      if (!confirm("לבטל את הכיול? הנקודות שנשמרו יימחקו והכיול הקיים יישאר.")) return;
+      const j = await calApi({ action: "cancel" });
+      if (!j.ok) throw new Error(j.error);
+      calSay("הכיול בוטל. התחנה תחזור לשליחה כל 5 דקות.");
+    }));
+
+    async function savePoint(force) {
+      const field = calEls.calField.value;
+      const ref_ = parseFloat(calEls.calRef.value);
+      if (!Number.isFinite(ref_) || ref_ <= 0 || (isPh(field) && ref_ > 14)) {
+        throw new Error(isPh(field) ? "הזן ערך pH בין 0 ל־14" : "הזן ערך EC ב־mS/cm (למשל 1.413)");
+      }
+      const j = await calApi({ action: "point", field, ref: ref_, force });
+      calEls.calForceBtn.style.display = "none";
+      if (j.ok) {
+        calSay(`נשמרה נקודה: ${field} ${ref_} ${unitOf(field)} ← חיישן ${fmtVal(field, j.point.raw)}`);
+      } else if (j.error === "not-stable") {
+        calSay("הקריאה עדיין לא יציבה — כדאי לחכות עוד דקה. אפשר לשמור בכל זאת.", true);
+        calEls.calForceBtn.style.display = "";
+      } else if (j.error === "not-enough") {
+        calSay(`צריך לפחות 3 קריאות מהדקות האחרונות (יש ${j.values.length}). המתן לתחנה.`, true);
+      } else {
+        throw new Error(j.error);
+      }
+    }
+    calEls.calPointBtn.addEventListener("click", () => calRun(calEls.calPointBtn, () => savePoint(false)));
+    calEls.calForceBtn.addEventListener("click", () => calRun(calEls.calForceBtn, () => savePoint(true)));
+
+    calEls.calPoints.addEventListener("click", (e) => {
+      const id = e.target.dataset && e.target.dataset.pt;
+      if (!id) return;
+      e.preventDefault();
+      calRun(calEls.calFinishBtn, async () => {
+        const j = await calApi({ action: "removePoint", pointId: id });
+        if (!j.ok) throw new Error(j.error);
+      });
+    });
+
+    calEls.calFinishBtn.addEventListener("click", () => calRun(calEls.calFinishBtn, async () => {
+      const j = await calApi({ action: "finish" });
+      if (!j.ok) {
+        calSay("הכיול לא הוחל:\n" + (j.errors || [j.error]).join("\n") +
+          "\nבדוק את ערך התמיסה ואת ניקיון החיישן, ומחק את הנקודה החריגה.", true);
+        return;
+      }
+      calSay("✅ הכיול הוחל ונשמר. החזר את החיישנים לעמדת הנקז.");
+    }));
+
+    stationSelect.addEventListener("change", () => watchCal(stationSelect.value));
+
     // Load first station
     loadConfig(stationSelect.value);
+    watchCal(stationSelect.value);
   </script>
 </body>
 </html>
