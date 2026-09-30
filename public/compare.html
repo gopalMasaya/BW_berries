@@ -456,6 +456,8 @@
         d.inP += dIn; d.outP += dOut;
         // EC/pH are averaged over readings while water moves (that is what the
         // manual cup samples); a day with no flow falls back to all.
+        // Buffer-calibration readings: probes in a bottle, water still counts.
+        if (item.calMode) continue;
         const s = calibrate(item, day);   // after calibration, EC in dS/m
         d.all.push(s);
         if (dIn > 0 || dOut > 0) d.flow.push(s);
@@ -493,6 +495,28 @@
     };
     function calibHtml(cal) {
       if (!cal) return `<div class="muted">לא חושב כיול ליום זה</div>`;
+      let html = "";
+      // A buffer calibration done this day (settings page).
+      if (cal.buffer) {
+        const d = cal.buffer.detail || {};
+        const items = Object.entries(d).map(([f, x]) => x.factor != null
+          ? `${esc(f)}: ×${fmt(x.factor, 3)} (${x.points} נק׳)`
+          : `${esc(f)}: שיפוע ${fmt(x.slope, 3)}, היסט ${x.offset > 0 ? "+" : ""}${fmt(x.offset, 2)} (${x.points} נק׳)`);
+        html += `<div style="margin-bottom:6px">🧪 כיול בתמיסות סטנדרט: ${items.join(" · ")}</div>`;
+      }
+      // After a buffer calibration the manual cup only checks the station.
+      if (cal.check) {
+        const rows = Object.entries(cal.check.samples || {}).map(([field, x]) => `<tr>
+            <td>${esc(field)}</td>
+            <td>${fmt(x.ref, 2)}</td>
+            <td>${fmt(x.station, 2)}</td>
+            <td>${x.gapPct != null ? (x.gapPct > 0 ? "+" : "") + fmt(x.gapPct, 1) + "%" : x.gap != null ? (x.gap > 0 ? "+" : "") + fmt(x.gap, 2) : "—"}</td>
+            <td>${esc(x.status === "ok" ? "" : CAL_STATUS[x.status] || x.status || "")}</td>
+          </tr>`).join("");
+        return html + (rows ? `<div class="muted">בדיקה מול המדידה הידנית (לא משנה את הכיול)</div><table>
+            <thead><tr><th>חיישן</th><th>ידני</th><th>תחנה</th><th>פער</th><th></th></tr></thead>
+            <tbody>${rows}</tbody></table>` : "");
+      }
       const rows = Object.entries(cal.samples || {}).map(([field, x]) => `<tr>
           <td>${esc(field)}</td>
           <td>${fmt(x.ref, 2)}</td>
@@ -501,9 +525,9 @@
           <td>${esc(CAL_STATUS[x.status] || x.status || "")}</td>
         </tr>`).join("");
       const notes = (cal.notes || []).map(esc).join(" · ");
-      return rows ? `<table>
+      return html + (rows ? `<table>
           <thead><tr><th>חיישן</th><th>ידני</th><th>מקדם/סטייה</th><th>מוחל</th><th>מצב</th></tr></thead>
-          <tbody>${rows}</tbody></table>` : `<div class="muted">${notes || "אין נתוני כיול"}</div>`;
+          <tbody>${rows}</tbody></table>` : (html ? "" : `<div class="muted">${notes || "אין נתוני כיול"}</div>`));
     }
 
     // ---- VPD: station SHT3x vs FieldClimate (TEMPORARY) ----

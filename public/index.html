@@ -1725,7 +1725,15 @@
   }
 
   // Every Firebase read of a reading goes through here.
+  // A reading taken during a buffer calibration (settings page) has its probes
+  // in a bottle, not the drain: keep its flow counters, drop the solution values.
+  const CAL_MODE_FIELDS = ["ec", "ec2", "ph1", "ph2", "ec_dSm", "temp",
+    "ecRaw", "ec2Raw", "ph1Raw", "ph2Raw"];
   function normalizeReading(item, deviceId){
+    if (item && item.calMode) {
+      item = { ...item };
+      for (const f of CAL_MODE_FIELDS) delete item[f];
+    }
     return applyPhFallback(normalizeWaterFields(item), deviceId);
   }
 

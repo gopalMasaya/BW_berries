@@ -6,6 +6,7 @@ const express = require("express");
 const sql = require("mssql");
 const https = require("https");
 const fc = require("./fieldclimate");
+const calSession = require("./calSession");
 
 admin.initializeApp();
 
@@ -111,8 +112,16 @@ app.post("/ingest", async (req, res) => {
 
     payload.serverTimestamp = now.toISOString();
     payload.stationId = stationId;
+    // During a buffer calibration the probes sit in a bottle, not the drain:
+    // stamp the reading so no graph or calibration treats it as field data.
+    const session = await calSession.getSession(stationId).catch(() => null);
+    if (calSession.activeSession(session, now.getTime())) {
+      payload.calMode = session.id;
+    }
     // Stored already calibrated; the probe's own values ride along as *Raw.
-    await applyCalibration(stationId, payload);
+    // A buffer calibration that just finished outdates the cached coefficients.
+    await applyCalibration(stationId, payload,
+        session && session.status === "done" ? session.finishedAt : 0);
 
     await admin.database()
         .ref(`/berries/${stationId}/${monthKey}/${tsKey}`)
@@ -137,9 +146,10 @@ app.get("/watering", async (req, res) => {
     }
 
     const stationId = String(req.query.stationId || "");
-    const [waterSnap, configSnap] = await Promise.all([
+    const [waterSnap, configSnap, calSnap] = await Promise.all([
       admin.database().ref(`/berries/${stationId}/control/watering`).get(),
       admin.database().ref(`/berries/${stationId}/control/wateringConfig`).get(),
+      calSession.getSession(stationId).catch(() => null),
     ]);
 
     const config = configSnap.val() || {};
@@ -239,9 +249,15 @@ app.get("/watering", async (req, res) => {
     // VPD section.
     const valveFields = config.valveType === "ac" ? {vAc: true} : {};
 
+    // "cal":1 puts the station into calibration mode (a send every ~30 s).
+    // Near the front on purpose: the MKR link keeps only the first 300 bytes,
+    // and it only travels while a session is open.
+    const calFields = calSession.activeSession(calSnap) ? {cal: 1} : {};
+
     return res.status(200).json(Object.assign({
       ok: true,
       stationId,
+    }, calFields, {
       watering: !!waterSnap.val(),
       monitorOnly: config.monitorOnly ?? false,
       wateringEnabled: config.wateringEnabled ?? true,
@@ -462,6 +478,55 @@ async function ensureLoginHandler(req, res) {
 
 // Same dual registration as /vpd: "/api/..." is what survives the hosting
 // rewrite, "/..." is the direct function URL.
+// Buffer calibration of a station's probes, driven from settings.html.
+// Managers only: finishing it changes every reading the station stores.
+//   POST {stationId, action: "start"|"point"|"removePoint"|"finish"|"cancel",
+//         field?, ref?, force?, pointId?}
+async function calSessionHandler(req, res) {
+  try {
+    const m = /^Bearer (.+)$/.exec(req.get("Authorization") || "");
+    if (!m) return res.status(401).json({ok: false, error: "missing id token"});
+    let decoded;
+    try {
+      decoded = await admin.auth().verifyIdToken(m[1]);
+    } catch (err) {
+      return res.status(401).json({ok: false, error: "invalid id token"});
+    }
+    const role = await resolveRole(decoded.uid, decoded);
+    if (role !== "manager") {
+      return res.status(403).json({ok: false, error: "managers only"});
+    }
+
+    const b = req.body || {};
+    const stationId = String(b.stationId || "");
+    if (!DEVICE_SECRETS[stationId]) {
+      return res.status(400).json({ok: false, error: "unknown stationId"});
+    }
+    const who = decoded.email || decoded.phone_number || decoded.uid;
+    switch (b.action) {
+      case "start":
+        return res.json({ok: true, session: await calSession.start(stationId, who)});
+      case "point":
+        return res.json(await calSession.addPoint(
+            stationId, String(b.field || ""), Number(b.ref), !!b.force));
+      case "removePoint":
+        await calSession.removePoint(stationId, String(b.pointId || ""));
+        return res.json({ok: true});
+      case "finish":
+        return res.json(await calSession.finish(stationId, who));
+      case "cancel":
+        await calSession.cancel(stationId);
+        return res.json({ok: true});
+      default:
+        return res.status(400).json({ok: false, error: "unknown action"});
+    }
+  } catch (err) {
+    logger.error("cal-session failed", err);
+    return res.status(400).json({ok: false, error: err.message || "server error"});
+  }
+}
+app.post("/cal-session", calSessionHandler);
+app.post("/api/cal-session", calSessionHandler);
 app.post("/ensure-login", ensureLoginHandler);
 app.post("/api/ensure-login", ensureLoginHandler);
 
