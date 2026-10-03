@@ -1729,6 +1729,19 @@
   // in a bottle, not the drain: keep its flow counters, drop the solution values.
   const CAL_MODE_FIELDS = ["ec", "ec2", "ph1", "ph2", "ec_dSm", "temp",
     "ecRaw", "ec2Raw", "ph1Raw", "ph2Raw"];
+  // Nightly probe drift verdict (functions/drift.js): the station's drain EC/pH
+  // against the feed Galcon logged for its valve. Advice only -- it points to
+  // the buffer calibration in the settings page.
+  function paintDriftBadge(deviceId, el){
+    if (!el) return;
+    database.ref(`berries/${deviceId}/drift/status`).once("value").then(snap => {
+      const s = snap.val();
+      if (!s || !s.alert) { el.innerHTML = ""; return; }
+      const why = (s.reasons || []).map(r => r.text).join(" · ");
+      el.innerHTML = `<a class="sq-badge-clog" href="settings.html" title="${why.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}" onclick="event.stopPropagation()">🧪 חשד לסחיפת חיישן — מומלץ כיול</a>`;
+    }).catch(e => console.error("drift status", deviceId, e));
+  }
+
   function normalizeReading(item, deviceId){
     if (item && item.calMode) {
       item = { ...item };
@@ -3261,6 +3274,7 @@
             <div class="sq-name">${st.name}</div>
             <div class="sq-sub">${st.deviceId} · עודכן: ${latest ? new Date(latest.tsISO).toLocaleString() : "—"}</div>
             <div class="sq-flags"></div>
+            <div class="sq-flags sq-drift"></div>
             ${sqValveHtml ? `<div class="sq-valve">${sqValveHtml}</div>` : ""}
           </div>
           <div class="pill"><span class="dot ${s.cls}"></span>${s.label}</div>
@@ -3273,6 +3287,7 @@
 
       // Metric tiles (incl. ⚠️ flags for sensors that stopped reporting) load async.
       renderSquareMetrics(st.deviceId, square.querySelector(".sq-metrics"));
+      paintDriftBadge(st.deviceId, square.querySelector(".sq-drift"));
 
       // Clicking the card opens the drawer, except over interactive areas
       // (the chart, the chart toggle, or the irrigation panel/list).

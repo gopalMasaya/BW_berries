@@ -1219,3 +1219,70 @@ exports.calibrate = onRequest({cors: true, timeoutSeconds: 120},
             .json({ok: false, error: err.message || "server error"});
       }
     });
+
+// ── Probe drift check against Galcon's feed EC/pH (see drift.js) ─────────────
+const {runDrift} = require("./drift");
+
+// One day's finished irrigations of a controller, one entry per valve.
+async function fetchValveEvents(serial, day) {
+  const c = (await listControllers()).find((x) => x.serial === serial);
+  if (!c) return [];
+  const items = await fetchFinishIrrigation(
+      c.configId, `${day} 00:00:00`, `${day} 23:59:59`);
+  const out = [];
+  for (const row of items) {
+    const stopMs = row.time == null ? null : Number(row.time);
+    if (!Number.isFinite(stopMs)) continue;
+    const durMin = Number(row.lastTime) || 0;
+    const startMs = stopMs - Math.round(durMin * 60000);
+    for (const i of [0, 1, 2, 3, 4]) {
+      const v = Number(row["valve" + i]);
+      if (v > 0) {
+        out.push({valve: v, startMs, stopMs,
+          ec: Number(row.ecLast), ph: Number(row.phLast)});
+      }
+    }
+  }
+  return out;
+}
+
+const ilToday = () => new Date().toLocaleDateString("en-CA",
+    {timeZone: "Asia/Jerusalem"});
+
+// 21:00 Israel time: the day's irrigations are over and their drain is in.
+// One Galcon app login a day (single-session account, see GALILEO_APP).
+exports.driftDaily = onSchedule({
+  schedule: "0 21 * * *",
+  timeZone: "Asia/Jerusalem",
+  timeoutSeconds: 180,
+}, async () => {
+  await runDrift(ilToday(), Object.keys(DEVICE_SECRETS), fetchValveEvents);
+});
+
+// Manual run / backfill: GET ?date=YYYY-MM-DD with a Firebase ID token.
+// Public at the HTTP layer like the other endpoints; the ID token is checked below.
+exports.driftCheck = onRequest({cors: true, timeoutSeconds: 180, invoker: "public"},
+    async (req, res) => {
+      const auth = req.headers.authorization || "";
+      if (!auth.startsWith("Bearer ")) {
+        return res.status(401).json({ok: false, error: "missing auth token"});
+      }
+      try {
+        await verifyAnyProject(auth.split("Bearer ")[1]);
+      } catch (e) {
+        return res.status(401).json({ok: false, error: "invalid token"});
+      }
+      try {
+        const date = req.query.date ? String(req.query.date) : ilToday();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          return res.status(400).json({ok: false, error: "bad date"});
+        }
+        const out = await runDrift(date, Object.keys(DEVICE_SECRETS),
+            fetchValveEvents);
+        return res.json({ok: true, result: out});
+      } catch (err) {
+        logger.error("driftCheck failed", err);
+        return res.status(500)
+            .json({ok: false, error: err.message || "server error"});
+      }
+    });

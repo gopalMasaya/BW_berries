@@ -579,5 +579,5 @@ async function applyCalibration(stationId, payload, freshAfter) {
 module.exports = {
   runCalibration, applyCalibration, rawView, calibrateFields, coefficientsAt,
   appliedDays, stationProbes, EC_FACTOR_DEFAULT, PLOTS_BY_STATION,
-  currentCoefficients, CAL_FIELDS,
+  currentCoefficients, CAL_FIELDS, plotOn,
 };

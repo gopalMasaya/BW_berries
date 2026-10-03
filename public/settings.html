@@ -193,6 +193,9 @@
             והמדידות הידניות הופכות לבדיקה בלבד. קריאות מזמן הכיול לא מופיעות בגרפים.
           </span>
 
+          <!-- Nightly drift check vs. Galcon feed (functions/drift.js). -->
+          <div id="calDrift" style="margin-top:14px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;line-height:1.6;"></div>
+
           <div id="calStatus" style="margin:14px 0 10px;font-size:14px;font-weight:600;"></div>
           <div class="row" style="justify-content:flex-start;gap:10px;flex-wrap:wrap;">
             <button class="btn-primary" id="calStartBtn">התחל כיול</button>
@@ -538,7 +541,7 @@
     const isPh = (f) => f.startsWith("ph");
     const calEls = Object.fromEntries(["calStatus", "calStartBtn", "calCancelBtn", "calPanel",
       "calLive", "calField", "calRef", "calRefLabel", "calRefPresets", "calStable",
-      "calPointBtn", "calForceBtn", "calPoints", "calFinishBtn", "calMsg"]
+      "calPointBtn", "calForceBtn", "calPoints", "calFinishBtn", "calMsg", "calDrift"]
       .map(id => [id, document.getElementById(id)]));
     let calSession = null, calReadings = [], calUnsubs = [];
 
@@ -637,6 +640,30 @@
         : `<span style="color:var(--muted)">עדיין לא נשמרו נקודות</span>`;
     }
 
+    // Drain vs. the feed EC/pH Galcon logged for the station's valve, checked
+    // every night at 21:00. Advice only; nothing is corrected automatically.
+    function renderDrift(s) {
+      const el = calEls.calDrift;
+      if (!s) {
+        el.innerHTML = `<b>בדיקת סחיפה מול הגלקון:</b> עדיין לא רצה (רצה כל ערב ב־21:00).`;
+        return;
+      }
+      const f = (v, d) => v == null || !Number.isFinite(v) ? "—" : v.toFixed(d);
+      const head = s.alert
+        ? `<b style="color:var(--bad)">🧪 חשד לסחיפת חיישן — מומלץ לכייל בתמיסות</b><br>` +
+          s.reasons.map(r => "• " + r.text).join("<br>")
+        : `<b style="color:var(--good)">✅ אין סימן לסחיפה</b>`;
+      const base = s.baseline
+        ? `בסיס מאז הכיול (${s.baseline.from} – ${s.baseline.to}): יחס EC ${f(s.baseline.ratio, 2)}, פער pH ${f(s.baseline.phDiff, 2)}`
+        : "";
+      const rows = (s.recent || []).map(d => `<tr><td>${d.date.slice(8)}/${d.date.slice(5, 7)}</td><td>${d.n}</td>` +
+        `<td>${f(d.feedEc, 2)}</td><td>${f(d.drainEc, 2)}</td><td>${f(d.ratio, 2)}</td><td>${f(d.phDiff, 2)}</td></tr>`).join("");
+      el.innerHTML = `${head}<div style="color:var(--muted);margin-top:4px;">חלקה ${s.plot} · נבדק ${new Date(s.checkedAt).toLocaleString("he-IL")}` +
+        `${s.note ? " · " + s.note : ""}${base ? "<br>" + base : ""}</div>` +
+        (rows ? `<table class="crm" style="width:100%;margin-top:8px;font-size:12px;"><thead><tr><th>יום</th><th>השקיות</th>` +
+          `<th>EC הזנה</th><th>EC נקז</th><th>נקז/הזנה</th><th>פער pH</th></tr></thead><tbody>${rows}</tbody></table>` : "");
+    }
+
     function onCalFieldChange() {
       const f = calEls.calField.value || "ec";
       calEls.calRefLabel.textContent = `ערך התמיסה (${unitOf(f)}, לפי הבקבוק)`;
@@ -654,6 +681,7 @@
       calUnsubs = [];
       calSession = null; calReadings = [];
       calSay("");
+      calUnsubs.push(onValue(ref(db, `berries/${stationId}/drift/status`), snap => renderDrift(snap.val())));
       calUnsubs.push(onValue(ref(db, `berries/${stationId}/control/calSession`), snap => {
         calSession = snap.val();
         renderCal();

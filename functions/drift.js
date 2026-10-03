@@ -7,9 +7,9 @@
  * and buffers pH, and both move with the weather and the drain fraction -- so
  * the check does not expect equality. It looks for two things only:
  *
- *   1. Values no working probe produces: drain EC far below the feed (fresh
- *      water cannot come out saltier-looking than... the other way round: a
- *      fouled or drying EC cell reads low), or an extreme drain/feed pH gap.
+ *   1. Values no working probe produces: drain EC well below the feed (the
+ *      substrate does not remove salt, but a fouled or drying EC cell reads
+ *      low), or an extreme drain/feed pH gap.
  *   2. A sustained shift of the drain/feed relationship away from where it sat
  *      right after the last buffer calibration. Only then is there a trusted
  *      baseline; while the manual cups still move the coefficients daily, the
@@ -26,7 +26,7 @@
 
 const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
-const {plotOn, rawView, stationProbes} = require("./calibration");
+const {plotOn, stationProbes} = require("./calibration");
 
 // Controller letter of a plot code → Galcon serial (see galcon_controllers).
 const SERIAL_BY_LETTER = {
@@ -68,7 +68,7 @@ function drainFields(plot) {
 async function stationDay(stationId, day) {
   const [y, m, d] = day.split("-");
   const snap = await admin.database().ref(`berries/${stationId}/${m}${y}`)
-      .orderByKey().startAt(d).endAt(d + "").get();
+      .orderByKey().startAt(d).endAt(d + "").get();
   const rows = Object.values(snap.val() || {})
       .filter((it) => it && it.serverTimestamp)
       .map((it) => ({t: Date.parse(it.serverTimestamp), item: it}))
