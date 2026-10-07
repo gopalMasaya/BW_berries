@@ -27,6 +27,7 @@
 const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
 const {plotOn, stationProbes} = require("./calibration");
+const WaterSwap = require("./waterSwap");
 
 // Controller letter of a plot code → Galcon serial (see galcon_controllers).
 const SERIAL_BY_LETTER = {
@@ -67,11 +68,17 @@ function drainFields(plot) {
 /** The station's readings for an Israel day, oldest first, with flow deltas. */
 async function stationDay(stationId, day) {
   const [y, m, d] = day.split("-");
-  const snap = await admin.database().ref(`berries/${stationId}/${m}${y}`)
-      .orderByKey().startAt(d).endAt(d + "").get();
-  const rows = Object.values(snap.val() || {})
-      .filter((it) => it && it.serverTimestamp)
-      .map((it) => ({t: Date.parse(it.serverTimestamp), item: it}))
+  const [snap, swapSnap] = await Promise.all([
+    admin.database().ref(`berries/${stationId}/${m}${y}`)
+        .orderByKey().startAt(d).endAt(d + "").get(),
+    // Drip/drain meters swapped by date (settings page): waterOut = drain.
+    admin.database().ref(`berries/${stationId}/control/waterSwap`).get(),
+  ]);
+  const swapPlan = WaterSwap.compile(swapSnap.val());
+  const rows = Object.entries(snap.val() || {})
+      .filter(([, it]) => it && it.serverTimestamp)
+      .map(([k, it]) => ({t: Date.parse(it.serverTimestamp),
+        item: WaterSwap.apply(swapPlan, it, k)}))
       .filter((r) => Number.isFinite(r.t))
       .sort((a, b) => a.t - b.t);
   let prev = null;

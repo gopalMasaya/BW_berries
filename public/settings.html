@@ -183,6 +183,37 @@
           <div id="loadingMsg" style="padding:20px;color:var(--muted);text-align:center;">טוען...</div>
         </div>
 
+        <!-- Which flowmeter is the drip and which the drain, by date (public/waterSwap.js). -->
+        <div class="card" id="swapCard" style="margin-top:18px;">
+          <h2 style="margin:0 0 6px;font-size:18px;">🔄 חיישני טפטפת ונקז</h2>
+          <span style="font-size:13px;color:var(--muted);display:block;line-height:1.6;">
+            אם מד הטפטפת ומד הנקז הורכבו הפוך, מסמנים כאן מאיזה תאריך ושעה הם הפוכים — וכל האפליקציה
+            (השקיות, גרפים, טבלאות, משקל, השוואה ובדיקת הסחיפה) תציג את הטפטפת והנקז הנכונים מאותו רגע.
+            אחרי שמתקנים את החיווט מוסיפים שורה "תקין" מרגע התיקון. הנתונים במסד לא משתנים — ההחלפה נעשית בתצוגה,
+            ומחיקת שורה מחזירה את המצב הקודם.
+          </span>
+          <div id="swapRecent" style="margin-top:12px;font-size:13px;line-height:1.6;"></div>
+          <div id="swapList" style="margin-top:12px;font-size:14px;"></div>
+          <div class="form-grid" style="margin-top:14px;">
+            <div class="field">
+              <label>מתאריך ושעה</label>
+              <input id="swapFrom" type="datetime-local" dir="ltr"
+                     style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;background:var(--card);color:var(--text);font-family:inherit;" />
+            </div>
+            <div class="field">
+              <label>מצב החיישנים</label>
+              <select id="swapState" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;background:var(--card);color:var(--text);font-family:inherit;">
+                <option value="1">הפוך — waterIn הוא הנקז, waterOut הוא הטפטפת</option>
+                <option value="0">תקין — waterIn טפטפת, waterOut נקז</option>
+              </select>
+            </div>
+          </div>
+          <div class="row" style="justify-content:flex-start;margin-top:10px;">
+            <button class="btn-primary" id="swapAddBtn">הוסף</button>
+          </div>
+          <div id="swapMsg" style="font-size:14px;min-height:20px;margin-top:10px;white-space:pre-line;"></div>
+        </div>
+
         <!-- Buffer calibration of the station's EC/pH probes (functions/calSession.js). -->
         <div class="card" id="calCard" style="margin-top:18px;">
           <h2 style="margin:0 0 6px;font-size:18px;">🧪 כיול חיישנים בתמיסות סטנדרט</h2>
