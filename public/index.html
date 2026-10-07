@@ -2855,7 +2855,11 @@
       : from.toLocaleDateString("he-IL");
 
     try {
+      // Manual checks never hold up (or break) the station's own table.
+      const manualP = fetchManualChecks(deviceId, from, to)
+        .catch(e => { console.warn("manual checks", deviceId, e); return []; });
       const readings = await fetchWaterReadings(deviceId, from, to);
+      const manual = await manualP;
 
       // Which flow channel is actually counting in this range?
       let anyIn = false, anyOut = false, pIn = null, pOut = null;
@@ -2887,15 +2891,24 @@
       const open = !!squaresIrrigExpanded[deviceId];
       const btnLabel = events.length
         ? `💧 השקיות · ${periodLabel} · ${events.length} · סה״כ ${totMain.toFixed(3)} ל׳${stuckInlet ? " (נקז)" : ""}`
-        : `💧 השקיות · ${periodLabel} · אין`;
+        : `💧 השקיות · ${periodLabel} · אין`)
+        + (manual.length ? ` · 📋 ${manual.length} בדיקות ידניות` : "");
 
       const warnHtml = stuckInlet
         ? `<div class="sq-irrig-warn">⚠️ מד כניסת המים (waterIn) תקוע בטווח — המחזורים זוהו לפי הנקז (waterOut). כמות ההשקיה אינה נמדדת.</div>`
         : "";
 
       let detailHtml;
-      if (events.length){
-        const bodyRows = events.map((e, i) => {
+      if (events.length || manual.length){
+        // Manual checks go in between the irrigations, at their own time.
+        let mi = 0;
+        const manualUntil = (t) => {
+          let html = "";
+          while (mi < manual.length && (t === null || manual[mi].time < t))
+            html += manualCheckRow(manual[mi++], readings, mlThisStation, multiDay);
+          return html;
+        };
+        const bodyRows = events.map((e, i) => manualUntil(e.startTime) + (() => {
           const ec  = pickIrrigSensor(e.samples, IRRIG_EC_FIELDS);
           const ph  = pickIrrigSensor(e.samples, IRRIG_PH_FIELDS);
           const hu1 = pickIrrigSensor(e.samples, ["soil1_humidity"]);
@@ -2921,7 +2934,7 @@
           <tr class="ir-samples" data-idx="${i}" style="display:none;">
             <td colspan="10">${samplesHtml || "—"}</td>
           </tr>`;
-        }).join("");
+        })()).join("") + manualUntil(null);
         detailHtml = `
           <div class="sq-irrig-scroll">
           <table class="sq-irrig-table">
