@@ -793,9 +793,166 @@
 
     stationSelect.addEventListener("change", () => watchCal(stationSelect.value));
 
+    // ===================== Drip / drain flowmeter swap =====================
+    // Rows live at berries/{stationId}/control/waterSwap/{pushId} and are
+    // applied on read by public/waterSwap.js (and functions/waterSwap.js).
+    // Each row stores the raw counters of the last reading before its start,
+    // so the swapped counters continue without a jump at the switch.
+    const swapEls = Object.fromEntries(["swapRecent", "swapList", "swapFrom", "swapState",
+      "swapAddBtn", "swapMsg"].map(id => [id, document.getElementById(id)]));
+    let swapUnsub = null, swapRows = {};
+    const pad2 = (n) => String(n).padStart(2, "0");
+    const swapSay = (text, bad) => {
+      swapEls.swapMsg.textContent = text;
+      swapEls.swapMsg.style.color = bad ? "var(--bad)" : "var(--good)";
+    };
+    const nowLocalInput = () => {
+      const p = ilParts(new Date());
+      return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+    };
+    const IN_NAMES = ["waterIn", "water_in", "WaterIn"], OUT_NAMES = ["waterOut", "water_out", "WaterOut"];
+    const waterOf = (it, names) => {
+      for (const n of names) { const v = Number(it[n]); if (it[n] != null && Number.isFinite(v)) return v; }
+      return null;
+    };
+
+    // One Israel day of a station's readings, by key prefix DDMMYYYY.
+    async function readingsOfDay(stationId, y, m, d) {
+      const day = pad2(d) + pad2(m) + y;
+      const snap = await get(query(ref(db, `berries/${stationId}/${pad2(m)}${y}`),
+        orderByKey(), startAt(day), endAt(day + "")));
+      return Object.entries(snap.val() || {}).filter(([, it]) => it && typeof it === "object");
+    }
+
+    // Raw counters of the last reading before `fromSort` (YYYYMMDDHHMMSS), up to 14 days back.
+    async function anchorBefore(stationId, fromSort) {
+      const d = new Date(Date.UTC(+fromSort.slice(0, 4), +fromSort.slice(4, 6) - 1, +fromSort.slice(6, 8)));
+      for (let i = 0; i < 14; i++, d.setUTCDate(d.getUTCDate() - 1)) {
+        const rows = await readingsOfDay(stationId, d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+        let best = null;
+        for (const [k, it] of rows) {
+          const s = WaterSwap.keyToSort(k);
+          const rIn = waterOf(it, IN_NAMES), rOut = waterOf(it, OUT_NAMES);
+          if (!s || s >= fromSort || rIn === null || rOut === null) continue;
+          if (!best || s > best.s) best = { s, k, rIn, rOut };
+        }
+        if (best) return best;
+      }
+      return null;
+    }
+
+    function renderSwap(stationId) {
+      const rows = Object.entries(swapRows)
+        .map(([id, r]) => ({ id, ...r, sort: WaterSwap.fromToSort(r.from) || "" }))
+        .sort((a, b) => a.sort.localeCompare(b.sort));
+      if (!rows.length) {
+        swapEls.swapList.innerHTML = `<span style="color:var(--muted);">אין הגדרה — ${stationId} מוצגת כפי שהיא נשלחת (waterIn = טפטפת, waterOut = נקז).</span>`;
+        return;
+      }
+      const fmt = (from) => {
+        const [dt, tm] = String(from).split("T"), [y, m, d] = dt.split("-");
+        return `${d}/${m}/${y} ${tm || "00:00"}`;
+      };
+      swapEls.swapList.innerHTML = `<table class="crm" style="width:100%;font-size:13px;">
+        <thead><tr><th>מתאריך</th><th>מצב</th><th>מוני בסיס (in / out)</th><th></th></tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td dir="ltr">${fmt(r.from)}</td>
+          <td>${r.swapped ? "🔄 הפוך" : "✅ תקין"}</td>
+          <td dir="ltr">${r.rawIn ?? "—"} / ${r.rawOut ?? "—"}</td>
+          <td><button class="btn" data-swap-del="${r.id}" style="padding:4px 10px;">מחק</button></td>
+        </tr>`).join("")}</tbody></table>`;
+      swapEls.swapList.querySelectorAll("[data-swap-del]").forEach(btn => btn.addEventListener("click", async () => {
+        if (!confirm("למחוק את השורה? התצוגה תחזור למצב שלפניה.")) return;
+        try {
+          await remove(ref(db, `berries/${stationId}/control/waterSwap/${btn.dataset.swapDel}`));
+          swapSay("השורה נמחקה.");
+        } catch (e) { swapSay("שגיאה במחיקה: " + (e.message || e), true); }
+      }));
+    }
+
+    // A hint for spotting a reversed pair: the last days' raw totals per meter.
+    // Drain is normally a fraction of the drip, so a "drain" well above the
+    // "drip" usually means the meters are swapped.
+    async function showSwapRecent(stationId) {
+      swapEls.swapRecent.textContent = "";
+      try {
+        const totals = [];
+        const p = ilParts(new Date());
+        const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day));
+        for (let i = 0; i < 3; i++, d.setUTCDate(d.getUTCDate() - 1)) {
+          const rows = (await readingsOfDay(stationId, d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()))
+            .map(([k, it]) => ({ s: WaterSwap.keyToSort(k), rIn: waterOf(it, IN_NAMES), rOut: waterOf(it, OUT_NAMES) }))
+            .filter(r => r.s && r.rIn !== null && r.rOut !== null)
+            .sort((a, b) => a.s.localeCompare(b.s));
+          let pIn = 0, pOut = 0;
+          for (let j = 1; j < rows.length; j++) {
+            const a = rows[j - 1], b = rows[j];
+            pIn += b.rIn >= a.rIn ? b.rIn - a.rIn : b.rIn;
+            pOut += b.rOut >= a.rOut ? b.rOut - a.rOut : b.rOut;
+          }
+          totals.push({ day: `${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}`, pIn, pOut });
+        }
+        if (stationSelect.value !== stationId) return;
+        const lines = totals.map(t => `${t.day}: waterIn ${t.pIn} · waterOut ${t.pOut} פולסים`).join("<br>");
+        const suspicious = totals.some(t => t.pOut > t.pIn && t.pOut > 20);
+        swapEls.swapRecent.innerHTML = `<b>כפי שהתחנה שולחת (לפני ההחלפה):</b><br>${lines}` +
+          (suspicious ? `<br><span style="color:var(--bad);">⚠️ waterOut גבוה מ־waterIn — סביר שהמדים הפוכים.</span>` : "");
+      } catch (e) { console.error("swap recent", e); }
+    }
+
+    function watchSwap(stationId) {
+      if (swapUnsub) swapUnsub();
+      swapRows = {};
+      swapEls.swapMsg.textContent = "";
+      swapEls.swapFrom.value = nowLocalInput();
+      swapUnsub = onValue(ref(db, `berries/${stationId}/control/waterSwap`), snap => {
+        swapRows = snap.val() || {};
+        renderSwap(stationId);
+      }, e => swapSay("שגיאה בטעינה: " + (e.message || e), true));
+      showSwapRecent(stationId);
+    }
+
+    swapEls.swapAddBtn.addEventListener("click", async () => {
+      const stationId = stationSelect.value;
+      const from = swapEls.swapFrom.value;              // "YYYY-MM-DDTHH:MM", Israel time
+      const fromSort = WaterSwap.fromToSort(from);
+      if (!fromSort) { swapSay("בחר תאריך ושעה.", true); return; }
+      if (from > nowLocalInput()) {
+        swapSay("אפשר לבחור רק זמן שכבר עבר — המערכת צריכה את קריאת המונים שלפניו.", true);
+        return;
+      }
+      if (Object.values(swapRows).some(r => WaterSwap.fromToSort(r.from) === fromSort)) {
+        swapSay("כבר יש שורה מאותו זמן — מחק אותה קודם.", true);
+        return;
+      }
+      swapEls.swapAddBtn.disabled = true;
+      swapSay("מחפש את קריאת המונים שלפני הזמן שנבחר...");
+      try {
+        const a = await anchorBefore(stationId, fromSort);
+        await push(ref(db, `berries/${stationId}/control/waterSwap`), {
+          from,
+          swapped: swapEls.swapState.value === "1",
+          rawIn: a ? a.rIn : null,
+          rawOut: a ? a.rOut : null,
+          anchorKey: a ? a.k : null,
+          createdAt: new Date().toISOString(),
+          createdBy: user.email || user.phoneNumber || user.uid,
+        });
+        swapSay(a ? "נשמר. כל הדפים יציגו את הטפטפת והנקז לפי ההגדרה."
+          : "נשמר, אך לא נמצאה קריאה ב־14 הימים שלפני — ההחלפה תהיה ישירה, בלי רצף מונים.");
+      } catch (e) {
+        swapSay("שגיאה בשמירה: " + (e.message || e), true);
+      } finally {
+        swapEls.swapAddBtn.disabled = false;
+      }
+    });
+
+    stationSelect.addEventListener("change", () => watchSwap(stationSelect.value));
+
     // Load first station
     loadConfig(stationSelect.value);
     watchCal(stationSelect.value);
+    watchSwap(stationSelect.value);
   </script>
 </body>
 </html>
