@@ -9,6 +9,8 @@
   <!-- Pan (drag / swipe) and zoom (wheel / pinch) for the VPD timeline. -->
   <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <!-- Drip/drain flowmeter swap by date -->
+  <script src="waterSwap.js"></script>
   <style>
     /* Source identity is fixed across every chart: station = blue, manual
        measurement = aqua (validated categorical slots 1–2).
@@ -378,6 +380,10 @@
       const start = new Date(fromDay + "T12:00:00Z"); start.setUTCDate(start.getUTCDate() - 1);
       const end = new Date(toDay + "T12:00:00Z");
       const readings = [];
+      // Which flowmeter is the drip and which the drain, by date (waterSwap.js).
+      let swapPlan = null;
+      try { swapPlan = WaterSwap.compile((await get(ref(db, `berries/${stationId}/control/waterSwap`))).val()); }
+      catch (e) { console.error("waterSwap", e); }
       const cur = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
       const jobs = [];
       while (cur <= end) {
@@ -393,7 +399,7 @@
           for (const [k, item] of Object.entries(val)) {
             if (!item || typeof item !== "object") continue;
             const t = readingTime(k, item);
-            if (t) readings.push({ t, item });
+            if (t) readings.push({ t, item: WaterSwap.apply(swapPlan, item, k) });
           }
         }));
         cur.setUTCMonth(cur.getUTCMonth() + 1);

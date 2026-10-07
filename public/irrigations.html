@@ -91,6 +91,8 @@
     </main>
   </div>
 
+  <!-- Drip/drain flowmeter swap by date -->
+  <script src="waterSwap.js"></script>
   <script type="module">
     import { requireAuth } from "./guard.mjs";
     import { initSidebar } from "./sidebar.mjs";
@@ -172,19 +174,24 @@
     async function fetchReadings(stationId, fromDate, toDate) {
       const monthKeys = monthKeysBetween(fromDate, toDate);
       const readings = [];
+      // Which flowmeter is the drip and which the drain, by date (waterSwap.js).
+      let swapPlan = null;
+      try { swapPlan = WaterSwap.compile((await get(ref(db, `berries/${stationId}/control/waterSwap`))).val()); }
+      catch (e) { console.error("waterSwap load", stationId, e); }
       for (const mk of monthKeys) {
         const snap = await get(ref(db, `berries/${stationId}/${mk}`));
         const val = snap.val();
         if (!val) continue;
         for (const tsKey of Object.keys(val)) {
-          const item = val[tsKey];
-          if (!item || typeof item !== "object") continue;
+          const raw = val[tsKey];
+          if (!raw || typeof raw !== "object") continue;
+          const item = WaterSwap.apply(swapPlan, raw, tsKey);
           const t = readingTime(tsKey, item);
           if (!t || isNaN(t.getTime())) continue;
           if (t < fromDate || t > toDate) continue;
           readings.push({
             time: t,
-            // waterIn/waterOut taken straight from the DB (no channel swap)
+            // waterIn = drip, waterOut = drain (after the dated swap, waterSwap.js)
             waterIn: Number(item.waterIn) || 0,
             waterOut: Number(item.waterOut) || 0,
           });

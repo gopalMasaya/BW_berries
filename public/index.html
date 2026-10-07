@@ -15,6 +15,8 @@
 
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Drip/drain flowmeter swap by date (shared with compare/irrigations pages) -->
+  <script src="waterSwap.js"></script>
 
   <style>
     :root{
@@ -1259,6 +1261,26 @@
     }));
   }
 
+  // Drip/drain flowmeter swap periods, edited in Settings at
+  // berries/{deviceId}/control/waterSwap (see waterSwap.js). Applied in
+  // normalizeReading, so every view sees waterIn = drip and waterOut = drain.
+  const waterSwapByStation = {};    // deviceId -> compiled WaterSwap plan
+
+  async function loadWaterSwap(){
+    await Promise.all(STATIONS.map(async st => {
+      const path = "berries/" + st.deviceId + "/control/waterSwap";
+      try {
+        waterSwapByStation[st.deviceId] = WaterSwap.compile((await database.ref(path).once("value")).val());
+      } catch(e){ console.error("waterSwap load", st.deviceId, e); }
+      let first = true;
+      database.ref(path).on("value", snap => {
+        if (first) { first = false; return; }   // same value as the read above
+        waterSwapByStation[st.deviceId] = WaterSwap.compile(snap.val());
+        onMlPerPulseChanged();
+      });
+    }));
+  }
+
   // Every water figure is derived from the pulse counters, so a new calibration
   // only needs the current view redrawn (the graphs view converts to litres while
   // loading, so it is reloaded rather than re-rendered).
@@ -1742,12 +1764,13 @@
     }).catch(e => console.error("drift status", deviceId, e));
   }
 
-  function normalizeReading(item, deviceId){
+  function normalizeReading(item, deviceId, tsKey){
     if (item && item.calMode) {
       item = { ...item };
       for (const f of CAL_MODE_FIELDS) delete item[f];
     }
-    return applyPhFallback(normalizeWaterFields(item), deviceId);
+    const water = WaterSwap.apply(waterSwapByStation[deviceId], normalizeWaterFields(item), tsKey);
+    return applyPhFallback(water, deviceId);
   }
 
   // ===============================
@@ -1941,7 +1964,7 @@
         const pairs = [];
         Object.keys(val).forEach(tsKey => {
           if (tsKey === "control") return;
-          const item = normalizeReading(val[tsKey], deviceId);
+          const item = normalizeReading(val[tsKey], deviceId, tsKey);
           const t = readingMoment(tsKey, item);
           if (t && !isNaN(t.getTime())) pairs.push({ t, item });
         });
@@ -2175,7 +2198,7 @@
         }
 
         const tsKey = Object.keys(val)[0];
-        const item = normalizeReading(val[tsKey], deviceId);
+        const item = normalizeReading(val[tsKey], deviceId, tsKey);
 
         // Extract timestamp from serverTimestamp (ISO string) or build from tsKey
         let tsISO = null;
@@ -2582,7 +2605,7 @@
       if (!val) continue;
       Object.keys(val).forEach(tsKey => {
         if (tsKey === "control") return;
-        const item = normalizeReading(val[tsKey], deviceId);
+        const item = normalizeReading(val[tsKey], deviceId, tsKey);
         const t = readingMoment(tsKey, item);
         if (!t || isNaN(t.getTime()) || t > toDate) return;
         all.push({ time: t, waterIn: Number(item.waterIn) || 0, waterOut: Number(item.waterOut) || 0, item });
@@ -5255,7 +5278,7 @@
 
       Object.keys(val).forEach(tsKey => {
         if (tsKey === "control") return;
-        const item = normalizeReading(val[tsKey], deviceId);
+        const item = normalizeReading(val[tsKey], deviceId, tsKey);
 
         let tsISO = null;
         if (item.serverTimestamp) {
@@ -6229,6 +6252,8 @@
 
     // The ml/pulse calibration must be known before the first water figure is drawn.
     await loadMlPerPulse();
+    // Likewise which flowmeter is the drip and which the drain.
+    await loadWaterSwap();
     // Same for the EC/pH calibration and the first sensor value.
     await loadCalibration();
 
