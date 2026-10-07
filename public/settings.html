@@ -821,7 +821,9 @@
       const day = pad2(d) + pad2(m) + y;
       const snap = await get(query(ref(db, `berries/${stationId}/${pad2(m)}${y}`),
         orderByKey(), startAt(day), endAt(day + "")));
-      return Object.entries(snap.val() || {}).filter(([, it]) => it && typeof it === "object");
+      // The range can come back with neighbouring days too; keep this day only.
+      return Object.entries(snap.val() || {})
+        .filter(([k, it]) => k.startsWith(day) && it && typeof it === "object");
     }
 
     // Raw counters of the last reading before `fromSort` (YYYYMMDDHHMMSS), up to 14 days back.
