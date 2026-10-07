@@ -2760,6 +2760,85 @@
     document.getElementById("sqSensor")?.addEventListener("change", renderSquaresView);
   }
 
+  // ── Manual drip/drain checks (qrCode testsByDate) in the irrigation table ──
+  // Each station sits in a qrCode measurement plot; a station that moved keeps
+  // its history (newest first, each from its `from` day on). Mirrors PAIRS in
+  // compare.html and PLOTS_BY_STATION in functions/calibration.js.
+  const MANUAL_PLOTS = {
+    station1: [{ from: "2026-09-25", code: "B01" }, { from: "", code: "B09" }],
+    station2: [{ from: "", code: "B07" }],
+  };
+  const manualDayCache = {};           // "YYYY-MM-DD" → promise of that day's records
+  function localDayKey(d){
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  // The station's manual checks inside [from, to], oldest first. performedAt is
+  // Israel wall-clock without a zone ("2026-09-16T10:55").
+  async function fetchManualChecks(deviceId, from, to){
+    const plots = MANUAL_PLOTS[deviceId];
+    if (!plots) return [];
+    await ensureQrAuth();
+    const days = [];
+    for (const d = new Date(from); d <= to && days.length < 62; d.setDate(d.getDate() + 1)) days.push(localDayKey(d));
+    const today = localDayKey(new Date());
+    const out = [];
+    await Promise.all(days.map(async day => {
+      // Today's list grows during the day, so only past days are cached.
+      let p = day !== today && manualDayCache[day];
+      if (!p){
+        p = qrDb.ref("testsByDate/" + day).once("value").then(s => s.val() || {});
+        if (day !== today) manualDayCache[day] = p.catch(e => { delete manualDayCache[day]; throw e; });
+      }
+      const val = await p;
+      const plot = (plots.find(x => day >= x.from) || plots[plots.length - 1]).code + ".";
+      Object.values(val).forEach(r => {
+        if (!r || !String(r.stationName || "").toUpperCase().startsWith(plot)) return;
+        const t = new Date(String(r.performedAt || "").length > 10 ? r.performedAt : day + "T12:00");
+        if (!isNaN(t.getTime()) && t >= from && t <= to) out.push({ time: t, rec: r });
+      });
+    }));
+    return out.sort((a, b) => a.time - b.time);
+  }
+  // Station drip/drain litres from the start of the range up to `t` (reset-aware
+  // deltas of the cumulative counters, as everywhere else).
+  function stationTotalsUntil(readings, t, ml){
+    let inP = 0, outP = 0, pIn = null, pOut = null;
+    for (const r of readings){
+      if (r.time > t) break;
+      if (pIn !== null){
+        inP  += r.waterIn  >= pIn  ? r.waterIn  - pIn  : r.waterIn;
+        outP += r.waterOut >= pOut ? r.waterOut - pOut : r.waterOut;
+      }
+      pIn = r.waterIn; pOut = r.waterOut;
+    }
+    return { inL: inP * ml / 1000, outL: outP * ml / 1000 };
+  }
+  // One table row for a manual check: the manual values, and under each the
+  // station's own total measured up to that same moment.
+  function manualCheckRow(m, readings, ml, multiDay){
+    const r = m.rec;
+    const num = v => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
+    const f = (v, dec) => v == null ? "—" : v.toFixed(dec);
+    const dripL = num(r.dripMl) != null ? num(r.dripMl) / 1000 : null;
+    const drainL = num(r.drainMl) != null ? num(r.drainMl) / 1000 : null;
+    const st = stationTotalsUntil(readings, m.time, ml);
+    const manPct = dripL ? (drainL || 0) / dripL * 100 : null;
+    const stPct = st.inL > 0 ? st.outL / st.inL * 100 : null;
+    // A 0 in EC/pH means "not measured" in the entry form.
+    const pair = (a, b, dec) => (num(a) == null && num(b) == null) ? "—"
+      : `${f(num(a), dec)} / ${f(num(b), dec)}<span class="ir-man-st">טפטפת / נקז</span>`;
+    const name = String(r.stationName || "").replace(/[&<>"]/g, "");
+    return `
+      <tr class="ir-manual" title="בדיקה ידנית (אפליקציית qrCode). מתחת לכל ערך: סה״כ מדידת התחנה מתחילת הטווח עד שעת הבדיקה">
+        <td colspan="4" class="ir-man-label">📋 בדיקה ידנית · ${multiDay ? m.time.toLocaleDateString("he-IL") + " " : ""}${fmtHM(m.time)}<span class="ir-man-st">${name}</span></td>
+        <td class="ir-in">${f(dripL, 3)}<span class="ir-man-st">תחנה עד כה: ${st.inL.toFixed(3)}</span></td>
+        <td class="ir-out">${f(drainL, 3)}<span class="ir-man-st">תחנה עד כה: ${st.outL.toFixed(3)}</span></td>
+        <td>${pair(r.dripEc, r.drainEc, 2)}</td>
+        <td>${pair(r.dripPh, r.drainPh, 2)}</td>
+        <td colspan="2">נקז ${f(manPct, 0)}%<span class="ir-man-st">תחנה עד כה: ${f(stPct, 0)}%</span></td>
+      </tr>`;
+  }
+
   // Async-fill one station square's irrigation panel + sensor/irrigation chart for
   // the selected date range.
   async function loadSquareData(deviceId, square){
