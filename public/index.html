@@ -2889,7 +2889,7 @@
       const totMain = stuckInlet ? totOut : totIn; // headline volume
 
       const open = !!squaresIrrigExpanded[deviceId];
-      const btnLabel = events.length
+      const btnLabel = (events.length
         ? `💧 השקיות · ${periodLabel} · ${events.length} · סה״כ ${totMain.toFixed(3)} ל׳${stuckInlet ? " (נקז)" : ""}`
         : `💧 השקיות · ${periodLabel} · אין`)
         + (manual.length ? ` · 📋 ${manual.length} בדיקות ידניות` : "");
