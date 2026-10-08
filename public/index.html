@@ -5847,10 +5847,10 @@
       // Each sheet is laid out station by station: a coloured title band with the
       // station's name, its own bold header + rows (columns differ per station),
       // then two blank rows.
-      const byStation = (list, build, empty) => {
+      const byStation = (list, build, empty, stations = targets) => {
         const aoa = [], titles = [], headers = [];
         if (list.error) return { aoa: [[list.error]], titles, headers };
-        targets.forEach(st => {
+        stations.forEach(st => {
           const mine = list.filter(x => x.deviceId === st.deviceId);
           titles.push(aoa.length);
           aoa.push([(st.name || st.deviceId) + "  (" + st.deviceId + ")"]);
@@ -5878,11 +5878,11 @@
         // two light ones that alternate down the rows (zebra stripes).
         const XL_GROUPS = [
           { test: /^(תאריך|שעה|שעת)/,        head: "D9D9D9", rows: ["FFFFFF", "F2F2F2"] },
-          { test: /מים|טפטפת \(|נקז \(|נקז %|כמות|ספיקה/, head: "9DC3E6", rows: ["EAF2FA", "DCEAF7"] },
           { test: /EC/,                       head: "F4B183", rows: ["FDF0E7", "FBE3D3"] },
           { test: /pH/,                       head: "C9B3E0", rows: ["F4EFFA", "EAE1F4"] },
           { test: /VPD|אוויר/,                head: "A9D18E", rows: ["EFF6EA", "E2EFD9"] },
           { test: /קרקע|לחות/,                head: "D6B99A", rows: ["F8F2EC", "F0E6DB"] },
+          { test: /מים|טפטפת \(|נקז \(|נקז %|כמות|ספיקה/, head: "9DC3E6", rows: ["EAF2FA", "DCEAF7"] },
         ];
         const XL_OTHER = { head: "DDEBF7", rows: ["FFFFFF", "F2F2F2"] };
         const groupOf = (h) => XL_GROUPS.find(g => g.test.test(String(h))) || XL_OTHER;
@@ -5910,7 +5910,10 @@
       };
       const wb = XLSX.utils.book_new();
       wb.Workbook = { Views: [{ RTL: true }] };
-      XLSX.utils.book_append_sheet(wb, sheet(byStation(stRows, stationSheetRows, "אין קריאות תחנה בטווח")), "תחנה");
+      // Station readings: one tab per station. Song / Galcon stay stacked in one tab.
+      targets.forEach(st => XLSX.utils.book_append_sheet(wb,
+        sheet(byStation(stRows, stationSheetRows, "אין קריאות תחנה בטווח", [st])),
+        String(st.name || st.deviceId).replace(/[\\\/?*:[\]]/g, " ").slice(0, 31)));
       XLSX.utils.book_append_sheet(wb, sheet(byStation(manual, manualSheetRows, "אין מדידות ידניות בטווח")), "מדידות ידניות (Song)");
       XLSX.utils.book_append_sheet(wb, sheet(byStation(galcon, galconSheetRows, "אין השקיות Galcon בטווח")), "Galcon");
       const who = targets.length === 1 ? targets[0].deviceId : "all";
