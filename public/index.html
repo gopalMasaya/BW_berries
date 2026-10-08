@@ -1022,6 +1022,8 @@
         <select id="sqSensor"></select>
       </div>
       <button class="sq-btn" id="sqReload">הצג</button>
+      <button class="sq-btn" id="sqExportExcel" style="background:#1e7e45;border-color:#17663a;"
+              title="הורד לאקסל: תחנות + מדידות ידניות (Song) + השקיות Galcon בטווח התאריכים">⬇ אקסל</button>
       <!-- The left panel (and its Settings link) is hidden on this view, so the
            main screen needs its own way into Settings. Revealed by
            showManagerButtons() for managers and for the owner account. -->
@@ -5719,60 +5721,125 @@
     return xlsxLib;
   }
 
-  async function exportChartExcel() {
-    const btn = document.getElementById("btnExportExcel");
-    const fromVal = document.getElementById("filterDateFrom").value;
-    const toVal = document.getElementById("filterDateTo").value;
+  const xlRound = (n, d) => Math.round(n * 10 ** d) / 10 ** d;
+  const xlNum = (v, d) => { const n = Number(v); return v === "" || v == null || !Number.isFinite(n) ? null : xlRound(n, d); };
+  const xlDate = (t) => t.toLocaleDateString("he-IL");
+  const xlTime = (t) => t.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+
+  // Sheet 1: station readings — the Chart table's columns.
+  function stationSheetRows(rows) {
+    rows.sort((a, b) => new Date(a.tsISO) - new Date(b.tsISO));
+    const { hasWaterIn, hasWaterOut, fields } = chartColumns(rows);
+    const header = ["תאריך", "שעה", "תחנה"];
+    if (hasWaterIn)  header.push("מים נכנסים מצטבר (L)");
+    if (hasWaterOut) header.push("מים יוצאים מצטבר (L)");
+    fields.forEach(f => header.push(chartColumnTitle(f, " ")));
+    const aoa = [header];
+    rows.forEach(row => {
+      const ts = new Date(row.tsISO);
+      const line = [xlDate(ts), xlTime(ts), row.stationId || row.deviceId];
+      if (hasWaterIn)  line.push(xlRound(row.__cumWaterInL || 0, 2));
+      if (hasWaterOut) line.push(xlRound(row.__cumWaterOutL || 0, 2));
+      fields.forEach(f => {
+        const raw = row[f];
+        if (raw === undefined || raw === null || raw === "") { line.push(null); return; }
+        if (typeof raw === "boolean") { line.push(raw ? "Yes" : "No"); return; }
+        const num = chartCellNumber(row, f);
+        line.push(Number.isFinite(num) ? xlRound(num, chartDecimals(f)) : String(raw));
+      });
+      aoa.push(line);
+    });
+    return aoa;
+  }
+
+  // Sheet 2: the qrCode (Song) manual drip/drain checks in each station's plot.
+  // A 0 in EC/pH means "not measured" in the entry form → left blank.
+  function manualSheetRows(list) {
+    const pos = (v, d) => { const n = xlNum(v, d); return n > 0 ? n : null; };
+    const aoa = [["תאריך", "שעה", "תחנה", "עמדה", "טפטפת (מ״ל)", "נקז (מ״ל)", "נקז %",
+      "EC טפטפת", "EC נקז", "pH טפטפת", "pH נקז", "צמחים", "עובד"]];
+    list.sort((a, b) => a.time - b.time).forEach(({ deviceId, time, rec: r }) => {
+      const drip = Number(r.dripMl), drain = Number(r.drainMl);
+      const pct = r.outPercent != null ? xlNum(r.outPercent, 1) : (drip > 0 ? xlRound((drain || 0) / drip * 100, 1) : null);
+      aoa.push([xlDate(time), xlTime(time), deviceId, r.stationName || "",
+        xlNum(r.dripMl, 0), xlNum(r.drainMl, 0), pct,
+        pos(r.dripEc, 2), pos(r.drainEc, 2), pos(r.dripPh, 2), pos(r.drainPh, 2),
+        r.plantCount ?? "", r.workerId ?? ""]);
+    });
+    return aoa;
+  }
+
+  // Sheet 3: Galcon irrigations of the valve each station sits on (plot code
+  // "B01" → controller B, valve 1), using the plot in force on that day.
+  async function fetchGalconForStations(targets, fromVal, toVal) {
+    const serials = [...new Set(targets.flatMap(st => (MANUAL_PLOTS[st.deviceId] || [])
+      .map(p => LETTER_TO_SERIAL[p.code.charAt(0)])).filter(Boolean))];
+    if (!serials.length) return [];
+    const events = (await Promise.all(serials.map(serial =>
+      galconGet(`/valves?from=${fromVal}&to=${toVal}&controllerSerial=${encodeURIComponent(serial)}`)
+        .then(d => d.valves || [])))).flat();
+    const out = [];
+    for (const st of targets) {
+      const plots = MANUAL_PLOTS[st.deviceId];
+      if (!plots) continue;
+      for (const e of events) {
+        const day = String(e.DateTimeStartValve || "").slice(0, 10);
+        if (!day) continue;
+        const code = (plots.find(x => day >= x.from) || plots[plots.length - 1]).code;
+        if (String(e.SerialNumber).trim() !== LETTER_TO_SERIAL[code.charAt(0)]) continue;
+        if (Number(e.ValveNo) !== parseInt(code.slice(1), 10)) continue;
+        out.push({ deviceId: st.deviceId, code, e });
+      }
+    }
+    return out.sort((a, b) => String(a.e.DateTimeStartValve).localeCompare(String(b.e.DateTimeStartValve)));
+  }
+  function galconSheetRows(list) {
+    const pos = (v, d) => { const n = xlNum(v, d); return n > 0 ? n : null; };
+    const hm = (s) => String(s || "").slice(11, 16);
+    const aoa = [["תאריך", "שעת התחלה", "שעת סיום", "תחנה", "ברז", "תוכנית", "משך (דק׳)",
+      "ספיקה (מ״ק/ש)", "כמות (מ״ק)", "EC", "EC נדרש", "pH", "pH נדרש"]];
+    list.forEach(({ deviceId, code, e }) => {
+      const [y, m, d] = String(e.DateTimeStartValve).slice(0, 10).split("-");
+      aoa.push([`${Number(d)}.${Number(m)}.${y}`, hm(e.DateTimeStartValve), hm(e.DateTimeStopValve), deviceId, code,
+        e.ProgNum ?? "", xlNum(e.DurationValve, 1), xlNum(e.FlowRateM3h, 2), xlNum(e.VolumeM3Valve, 3),
+        pos(e.EcMed, 2), pos(e.EcRequired, 2), pos(e.PhMed, 2), pos(e.PhRequired, 2)]);
+    });
+    return aoa;
+  }
+
+  // Exports the date range for the given stations: station readings, Song manual
+  // checks and Galcon irrigations, one sheet each. A source that fails becomes a
+  // one-line note in its sheet instead of blocking the others.
+  async function exportExcel(fromVal, toVal, targets, btn) {
     if (!fromVal || !toVal) { alert("בחר תאריך התחלה ותאריך סיום"); return; }
+    if (fromVal > toVal) [fromVal, toVal] = [toVal, fromVal];
     const fromDate = new Date(fromVal + "T00:00:00");
     const toDate = new Date(toVal + "T23:59:59");
-    if (fromDate > toDate) { alert("תאריך ההתחלה אחרי תאריך הסיום"); return; }
-
-    const sel = document.getElementById("chartStationSelect").value;
-    const targets = sel && sel !== "__all__" ? STATIONS.filter(s => s.deviceId === sel) : STATIONS;
 
     const label = btn.textContent;
     btn.disabled = true;
     btn.textContent = "מכין קובץ...";
     try {
-      const XLSX = await loadXlsxLib();
-      const rows = [];
-      for (const st of targets) rows.push(...await fetchChartDataForStation(st.deviceId, fromDate, toDate));
-      if (!rows.length) { alert("אין נתונים בטווח שנבחר"); return; }
-      rows.sort((a, b) => new Date(a.tsISO) - new Date(b.tsISO));
+      const failNote = (what) => (e) => { console.error(what, e); return { error: what + ": " + (e.message || e) }; };
+      const [XLSX, stRows, manual, galcon] = await Promise.all([
+        loadXlsxLib(),
+        Promise.all(targets.map(st => fetchChartDataForStation(st.deviceId, fromDate, toDate))).then(a => a.flat()),
+        Promise.all(targets.map(st => fetchManualChecks(st.deviceId, fromDate, toDate)
+          .then(l => l.map(m => ({ ...m, deviceId: st.deviceId }))))).then(a => a.flat())
+          .catch(failNote("מדידות ידניות")),
+        fetchGalconForStations(targets, fromVal, toVal).catch(failNote("Galcon")),
+      ]);
 
-      const { hasWaterIn, hasWaterOut, fields } = chartColumns(rows);
-      const header = ["תאריך", "שעה", "נקודת דגימה"];
-      if (hasWaterIn)  header.push("מים נכנסים מצטבר (L)");
-      if (hasWaterOut) header.push("מים יוצאים מצטבר (L)");
-      fields.forEach(f => header.push(chartColumnTitle(f, " ")));
-
-      const round = (n, d) => Math.round(n * 10 ** d) / 10 ** d;
-      const aoa = [header];
-      rows.forEach(row => {
-        const ts = new Date(row.tsISO);
-        const line = [
-          ts.toLocaleDateString("he-IL"),
-          ts.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }),
-          row.stationId || row.deviceId
-        ];
-        if (hasWaterIn)  line.push(round(row.__cumWaterInL || 0, 2));
-        if (hasWaterOut) line.push(round(row.__cumWaterOutL || 0, 2));
-        fields.forEach(f => {
-          const raw = row[f];
-          if (raw === undefined || raw === null || raw === "") { line.push(null); return; }
-          if (typeof raw === "boolean") { line.push(raw ? "Yes" : "No"); return; }
-          const num = chartCellNumber(row, f);
-          line.push(Number.isFinite(num) ? round(num, chartDecimals(f)) : String(raw));
-        });
-        aoa.push(line);
-      });
-
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      ws["!cols"] = header.map((h, i) => ({ wch: i < 3 ? 12 : Math.max(10, Math.min(24, h.length + 2)) }));
+      const sheet = (aoa) => {
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws["!cols"] = aoa[0].map((h, i) => ({ wch: Math.max(i < 3 ? 11 : 9, Math.min(24, String(h).length + 2)) }));
+        return ws;
+      };
       const wb = XLSX.utils.book_new();
       wb.Workbook = { Views: [{ RTL: true }] };
-      XLSX.utils.book_append_sheet(wb, ws, "נתונים");
+      XLSX.utils.book_append_sheet(wb, sheet(stRows.length ? stationSheetRows(stRows) : [["אין קריאות תחנה בטווח"]]), "תחנה");
+      XLSX.utils.book_append_sheet(wb, sheet(manual.error ? [[manual.error]] : manualSheetRows(manual)), "מדידות ידניות (Song)");
+      XLSX.utils.book_append_sheet(wb, sheet(galcon.error ? [[galcon.error]] : galconSheetRows(galcon)), "Galcon");
       const who = targets.length === 1 ? targets[0].deviceId : "all";
       XLSX.writeFile(wb, "plants_" + who + "_" + fromVal + "_" + toVal + ".xlsx");
     } catch (err) {
@@ -5783,7 +5850,16 @@
       btn.textContent = label;
     }
   }
-  document.getElementById("btnExportExcel").addEventListener("click", exportChartExcel);
+
+  document.getElementById("btnExportExcel").addEventListener("click", (ev) => {
+    const sel = document.getElementById("chartStationSelect").value;
+    const targets = sel && sel !== "__all__" ? STATIONS.filter(s => s.deviceId === sel) : STATIONS;
+    exportExcel(document.getElementById("filterDateFrom").value, document.getElementById("filterDateTo").value, targets, ev.currentTarget);
+  });
+  document.getElementById("sqExportExcel").addEventListener("click", (ev) => {
+    getSquaresRange(); // fills today when empty
+    exportExcel(document.getElementById("sqFrom").value, document.getElementById("sqTo").value, STATIONS, ev.currentTarget);
+  });
 
   // Populate the chart-view station dropdown once at boot so it is usable
   // even before the first data fetch completes. Defaults to station1.
