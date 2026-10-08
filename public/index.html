@@ -5775,11 +5775,15 @@
   // Galcon values beside it so gaps stand out. Station = mean of its calibrated
   // readings within ±15 min of the check; drain % = from midnight up to the
   // check. Galcon only measures the feed (drip) EC/pH: the irrigation of the
-  // station's valve nearest the check, within 2 h. A 0 in a manual EC/pH means
+  // station's valve nearest the check, within 2 h. Water: manual cup vs. station
+  // meters vs. Galcon, all from midnight up to the check, in ml. Galcon's valve
+  // volume covers the whole valve, so its per-dripper amount is estimated as
+  // irrigation minutes × the dripper flow from the growth log (dripperFlowLh).
+  // A 0 in a manual EC/pH means
   // "not measured" → blank. Cells far from the manual value come back as
   // { v, gap: true } and are painted red by sheet().
   const XL_MATCH_MS = 15 * 60000, XL_GALCON_MS = 2 * 3600000;
-  function compareSheetRows(list, stationRows, galconEvents) {
+  function compareSheetRows(list, stationRows, galconEvents, dripperFlow) {
     const pos = (v, d) => { const n = xlNum(v, d); return n > 0 ? n : null; };
     const mean = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
     const dev = list[0].deviceId;
@@ -5787,15 +5791,18 @@
     const readings = stationRows.filter(r => !r.calMode)
       .map(r => ({ t: new Date(r.tsISO), r })).sort((a, b) => a.t - b.t);
     const events = galconEvents.map(g => ({ ...g, start: new Date(g.e.DateTimeStartValve), stop: new Date(g.e.DateTimeStopValve) }));
-    // gap rule: EC relative 15 %, pH 0.3, drain % 10 points
+    // gap rule: EC relative 15 %, water 20 %, pH 0.3, drain % 10 points
     const mark = (v, ref, kind) => {
       if (v == null || ref == null) return v;
       const far = kind === "ec" ? Math.abs(v - ref) / ref > 0.15
+        : kind === "ml" ? Math.abs(v - ref) / ref > 0.2
         : kind === "ph" ? Math.abs(v - ref) > 0.3 : Math.abs(v - ref) > 10;
       return far ? { v, gap: true } : v;
     };
 
     const header = ["תאריך", "שעה", "עמדה",
+      "טפטפת מ״ל – ידני", "טפטפת מ״ל – תחנה", "טפטפת מ״ל – Galcon (הערכה)", "זמן השקיה Galcon (דק׳)",
+      "נקז מ״ל – ידני", "נקז מ״ל – תחנה",
       "EC טפטפת – ידני", "EC טפטפת – תחנה", "EC טפטפת – Galcon",
       "EC נקז – ידני", "EC נקז – תחנה",
       "pH טפטפת – ידני", "pH טפטפת – תחנה", "pH טפטפת – Galcon",
@@ -5823,6 +5830,17 @@
       }
       const inL = inP * ml / 1000;
       const stPct = inL >= 0.5 ? xlRound(outP / inP * 100, 1) : null;
+      const stInMl = pIn === null ? null : Math.round(inP * ml), stOutMl = pIn === null ? null : Math.round(outP * ml);
+      // Galcon: that day's irrigations of the valve that had started by the check
+      let gMin = null;
+      for (const ev of events) {
+        if (ev.code !== plot.code || localDayKey(ev.start) !== day || ev.start > time) continue;
+        const end = ev.stop instanceof Date && !isNaN(ev.stop) && ev.stop < time ? ev.stop : time;
+        const mins = Math.max(0, Math.min(Number(ev.e.DurationValve) || 0, (end - ev.start) / 60000));
+        gMin = (gMin || 0) + mins;
+      }
+      const flowLh = dripperFlow && Number(dripperFlow[plot.code]);
+      const gMl = gMin != null && flowLh > 0 ? Math.round(gMin / 60 * flowLh * 1000) : null;
       // Galcon: the valve's irrigation running at the check, else the nearest one
       let g = null, best = Infinity;
       for (const ev of events) {
@@ -5835,7 +5853,10 @@
       const drip = Number(r.dripMl), drain = Number(r.drainMl);
       const manPct = r.outPercent != null ? xlNum(r.outPercent, 1) : (drip > 0 ? xlRound((drain || 0) / drip * 100, 1) : null);
       const m = { dripEc: pos(r.dripEc, 2), drainEc: pos(r.drainEc, 2), dripPh: pos(r.dripPh, 2), drainPh: pos(r.drainPh, 2) };
+      const manDrip = pos(r.dripMl, 0), manDrain = xlNum(r.drainMl, 0);
       return [xlDate(time), xlTime(time), r.stationName || plot.code,
+        manDrip, mark(stInMl, manDrip, "ml"), mark(gMl, manDrip, "ml"), gMin == null ? null : xlRound(gMin, 1),
+        manDrain, mark(stOutMl, manDrain || null, "ml"),
         m.dripEc, mark(st("dripEc"), m.dripEc, "ec"), mark(g ? pos(g.e.EcMed, 2) : null, m.dripEc, "ec"),
         m.drainEc, mark(st("drainEc"), m.drainEc, "ec"),
         m.dripPh, mark(st("dripPh"), m.dripPh, "ph"), mark(g ? pos(g.e.PhMed, 2) : null, m.dripPh, "ph"),
@@ -5940,7 +5961,7 @@
             const ref = at(r, c);
             ws[ref] = ws[ref] || { t: "s", v: "" };
             ws[ref].s = { font: { bold: true, sz: 14, color: { rgb: "FFFFFF" } },
-              fill: { fgColor: { rgb: "1E7E45" } }, alignment: { horizontal: "right", readingOrder: 2 } };
+              fill: { fgColor: { rgb: "1E7E45" } }, alignment: { horizontal: "center", readingOrder: 2 } };
           }
         });
         // Every column group has its own colour: a strong one for the header and
@@ -5951,7 +5972,7 @@
           { test: /pH/,                       head: "C9B3E0", rows: ["F4EFFA", "EAE1F4"] },
           { test: /VPD|אוויר/,                head: "A9D18E", rows: ["EFF6EA", "E2EFD9"] },
           { test: /קרקע|לחות/,                head: "D6B99A", rows: ["F8F2EC", "F0E6DB"] },
-          { test: /מים|טפטפת \(|נקז \(|נקז %|כמות|ספיקה/, head: "9DC3E6", rows: ["EAF2FA", "DCEAF7"] },
+          { test: /מים|מ״ל|זמן השקיה|טפטפת \(|נקז \(|נקז %|כמות|ספיקה/, head: "9DC3E6", rows: ["EAF2FA", "DCEAF7"] },
         ];
         const XL_OTHER = { head: "DDEBF7", rows: ["FFFFFF", "F2F2F2"] };
         const groupOf = (h) => XL_GROUPS.find(g => g.test.test(String(h))) || XL_OTHER;
@@ -5988,9 +6009,16 @@
         sheet(byStation(stRows, stationSheetRows, "אין קריאות תחנה בטווח", [st])),
         String(st.name || st.deviceId).replace(/[\\\/?*:[\]]/g, " ").slice(0, 31)));
       const galconOk = galcon.error ? [] : galcon;
+      // Dripper flow (L/h) per plot, from the growth log (qrCode plantingByStation).
+      const dripperFlow = {};
+      await Promise.all([...new Set(targets.flatMap(st => (MANUAL_PLOTS[st.deviceId] || []).map(p => p.code)))]
+        .map(code => ensureQrAuth()
+          .then(() => qrDb.ref(`plantingByStation/${code}_S01/dripperFlowLh`).once("value"))
+          .then(sn => { const v = Number(sn.val()); if (v > 0) dripperFlow[code] = v; })
+          .catch(e => console.warn("dripperFlow", code, e))));
       const compareRows = (mine) => compareSheetRows(mine,
         stRows.filter(r => r.deviceId === mine[0].deviceId),
-        galconOk.filter(g => g.deviceId === mine[0].deviceId));
+        galconOk.filter(g => g.deviceId === mine[0].deviceId), dripperFlow);
       XLSX.utils.book_append_sheet(wb, sheet(byStation(manual, compareRows, "אין מדידות ידניות בטווח")), "השוואה ידני-תחנה-Galcon");
       XLSX.utils.book_append_sheet(wb, sheet(byStation(galcon, galconSheetRows, "אין השקיות Galcon בטווח")), "Galcon");
       const who = targets.length === 1 ? targets[0].deviceId : "all";
