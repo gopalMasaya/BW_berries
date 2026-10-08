@@ -2769,9 +2769,14 @@
   // Each station sits in a qrCode measurement plot; a station that moved keeps
   // its history (newest first, each from its `from` day on). Mirrors PAIRS in
   // compare.html and PLOTS_BY_STATION in functions/calibration.js.
+  // `map`: which station field measures which line in that plot (mirrors
+  // PLOTS_BY_STATION in functions/calibration.js) — used by the Excel comparison.
   const MANUAL_PLOTS = {
-    station1: [{ from: "2026-09-25", code: "B01" }, { from: "", code: "B09" }],
-    station2: [{ from: "", code: "B07" }],
+    station1: [
+      { from: "2026-09-25", code: "B01", map: { ec: "drainEc", ph1: "drainPh" } },
+      { from: "", code: "B09", map: { ec: "dripEc", ph1: "dripPh" } },
+    ],
+    station2: [{ from: "", code: "B07", map: { ec2: "dripEc", ec: "drainEc", ph1: "dripPh", ph2: "drainPh" } }],
   };
   const manualDayCache = {};           // "YYYY-MM-DD" → promise of that day's records
   function localDayKey(d){
@@ -5766,21 +5771,81 @@
     return aoa;
   }
 
-  // Sheet 2: the qrCode (Song) manual drip/drain checks in each station's plot.
-  // A 0 in EC/pH means "not measured" in the entry form → left blank.
-  function manualSheetRows(list) {
+  // Sheet 2: comparison — one row per manual (Song) check, with the station and
+  // Galcon values beside it so gaps stand out. Station = mean of its calibrated
+  // readings within ±15 min of the check; drain % = from midnight up to the
+  // check. Galcon only measures the feed (drip) EC/pH: the irrigation of the
+  // station's valve nearest the check, within 2 h. A 0 in a manual EC/pH means
+  // "not measured" → blank. Cells far from the manual value come back as
+  // { v, gap: true } and are painted red by sheet().
+  const XL_MATCH_MS = 15 * 60000, XL_GALCON_MS = 2 * 3600000;
+  function compareSheetRows(list, stationRows, galconEvents) {
     const pos = (v, d) => { const n = xlNum(v, d); return n > 0 ? n : null; };
-    const aoa = [["תאריך", "שעה", "עמדה", "טפטפת (מ״ל)", "נקז (מ״ל)", "נקז %",
-      "EC טפטפת", "EC נקז", "pH טפטפת", "pH נקז", "צמחים", "עובד"]];
-    list.sort((a, b) => a.time - b.time).forEach(({ time, rec: r }) => {
+    const mean = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+    const dev = list[0].deviceId;
+    const ml = mlPerPulse(dev);
+    const readings = stationRows.filter(r => !r.calMode)
+      .map(r => ({ t: new Date(r.tsISO), r })).sort((a, b) => a.t - b.t);
+    const events = galconEvents.map(g => ({ ...g, start: new Date(g.e.DateTimeStartValve), stop: new Date(g.e.DateTimeStopValve) }));
+    // gap rule: EC relative 15 %, pH 0.3, drain % 10 points
+    const mark = (v, ref, kind) => {
+      if (v == null || ref == null) return v;
+      const far = kind === "ec" ? Math.abs(v - ref) / ref > 0.15
+        : kind === "ph" ? Math.abs(v - ref) > 0.3 : Math.abs(v - ref) > 10;
+      return far ? { v, gap: true } : v;
+    };
+
+    const header = ["תאריך", "שעה", "עמדה",
+      "EC טפטפת – ידני", "EC טפטפת – תחנה", "EC טפטפת – Galcon",
+      "EC נקז – ידני", "EC נקז – תחנה",
+      "pH טפטפת – ידני", "pH טפטפת – תחנה", "pH טפטפת – Galcon",
+      "pH נקז – ידני", "pH נקז – תחנה",
+      "נקז % – ידני", "נקז % – תחנה (מתחילת היום)"];
+    const rows = list.sort((a, b) => a.time - b.time).map(({ time, rec: r }) => {
+      const day = localDayKey(time);
+      const plots = MANUAL_PLOTS[dev];
+      const plot = plots.find(x => day >= x.from) || plots[plots.length - 1];
+      const near = readings.filter(x => Math.abs(x.t - time) <= XL_MATCH_MS).map(x => x.r);
+      const st = (kind) => {
+        const f = Object.keys(plot.map || {}).find(k => plot.map[k] === kind);
+        if (!f) return null;
+        const m = mean(near.map(x => chartCellNumber(x, f)).filter(v => Number.isFinite(v) && v > 0));
+        return m == null ? null : xlRound(m, 2);
+      };
+      // station drain % from the day's first reading up to the check
+      let inP = 0, outP = 0, pIn = null, pOut = null;
+      for (const x of readings) {
+        if (x.t > time) break;
+        if (localDayKey(x.t) !== day) continue;
+        const wIn = Number(x.r.waterIn) || 0, wOut = Number(x.r.waterOut) || 0;
+        if (pIn !== null) { inP += wIn >= pIn ? wIn - pIn : wIn; outP += wOut >= pOut ? wOut - pOut : wOut; }
+        pIn = wIn; pOut = wOut;
+      }
+      const inL = inP * ml / 1000;
+      const stPct = inL >= 0.5 ? xlRound(outP / inP * 100, 1) : null;
+      // Galcon: the valve's irrigation running at the check, else the nearest one
+      let g = null, best = Infinity;
+      for (const ev of events) {
+        if (ev.code !== plot.code) continue;
+        const d = time >= ev.start && time <= ev.stop ? 0 : Math.min(Math.abs(time - ev.start), Math.abs(time - ev.stop));
+        if (d < best) { best = d; g = ev; }
+      }
+      if (best > XL_GALCON_MS) g = null;
+
       const drip = Number(r.dripMl), drain = Number(r.drainMl);
-      const pct = r.outPercent != null ? xlNum(r.outPercent, 1) : (drip > 0 ? xlRound((drain || 0) / drip * 100, 1) : null);
-      aoa.push([xlDate(time), xlTime(time), r.stationName || "",
-        xlNum(r.dripMl, 0), xlNum(r.drainMl, 0), pct,
-        pos(r.dripEc, 2), pos(r.drainEc, 2), pos(r.dripPh, 2), pos(r.drainPh, 2),
-        r.plantCount ?? "", r.workerId ?? ""]);
+      const manPct = r.outPercent != null ? xlNum(r.outPercent, 1) : (drip > 0 ? xlRound((drain || 0) / drip * 100, 1) : null);
+      const m = { dripEc: pos(r.dripEc, 2), drainEc: pos(r.drainEc, 2), dripPh: pos(r.dripPh, 2), drainPh: pos(r.drainPh, 2) };
+      return [xlDate(time), xlTime(time), r.stationName || plot.code,
+        m.dripEc, mark(st("dripEc"), m.dripEc, "ec"), mark(g ? pos(g.e.EcMed, 2) : null, m.dripEc, "ec"),
+        m.drainEc, mark(st("drainEc"), m.drainEc, "ec"),
+        m.dripPh, mark(st("dripPh"), m.dripPh, "ph"), mark(g ? pos(g.e.PhMed, 2) : null, m.dripPh, "ph"),
+        m.drainPh, mark(st("drainPh"), m.drainPh, "ph"),
+        manPct, mark(stPct, manPct, "pct")];
     });
-    return aoa;
+    // Drop columns this station has nothing in (e.g. station1 has one line only).
+    const keep = header.map((_, c) => c < 3 || rows.some(row => row[c] != null));
+    const pick = (row) => row.filter((_, c) => keep[c]);
+    return [pick(header), ...rows.map(pick)];
   }
 
   // Sheet 3: Galcon irrigations of the valve each station sits on (plot code
@@ -5860,7 +5925,11 @@
         });
         return { aoa, titles, headers };
       };
-      const sheet = ({ aoa, titles, headers }) => {
+      const sheet = ({ aoa: raw, titles, headers }) => {
+        // Cells flagged { v, gap: true } (comparison sheet) are painted red below.
+        const flags = [];
+        const aoa = raw.map((row, r) => row.map((v, c) =>
+          v && typeof v === "object" ? (v.gap && flags.push([r, c]), v.v) : v));
         const ws = XLSX.utils.aoa_to_sheet(aoa);
         const n = Math.max(1, ...aoa.map(r => r.length));
         const border = { style: "thin", color: { rgb: "B9C4D6" } };
@@ -5906,6 +5975,10 @@
         ws["!rows"] = headers.reduce((a, r) => (a[r] = { hpt: 32 }, a), titles.reduce((a, r) => (a[r] = { hpt: 22 }, a), []));
         ws["!cols"] = Array.from({ length: n }, (_, c) => ({
           wch: Math.max(10, ...headers.map(r => Math.min(18, String(aoa[r][c] ?? "").length + 2))) }));
+        flags.forEach(([r, c]) => {
+          const cell = ws[at(r, c)];
+          cell.s = { ...cell.s, fill: { fgColor: { rgb: "F8B4B4" } }, font: { bold: true, color: { rgb: "9C0006" } } };
+        });
         return ws;
       };
       const wb = XLSX.utils.book_new();
@@ -5914,7 +5987,11 @@
       targets.forEach(st => XLSX.utils.book_append_sheet(wb,
         sheet(byStation(stRows, stationSheetRows, "אין קריאות תחנה בטווח", [st])),
         String(st.name || st.deviceId).replace(/[\\\/?*:[\]]/g, " ").slice(0, 31)));
-      XLSX.utils.book_append_sheet(wb, sheet(byStation(manual, manualSheetRows, "אין מדידות ידניות בטווח")), "מדידות ידניות (Song)");
+      const galconOk = galcon.error ? [] : galcon;
+      const compareRows = (mine) => compareSheetRows(mine,
+        stRows.filter(r => r.deviceId === mine[0].deviceId),
+        galconOk.filter(g => g.deviceId === mine[0].deviceId));
+      XLSX.utils.book_append_sheet(wb, sheet(byStation(manual, compareRows, "אין מדידות ידניות בטווח")), "השוואה ידני-תחנה-Galcon");
       XLSX.utils.book_append_sheet(wb, sheet(byStation(galcon, galconSheetRows, "אין השקיות Galcon בטווח")), "Galcon");
       const who = targets.length === 1 ? targets[0].deviceId : "all";
       XLSX.writeFile(wb, "plants_" + who + "_" + fromVal + "_" + toVal + ".xlsx");
