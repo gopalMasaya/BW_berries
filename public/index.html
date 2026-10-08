@@ -5874,11 +5874,33 @@
               fill: { fgColor: { rgb: "1E7E45" } }, alignment: { horizontal: "right", readingOrder: 2 } };
           }
         });
+        // Every column group has its own colour: a strong one for the header and
+        // two light ones that alternate down the rows (zebra stripes).
+        const XL_GROUPS = [
+          { test: /^(תאריך|שעה|שעת)/,        head: "D9D9D9", rows: ["FFFFFF", "F2F2F2"] },
+          { test: /מים|טפטפת \(|נקז \(|נקז %|כמות|ספיקה/, head: "9DC3E6", rows: ["EAF2FA", "DCEAF7"] },
+          { test: /EC/,                       head: "F4B183", rows: ["FDF0E7", "FBE3D3"] },
+          { test: /pH/,                       head: "C9B3E0", rows: ["F4EFFA", "EAE1F4"] },
+          { test: /VPD|אוויר/,                head: "A9D18E", rows: ["EFF6EA", "E2EFD9"] },
+          { test: /קרקע|לחות/,                head: "D6B99A", rows: ["F8F2EC", "F0E6DB"] },
+        ];
+        const XL_OTHER = { head: "DDEBF7", rows: ["FFFFFF", "F2F2F2"] };
+        const groupOf = (h) => XL_GROUPS.find(g => g.test.test(String(h))) || XL_OTHER;
+        const box = { top: border, bottom: border, left: border, right: border };
         headers.forEach(r => {
+          const groups = aoa[r].map(groupOf);
           for (let c = 0; c < aoa[r].length; c++) {
-            ws[at(r, c)].s = { font: { bold: true }, fill: { fgColor: { rgb: "DDEBF7" } },
-              alignment: { horizontal: "center", vertical: "center", wrapText: true },
-              border: { top: border, bottom: border, left: border, right: border } };
+            ws[at(r, c)].s = { font: { bold: true }, fill: { fgColor: { rgb: groups[c].head } },
+              alignment: { horizontal: "center", vertical: "center", wrapText: true }, border: box };
+          }
+          // The section's data rows run until the blank separator row.
+          for (let row = r + 1, i = 0; row < aoa.length && aoa[row].length; row++, i++) {
+            for (let c = 0; c < aoa[r].length; c++) {
+              const ref = at(row, c);
+              ws[ref] = ws[ref] || { t: "s", v: "" };
+              ws[ref].s = { fill: { fgColor: { rgb: groups[c].rows[i % 2] } },
+                alignment: { horizontal: "center" }, border: box };
+            }
           }
         });
         ws["!rows"] = headers.reduce((a, r) => (a[r] = { hpt: 32 }, a), titles.reduce((a, r) => (a[r] = { hpt: 22 }, a), []));
