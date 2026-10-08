@@ -5832,14 +5832,32 @@
 
       const sheet = (aoa) => {
         const ws = XLSX.utils.aoa_to_sheet(aoa);
-        ws["!cols"] = aoa[0].map((h, i) => ({ wch: Math.max(i < 3 ? 11 : 9, Math.min(24, String(h).length + 2)) }));
+        const n = Math.max(...aoa.map(r => r.length));
+        // Width from the header rows (the longest heading in each column).
+        ws["!cols"] = Array.from({ length: n }, (_, i) => ({
+          wch: Math.max(i < 3 ? 11 : 9, ...aoa.filter(r => r.length > 1 && typeof r[0] === "string" && r[0] === "תאריך")
+            .map(r => Math.min(24, String(r[i] ?? "").length + 2)))
+        }));
         return ws;
+      };
+      // Each sheet is laid out station by station: a title row with the station's
+      // name, its own header + rows (columns differ per station), a blank row.
+      const byStation = (list, build, empty) => {
+        if (list.error) return [[list.error]];
+        const aoa = [];
+        targets.forEach(st => {
+          const mine = list.filter(x => x.deviceId === st.deviceId);
+          aoa.push([st.name || st.deviceId]);
+          aoa.push(...(mine.length ? build(mine) : [[empty]]));
+          aoa.push([]);
+        });
+        return aoa;
       };
       const wb = XLSX.utils.book_new();
       wb.Workbook = { Views: [{ RTL: true }] };
-      XLSX.utils.book_append_sheet(wb, sheet(stRows.length ? stationSheetRows(stRows) : [["אין קריאות תחנה בטווח"]]), "תחנה");
-      XLSX.utils.book_append_sheet(wb, sheet(manual.error ? [[manual.error]] : manualSheetRows(manual)), "מדידות ידניות (Song)");
-      XLSX.utils.book_append_sheet(wb, sheet(galcon.error ? [[galcon.error]] : galconSheetRows(galcon)), "Galcon");
+      XLSX.utils.book_append_sheet(wb, sheet(byStation(stRows, stationSheetRows, "אין קריאות תחנה בטווח")), "תחנה");
+      XLSX.utils.book_append_sheet(wb, sheet(byStation(manual, manualSheetRows, "אין מדידות ידניות בטווח")), "מדידות ידניות (Song)");
+      XLSX.utils.book_append_sheet(wb, sheet(byStation(galcon, galconSheetRows, "אין השקיות Galcon בטווח")), "Galcon");
       const who = targets.length === 1 ? targets[0].deviceId : "all";
       XLSX.writeFile(wb, "plants_" + who + "_" + fromVal + "_" + toVal + ".xlsx");
     } catch (err) {
