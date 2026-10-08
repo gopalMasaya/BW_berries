@@ -236,6 +236,8 @@
       font-size:14px; font-weight:600;
     }
     .filterBtn:hover{ filter:brightness(1.1); }
+    .filterBtn.excel{ background:#1e7e45; border-color:#17663a; }
+    .filterBtn:disabled{ opacity:.6; cursor:wait; }
 
     /* Graphs view */
     #graphView{
@@ -960,6 +962,7 @@
         <label>עד</label>
         <input type="date" id="filterDateTo" />
         <button class="filterBtn" id="btnFilterDate">סינון</button>
+        <button class="filterBtn excel" id="btnExportExcel" title="הורד לאקסל את טווח התאריכים והתחנה שנבחרו">⬇ אקסל</button>
       </div>
     </div>
 
@@ -5534,20 +5537,12 @@
     }
   }
 
-  function renderChartTable() {
-    const head = document.getElementById("chartHead");
-    const body = document.getElementById("chartBody");
-
-    if (filteredChartData.length === 0) {
-      head.innerHTML = "";
-      body.innerHTML = '<tr><td style="padding:20px;color:#5c6b85;font-size:16px;">אין נתונים להצגה</td></tr>';
-      return;
-    }
-
-    // Compute the running liters totals (stored on each row) before rendering.
-    computeChartWaterCumulative(filteredChartData);
-    const hasWaterIn  = filteredChartData.some(r => pickWaterValue(r, WATER_IN_KEYS)  !== null);
-    const hasWaterOut = filteredChartData.some(r => pickWaterValue(r, WATER_OUT_KEYS) !== null);
+  // Columns of the Chart table (shared with the Excel export). Also stores the
+  // running liters totals on each row.
+  function chartColumns(rows) {
+    computeChartWaterCumulative(rows);
+    const hasWaterIn  = rows.some(r => pickWaterValue(r, WATER_IN_KEYS)  !== null);
+    const hasWaterOut = rows.some(r => pickWaterValue(r, WATER_OUT_KEYS) !== null);
     const waterKeys = new Set([...WATER_IN_KEYS, ...WATER_OUT_KEYS]);
 
     // Collect all numeric/boolean field names across all rows
@@ -5565,7 +5560,7 @@
       "ec_raw", "ec_raw_temp", "ph1_raw", "ec_err", "ph1_err"
     ]);
     const fieldSet = new Set();
-    filteredChartData.forEach(row => {
+    rows.forEach(row => {
       Object.keys(row).forEach(k => {
         if (skipFields.includes(k)) return;
         if (k.startsWith("__")) return; // internal computed fields (cumulative liters)
@@ -5580,6 +5575,40 @@
     });
 
     const fields = [...fieldSet].sort();
+    return { hasWaterIn, hasWaterOut, fields };
+  }
+
+  // Calibrated numeric value of a Chart-table cell (NaN if not numeric).
+  function chartCellNumber(row, f) {
+    let num = parseFloat(row[f]);
+    if (!Number.isFinite(num)) return NaN;
+    const cal = FIELD_CALIBRATION[f];
+    if (cal && cal.transform) num = cal.transform(num, row);
+    return num;
+  }
+  function chartDecimals(f) {
+    const cal = FIELD_CALIBRATION[f];
+    return cal && cal.decimals != null ? cal.decimals : decimalsFor(f);
+  }
+  function chartColumnTitle(f, sep) {
+    const unit = (FIELD_CALIBRATION[f] && FIELD_CALIBRATION[f].unit) || unitFor(f);
+    // Columns keep their raw field name, except the two EC probes: "Ec"/"Ec2"
+    // says nothing about which line each one sits on.
+    const head = (f === "ec" || f === "ec2") ? labelFor(f) : fmtFieldName(f);
+    return head + (unit ? sep + "(" + unit + ")" : "");
+  }
+
+  function renderChartTable() {
+    const head = document.getElementById("chartHead");
+    const body = document.getElementById("chartBody");
+
+    if (filteredChartData.length === 0) {
+      head.innerHTML = "";
+      body.innerHTML = '<tr><td style="padding:20px;color:#5c6b85;font-size:16px;">אין נתונים להצגה</td></tr>';
+      return;
+    }
+
+    const { hasWaterIn, hasWaterOut, fields } = chartColumns(filteredChartData);
 
     // Build header - RTL so rightmost column is first
     let headerHtml = "<tr>";
@@ -5590,11 +5619,7 @@
     if (hasWaterIn)  headerHtml += "<th>מים נכנסים מצטבר<br>(L)</th>";
     if (hasWaterOut) headerHtml += "<th>מים יוצאים מצטבר<br>(L)</th>";
     fields.forEach(f => {
-      const unit = (FIELD_CALIBRATION[f] && FIELD_CALIBRATION[f].unit) || unitFor(f);
-      // Columns keep their raw field name, except the two EC probes: "Ec"/"Ec2"
-      // says nothing about which line each one sits on.
-      const head = (f === "ec" || f === "ec2") ? labelFor(f) : fmtFieldName(f);
-      headerHtml += "<th>" + head + (unit ? "<br>(" + unit + ")" : "") + "</th>";
+      headerHtml += "<th>" + chartColumnTitle(f, "<br>") + "</th>";
     });
     headerHtml += "</tr>";
     head.innerHTML = headerHtml;
@@ -5633,12 +5658,9 @@
         } else if (typeof raw === "boolean") {
           val = raw ? "Yes" : "No";
         } else {
-          let num = parseFloat(raw);
+          const num = chartCellNumber(row, f);
           if (Number.isFinite(num)) {
-            const cal = FIELD_CALIBRATION[f];
-            if (cal && cal.transform) num = cal.transform(num, row);
-            const decimals = cal && cal.decimals != null ? cal.decimals : decimalsFor(f);
-            val = num.toFixed(decimals);
+            val = num.toFixed(chartDecimals(f));
             // Color-code EC fields (only the calibrated ec/ec2, not soil_ec)
             if (f === "ec" || f === "ec2") {
               cls = getEcCellClass(num);
@@ -5682,6 +5704,86 @@
     }
     loadChartData();
   });
+
+  // ── Excel export: the toolbar's date range + station, same columns as the table ──
+  let xlsxLib = null;
+  function loadXlsxLib() {
+    if (xlsxLib) return xlsxLib;
+    xlsxLib = new Promise((resolve, reject) => {
+      const sc = document.createElement("script");
+      sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+      sc.onload = () => resolve(window.XLSX);
+      sc.onerror = () => { xlsxLib = null; reject(new Error("טעינת ספריית האקסל נכשלה")); };
+      document.head.appendChild(sc);
+    });
+    return xlsxLib;
+  }
+
+  async function exportChartExcel() {
+    const btn = document.getElementById("btnExportExcel");
+    const fromVal = document.getElementById("filterDateFrom").value;
+    const toVal = document.getElementById("filterDateTo").value;
+    if (!fromVal || !toVal) { alert("בחר תאריך התחלה ותאריך סיום"); return; }
+    const fromDate = new Date(fromVal + "T00:00:00");
+    const toDate = new Date(toVal + "T23:59:59");
+    if (fromDate > toDate) { alert("תאריך ההתחלה אחרי תאריך הסיום"); return; }
+
+    const sel = document.getElementById("chartStationSelect").value;
+    const targets = sel && sel !== "__all__" ? STATIONS.filter(s => s.deviceId === sel) : STATIONS;
+
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "מכין קובץ...";
+    try {
+      const XLSX = await loadXlsxLib();
+      const rows = [];
+      for (const st of targets) rows.push(...await fetchChartDataForStation(st.deviceId, fromDate, toDate));
+      if (!rows.length) { alert("אין נתונים בטווח שנבחר"); return; }
+      rows.sort((a, b) => new Date(a.tsISO) - new Date(b.tsISO));
+
+      const { hasWaterIn, hasWaterOut, fields } = chartColumns(rows);
+      const header = ["תאריך", "שעה", "נקודת דגימה"];
+      if (hasWaterIn)  header.push("מים נכנסים מצטבר (L)");
+      if (hasWaterOut) header.push("מים יוצאים מצטבר (L)");
+      fields.forEach(f => header.push(chartColumnTitle(f, " ")));
+
+      const round = (n, d) => Math.round(n * 10 ** d) / 10 ** d;
+      const aoa = [header];
+      rows.forEach(row => {
+        const ts = new Date(row.tsISO);
+        const line = [
+          ts.toLocaleDateString("he-IL"),
+          ts.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }),
+          row.stationId || row.deviceId
+        ];
+        if (hasWaterIn)  line.push(round(row.__cumWaterInL || 0, 2));
+        if (hasWaterOut) line.push(round(row.__cumWaterOutL || 0, 2));
+        fields.forEach(f => {
+          const raw = row[f];
+          if (raw === undefined || raw === null || raw === "") { line.push(null); return; }
+          if (typeof raw === "boolean") { line.push(raw ? "Yes" : "No"); return; }
+          const num = chartCellNumber(row, f);
+          line.push(Number.isFinite(num) ? round(num, chartDecimals(f)) : String(raw));
+        });
+        aoa.push(line);
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws["!cols"] = header.map((h, i) => ({ wch: i < 3 ? 12 : Math.max(10, Math.min(24, h.length + 2)) }));
+      const wb = XLSX.utils.book_new();
+      wb.Workbook = { Views: [{ RTL: true }] };
+      XLSX.utils.book_append_sheet(wb, ws, "נתונים");
+      const who = targets.length === 1 ? targets[0].deviceId : "all";
+      XLSX.writeFile(wb, "plants_" + who + "_" + fromVal + "_" + toVal + ".xlsx");
+    } catch (err) {
+      console.error(err);
+      alert("שגיאה בייצוא: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+  document.getElementById("btnExportExcel").addEventListener("click", exportChartExcel);
 
   // Populate the chart-view station dropdown once at boot so it is usable
   // even before the first data fetch completes. Defaults to station1.
