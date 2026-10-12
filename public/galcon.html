@@ -184,10 +184,11 @@
     import { requireAuth } from "./guard.mjs";
     import { initSidebar } from "./sidebar.mjs";
     import { waitForAuth, db, ref, get, onValue } from "./auth.mjs";
-    import { STATIONS } from "./stations.mjs";
+    import { STATIONS, loadStations } from "./stations.mjs";
     import { getAuth } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
 
     const { user, profile } = await requireAuth(["manager"]);
+    await loadStations();
     initSidebar(profile);
 
     const API_BASE = "https://us-central1-plantstracker-f1274.cloudfunctions.net/galcon";

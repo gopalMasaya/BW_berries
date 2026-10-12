@@ -1161,6 +1161,63 @@
   ];
 
   // ===============================
+  // STATION DISCOVERY
+  // ===============================
+  // The ingest function registers every station that sends a reading under
+  // /stations/{deviceId} (clients cannot list /berries itself). The list above
+  // only supplies names and coordinates for the stations we already know; any
+  // other registered station is added here, at boot and live while the page is
+  // open. A registry entry may carry name / lng / lat to override the defaults.
+  function stationFromRegistry(deviceId, info){
+    info = info || {};
+    const num = (deviceId.match(/\d+$/) || [""])[0];
+    // No coordinates yet: stack it just north of the known stations so the map
+    // marker exists (drag it in the field plan, or set lng/lat in the registry).
+    const base = STATIONS[0];
+    const lng = Number(info.lng), lat = Number(info.lat);
+    return {
+      deviceId,
+      name: info.name || (num ? "Station " + num.padStart(3, "0") : deviceId),
+      lng: Number.isFinite(lng) ? lng : base.lng,
+      lat: Number.isFinite(lat) ? lat : base.lat + 0.00045 * STATIONS.length
+    };
+  }
+
+  function addStation(deviceId, info){
+    if (STATIONS.some(s => s.deviceId === deviceId)) return null;
+    const st = stationFromRegistry(deviceId, info);
+    STATIONS.push(st);
+    STATIONS.sort((a, b) => a.deviceId.localeCompare(b.deviceId, undefined, { numeric: true }));
+    return st;
+  }
+
+  // Before the first render: everything already registered.
+  async function loadStationRegistry(){
+    try {
+      const reg = (await database.ref("stations").once("value")).val() || {};
+      Object.entries(reg).forEach(([id, info]) => addStation(id, info));
+    } catch(e){ console.error("station registry load", e); }
+  }
+
+  // After boot: a station that registers while the page is open gets its
+  // per-station settings loaded and is drawn into every view.
+  function watchStationRegistry(){
+    database.ref("stations").on("child_added", async snap => {
+      const st = addStation(snap.key, snap.val());
+      if (!st) return;
+      try {
+        await loadMlPerPulse([st]);
+        await loadWaterSwap([st]);
+        await loadCalibration([st]);
+      } catch(e){ console.error("new station config", st.deviceId, e); }
+      buildChartStationSelect();
+      buildGraphStationSelect();
+      setStatus("נוספה תחנה חדשה: " + st.name, true);
+      pollNow();
+    });
+  }
+
+  // ===============================
   // ML PER FLOWMETER PULSE
   // ===============================
   // The calibration is edited in Settings and stored per station at

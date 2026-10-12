@@ -275,7 +275,7 @@
     import { db, ref, get, set, onValue } from "./auth.mjs";
     import { query, orderByKey, limitToLast, startAt, endAt, push, remove }
       from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
-    import { STATIONS } from "./stations.mjs";
+    import { STATIONS, loadStations } from "./stations.mjs";
 
     // Authenticate, but do the role check here instead of inside requireAuth().
     //
@@ -289,6 +289,7 @@
     // the button can be visible on one page and refused by the next.
     const OWNER_EMAIL = "bcreativeground@gmail.com";
     const { user, profile } = await requireAuth();
+    await loadStations();
 
     if (profile.role !== "manager" &&
         (user.email || "").toLowerCase() !== OWNER_EMAIL) {
