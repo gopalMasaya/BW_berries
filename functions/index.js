@@ -92,6 +92,19 @@ function buildKeysFromDate(now) {
   };
 }
 
+// The station registry at /stations/{stationId} is what the dashboard lists.
+// Clients cannot list /berries (no read rule on it), so a station is registered
+// the first time it sends a reading: adding a secret to DEVICE_SECRETS is all a
+// new station needs to appear in every view. Only the first registration per
+// instance touches the database.
+const registeredStations = new Set();
+async function registerStation(stationId, now) {
+  if (registeredStations.has(stationId)) return;
+  await admin.database().ref(`/stations/${stationId}`).transaction((cur) =>
+    cur || {firstSeen: now.toISOString()});
+  registeredStations.add(stationId);
+}
+
 app.post("/ingest", async (req, res) => {
   try {
     if (!isAuthorizedQuery(req)) {
