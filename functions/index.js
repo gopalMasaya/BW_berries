@@ -16,6 +16,7 @@ app.use(express.json());
 const DEVICE_SECRETS = {
   station1: "s0001mh0001",
   station2: "s0002mh0002",
+  station3: "s0003mh0003",
 };
 
 function isAuthorizedQuery(req) {
@@ -126,6 +127,8 @@ app.post("/ingest", async (req, res) => {
     await admin.database()
         .ref(`/berries/${stationId}/${monthKey}/${tsKey}`)
         .set(payload);
+    await registerStation(stationId, now).catch((e) =>
+      logger.warn("station registry", stationId, e));
 
     return res.status(200).json({
       ok: true,
