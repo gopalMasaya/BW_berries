@@ -3498,6 +3498,14 @@
       renderSquareMetrics(st.deviceId, square.querySelector(".sq-metrics"));
       paintDriftBadge(st.deviceId, square.querySelector(".sq-drift"));
 
+      const valveBox = square.querySelector(".sq-valvectl");
+      paintValveControl(st.deviceId, valveBox);
+      valveBox.addEventListener("click", (e) => {
+        e.stopPropagation();   // not a click on the card (which opens the drawer)
+        const btn = e.target.closest("button[data-act]");
+        if (btn) setManualValve(st.deviceId, valveBox, btn.dataset.act);
+      });
+
       // Clicking the card opens the drawer, except over interactive areas
       // (the chart, the chart toggle, or the irrigation panel/list).
       square.addEventListener("click", (e) => {
