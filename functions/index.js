@@ -162,13 +162,15 @@ app.get("/watering", async (req, res) => {
     }
 
     const stationId = String(req.query.stationId || "");
-    const [waterSnap, configSnap, calSnap] = await Promise.all([
+    const [waterSnap, configSnap, calSnap, manualSnap] = await Promise.all([
       admin.database().ref(`/berries/${stationId}/control/watering`).get(),
       admin.database().ref(`/berries/${stationId}/control/wateringConfig`).get(),
       calSession.getSession(stationId).catch(() => null),
+      admin.database().ref(`/berries/${stationId}/control/manualValve`).get(),
     ]);
 
     const config = configSnap.val() || {};
+    const manual = manualValveMode(manualSnap.val(), Date.now());
 
     // VPD comes from FieldClimate, which the station itself cannot reach.
     // Only touched when the user has switched it on for this station: every
