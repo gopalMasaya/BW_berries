@@ -1231,6 +1231,7 @@
         await loadWaterSwap([st]);
         await loadCalibration([st]);
       } catch(e){ console.error("new station config", st.deviceId, e); }
+      watchManualValve([st]);
       buildChartStationSelect();
       buildGraphStationSelect();
       setStatus("נוספה תחנה חדשה: " + st.name, true);
@@ -6902,6 +6903,8 @@
     await loadWaterSwap();
     // Same for the EC/pH calibration and the first sensor value.
     await loadCalibration();
+    // Manual valve overrides, live (painted into the station cards).
+    watchManualValve();
 
     // Open on the main (squares) view by default.
     applyView("squares");
