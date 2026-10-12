@@ -155,30 +155,94 @@ app.post("/ingest", async (req, res) => {
   }
 });
 
-// Manual valve override from the dashboard, at control/manualValve:
-// {mode: "open" | "closed", until: epoch ms, by, at}. Expressed with the two
-// flags every firmware already obeys, so no reflash is needed:
-//   open   -> watering:true, the cloud manual-watering flag (still bounded by
-//             the station's own maxWateringMin per run);
-//   closed -> wateringEnabled:false, which closes the valve even mid-way
-//             through a soil/VPD watering and keeps automatic watering off.
-// `until` is enforced HERE rather than on the station: a forgotten override
-// lapses on its own and the station goes back to its automatic logic.
-function manualValveMode(v, nowMs) {
-  if (!v || (v.mode !== "open" && v.mode !== "closed")) return null;
-  return Number(v.until) > nowMs ? v.mode : null;
+// ---- Valve commands from the dashboard ----------------------------------
+// control/cmd = {v1: cmd, v2: cmd, poll: ms}. v1 is the irrigation valve,
+// v2 the sprinklers. cmd = {id, mode: "open" | "closed", sec, issuedAt,
+// startedAt?, by}. "closed" (valve 1 only) closes the valve and holds
+// automatic watering off for `sec`.
+//
+// The duration runs from the moment the STATION carries the command out, not
+// from the click: the station polls /cmd every 30 s and reports back which
+// command it ran and how long ago (rK / eK), which stamps startedAt. Until
+// then a command waits at most CMD_PICKUP_MS for the station to pick it up.
+// See cmd_protocol in the firmware sketches for the station side.
+const CMD_PICKUP_MS = 10 * 60 * 1000;
+// A station that polled /cmd this recently runs the new firmware; older ones
+// still get the commands folded into /watering (legacy below).
+const CMD_FRESH_MS = 3 * 60 * 1000;
+const CMD_VALVES = [["v1", 1], ["v2", 2]];
+
+// Milliseconds left on a command, or 0 when it is finished / never picked up.
+function cmdLeftMs(c, nowMs) {
+  if (!c || !c.id || (c.mode !== "open" && c.mode !== "closed")) return 0;
+  const runMs = Number(c.sec) * 1000;
+  if (!(runMs > 0)) return 0;
+  if (c.startedAt) return Math.max(0, Number(c.startedAt) + runMs - nowMs);
+  return nowMs - Number(c.issuedAt || 0) < CMD_PICKUP_MS ? runMs : 0;
 }
 
-// Valve #2 = sprinklers, at control/manualValve2: {mode: "open", until, by, at}.
-// There is no automatic sprinkler logic, so the only command is "open until".
-// Sent as "spr" = whole seconds left, and only while it is running: an absent
-// key means closed, which keeps the body unchanged for every station that has
-// no sprinklers (the Mega stations' MKR link truncates it at 300 bytes). The
-// station holds the deadline itself, so it closes on time without the cloud.
-function sprinklerFields(v, nowMs) {
-  if (!v || v.mode !== "open") return {};
-  const left = Math.ceil((Number(v.until) - nowMs) / 1000);
-  return left > 0 ? {spr: left} : {};
+app.get("/cmd", async (req, res) => {
+  try {
+    if (!isAuthorizedQuery(req)) {
+      return res.status(403).json({ok: false, error: "unauthorized"});
+    }
+    const stationId = String(req.query.stationId || "");
+    const ref = admin.database().ref(`/berries/${stationId}/control/cmd`);
+    const now = Date.now();
+    let out;
+    // A transaction, because the dashboard may write a new command between
+    // this read and the write-back; a plain update could then stamp the new
+    // command as started, or delete it as finished.
+    await ref.transaction((cmd) => {
+      cmd = cmd || {};
+      out = {ok: true};
+      for (const [key, n] of CMD_VALVES) {
+        const c = cmd[key];
+        if (!c) continue;
+        // The station ran this command eK seconds ago: that is when it started.
+        if (!c.startedAt && String(req.query["r" + n]) === String(c.id)) {
+          const e = Math.max(0, Number(req.query["e" + n]) || 0);
+          c.startedAt = now - e * 1000;
+        }
+        const left = cmdLeftMs(c, now);
+        if (!left) {
+          delete cmd[key];   // finished or never picked up
+          continue;
+        }
+        out["i" + n] = Number(c.id);
+        out["m" + n] = c.mode === "open" ? 1 : 2;
+        out["s" + n] = Math.ceil(left / 1000);
+      }
+      cmd.poll = now;
+      return cmd;
+    });
+    return res.status(200).json(out);
+  } catch (err) {
+    logger.error("cmd failed", err);
+    return res.status(500).json({ok: false, error: "server error"});
+  }
+});
+
+// Legacy: firmware without /cmd only knows the /watering flags, so for those
+// stations the same commands are expressed there, timed from the click:
+//   v1 open   -> watering:true (the cloud manual-watering flag);
+//   v1 closed -> wateringEnabled:false (closes even mid-watering);
+//   v2 open   -> "spr": seconds left (absent = closed).
+// Skipped once the station polls /cmd, so new firmware never sees a command
+// twice.
+function legacyCmdFields(cmd, nowMs) {
+  cmd = cmd || {};
+  if (cmd.poll && nowMs - Number(cmd.poll) < CMD_FRESH_MS) return {};
+  const out = {};
+  const v1 = cmdLeftMs(cmd.v1, nowMs) && cmd.v1;
+  if (v1 && v1.mode === "open") out.watering = true;
+  if (v1 && v1.mode === "closed") {
+    out.watering = false;
+    out.wateringEnabled = false;
+  }
+  const left2 = cmd.v2 && cmd.v2.mode === "open" ? cmdLeftMs(cmd.v2, nowMs) : 0;
+  if (left2) out.spr = Math.ceil(left2 / 1000);
+  return out;
 }
 
 app.get("/watering", async (req, res) => {
@@ -188,18 +252,16 @@ app.get("/watering", async (req, res) => {
     }
 
     const stationId = String(req.query.stationId || "");
-    const [waterSnap, configSnap, calSnap, manualSnap, sprSnap] =
-      await Promise.all([
+    const [waterSnap, configSnap, calSnap, cmdSnap] = await Promise.all([
       admin.database().ref(`/berries/${stationId}/control/watering`).get(),
       admin.database().ref(`/berries/${stationId}/control/wateringConfig`).get(),
       calSession.getSession(stationId).catch(() => null),
-      admin.database().ref(`/berries/${stationId}/control/manualValve`).get(),
-      admin.database().ref(`/berries/${stationId}/control/manualValve2`).get(),
+      admin.database().ref(`/berries/${stationId}/control/cmd`).get(),
     ]);
 
     const config = configSnap.val() || {};
-    const manual = manualValveMode(manualSnap.val(), Date.now());
-    const sprFields = sprinklerFields(sprSnap.val(), Date.now());
+    const {spr, ...legacy} = legacyCmdFields(cmdSnap.val(), Date.now());
+    const sprFields = spr ? {spr} : {};
 
     // VPD comes from FieldClimate, which the station itself cannot reach.
     // Only touched when the user has switched it on for this station: every
@@ -305,9 +367,9 @@ app.get("/watering", async (req, res) => {
       ok: true,
       stationId,
     }, calFields, {
-      watering: manual ? manual === "open" : !!waterSnap.val(),
+      watering: legacy.watering ?? !!waterSnap.val(),
       monitorOnly: config.monitorOnly ?? false,
-      wateringEnabled: manual === "closed" ? false : (config.wateringEnabled ?? true),
+      wateringEnabled: legacy.wateringEnabled ?? config.wateringEnabled ?? true,
       soil1Threshold: config.soil1Threshold ?? 60,
       soil2RiseToStop: config.soil2RiseToStop ?? 5,
       noRiseTimeoutMin: config.noRiseTimeoutMin ?? 10,
