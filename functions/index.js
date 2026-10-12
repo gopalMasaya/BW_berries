@@ -276,9 +276,9 @@ app.get("/watering", async (req, res) => {
       ok: true,
       stationId,
     }, calFields, {
-      watering: !!waterSnap.val(),
+      watering: manual ? manual === "open" : !!waterSnap.val(),
       monitorOnly: config.monitorOnly ?? false,
-      wateringEnabled: config.wateringEnabled ?? true,
+      wateringEnabled: manual === "closed" ? false : (config.wateringEnabled ?? true),
       soil1Threshold: config.soil1Threshold ?? 60,
       soil2RiseToStop: config.soil2RiseToStop ?? 5,
       noRiseTimeoutMin: config.noRiseTimeoutMin ?? 10,
