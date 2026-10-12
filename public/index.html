@@ -1668,6 +1668,7 @@
     if (s) s.style.display = "";
     if (g) g.style.display = "";
     if (sq) sq.style.display = "";
+    document.body.classList.add("is-manager");
   }
   auth.onAuthStateChanged(user => {
     if (user) {
