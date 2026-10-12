@@ -3568,40 +3568,62 @@
   // ===============================
   // MANUAL VALVE CONTROL
   // ===============================
-  // Every station has two valves: #1 irrigation (automatic, with a manual
-  // override) and #2 sprinklers (app command only). The dashboard writes
-  // control/manualValve{,2} = {mode, until, by, at}; the /watering function
-  // turns that into what the firmware obeys and drops it once `until` passes
-  // (manualValveMode / sprinklerFields in functions/index.js). The station only
-  // picks it up on its next call to /watering, so the card shows the requested
-  // command next to the valve state of the last reading.
+  // Every station has two valves: v1 irrigation (automatic, with a manual
+  // override) and v2 sprinklers (app command only). A button writes
+  // control/cmd/{v1,v2} = {id, mode, sec, issuedAt, by}. The station polls /cmd
+  // every 30 s, carries the command out and reports back, which stamps
+  // startedAt: the duration runs from that moment, not from the click. The
+  // server drops a command once it is finished, or if no station picked it up
+  // within 10 minutes; control/cmd/poll is the station's last poll. See /cmd in
+  // functions/index.js. Firmware that does not poll /cmd yet still gets the
+  // command through /watering, timed from the click.
   const MANUAL_VALVE_DEFAULT_MIN = 10;
-  const SPRINKLER_MAX_MIN = 120;   // firmware SPRINKLER_MAX_S
+  const VALVE_CMD_MAX_MIN = 120;          // firmware CMD_MAX_S
+  const CMD_PICKUP_MS = 10 * 60 * 1000;   // server CMD_PICKUP_MS
+  const CMD_FRESH_MS = 3 * 60 * 1000;     // server CMD_FRESH_MS
   const VALVES = [
-    { id:"irrig", path:"manualValve",  field:"valve",  title:"🚰 השקיה", noun:"ברז ההשקיה" },
-    { id:"spr",   path:"manualValve2", field:"valve2", title:"💦 מתזים", noun:"המתזים", sprinkler:true }
+    { id:"v1", field:"valve",  title:"🚰 השקיה", noun:"ברז ההשקיה" },
+    { id:"v2", field:"valve2", title:"💦 מתזים", noun:"המתזים", sprinkler:true }
   ];
-  const manualValveByStation = {};   // deviceId -> { irrig: {...}|null, spr: {...}|null }
-  const manualValveWatched = new Set();
+  const valveCmdByStation = {};   // deviceId -> control/cmd value
+  const valveCmdWatched = new Set();
 
   function watchManualValve(list = STATIONS){
     list.forEach(st => {
-      if (manualValveWatched.has(st.deviceId)) return;
-      manualValveWatched.add(st.deviceId);
-      manualValveByStation[st.deviceId] = {};
-      VALVES.forEach(v => {
-        database.ref("berries/" + st.deviceId + "/control/" + v.path).on("value", snap => {
-          manualValveByStation[st.deviceId][v.id] = snap.val();
-          const box = document.querySelector('.station-square[data-device="' + st.deviceId + '"] .sq-valvectl');
-          if (box) paintValveControl(st.deviceId, box);
-        });
+      if (valveCmdWatched.has(st.deviceId)) return;
+      valveCmdWatched.add(st.deviceId);
+      database.ref("berries/" + st.deviceId + "/control/cmd").on("value", snap => {
+        valveCmdByStation[st.deviceId] = snap.val() || {};
+        const box = document.querySelector('.station-square[data-device="' + st.deviceId + '"] .sq-valvectl');
+        // The station's poll rewrites this node every 30 s; don't wipe a
+        // duration someone is typing.
+        if (box && !box.contains(document.activeElement)) paintValveControl(st.deviceId, box);
       });
     });
   }
 
-  function activeManualValve(deviceId, v){
-    const m = (manualValveByStation[deviceId] || {})[v.id];
-    return m && (m.mode === "open" || m.mode === "closed") && Number(m.until) > Date.now() ? m : null;
+  // A station that polled /cmd lately runs the new firmware (timed from start).
+  function stationPollsCmd(deviceId){
+    const poll = Number((valveCmdByStation[deviceId] || {}).poll);
+    return poll > 0 && Date.now() - poll < CMD_FRESH_MS;
+  }
+
+  // The command on a valve if it is still pending or running, with its end time
+  // (null while it waits for the station).
+  function activeValveCmd(deviceId, v){
+    const c = (valveCmdByStation[deviceId] || {})[v.id];
+    if (!c || (c.mode !== "open" && c.mode !== "closed")) return null;
+    const runMs = Number(c.sec) * 1000;
+    if (c.startedAt){
+      const endMs = Number(c.startedAt) + runMs;
+      return endMs > Date.now() ? { c, endMs } : null;
+    }
+    if (!stationPollsCmd(deviceId)){
+      // Old firmware: carried out through /watering, timed from the click.
+      const endMs = Number(c.issuedAt) + runMs;
+      return endMs > Date.now() ? { c, endMs, legacy:true } : null;
+    }
+    return Date.now() - Number(c.issuedAt) < CMD_PICKUP_MS ? { c, endMs:null } : null;
   }
 
   function hhmm(ms){ return new Date(ms).toLocaleTimeString("he-IL", { hour:"2-digit", minute:"2-digit" }); }
@@ -3610,28 +3632,37 @@
     const latest = latestByDevice[deviceId];
     const item = latest && latest.item;
     const seen = latest ? " (בקריאה מ־" + hhmm(new Date(latest.tsISO).getTime()) + ")" : "";
+    const poll = Number((valveCmdByStation[deviceId] || {}).poll);
+    const contact = stationPollsCmd(deviceId)
+      ? '<div class="vc-state">התחנה בודקת פקודות כל 30 שניות · בדיקה אחרונה ' + hhmm(poll) + "</div>"
+      : '<div class="vc-state">התחנה עדיין לא בודקת פקודות כל 30 שניות (קושחה ישנה) — פקודה תתבצע בשידור הבא, והזמן נספר מהלחיצה</div>';
     box.innerHTML = VALVES.map(v => {
       const reported = item && typeof item[v.field] === "boolean";
       const state = reported ? (item[v.field] ? "פתוח" : "סגור")
         : (v.sprinkler ? "התחנה עדיין לא מדווחת על ברז זה" : "לא ידוע");
-      const m = activeManualValve(deviceId, v);
-      const cmd = m
-        ? '<span class="vc-man">' + (m.mode === "open" ? "פתיחה" : "סגירה") + " ידנית עד " + hhmm(Number(m.until)) +
-          "</span> · תתבצע בתקשורת הבאה של התחנה"
-        : (v.sprinkler ? "נפתח רק בפקודה" : "מצב אוטומטי");
+      const a = activeValveCmd(deviceId, v);
+      let cmd;
+      if (!a) cmd = v.sprinkler ? "נפתח רק בפקודה" : "מצב אוטומטי";
+      else {
+        const what = a.c.mode === "open" ? "פתיחה" : "סגירה";
+        const mins = Math.round(Number(a.c.sec) / 60);
+        cmd = a.endMs
+          ? '<span class="vc-man">' + what + " ידנית עד " + hhmm(a.endMs) + "</span>"
+          : '<span class="vc-man">' + what + " ל־" + mins + " דק' ממתינה לתחנה</span> · נשלחה " + hhmm(Number(a.c.issuedAt));
+      }
       const prev = box.querySelector('.vc-row[data-valve="' + v.id + '"] input');
       const min = prev ? prev.value : MANUAL_VALVE_DEFAULT_MIN;
-      const auto = m && !v.sprinkler ? '<button type="button" data-act="auto">חזור לאוטומטי</button>' : "";
+      const cancel = a && !v.sprinkler ? '<button type="button" data-act="auto">חזור לאוטומטי</button>' : "";
       return `
         <div class="vc-row" data-valve="${v.id}">
           <span class="vc-title">${v.title}</span>
-          <input type="number" min="1" max="${v.sprinkler ? SPRINKLER_MAX_MIN : 240}" step="1" value="${min}" title="משך בדקות"> דק'
+          <input type="number" min="1" max="${VALVE_CMD_MAX_MIN}" step="1" value="${min}" title="משך בדקות"> דק'
           <button type="button" data-act="open">פתח</button>
           <button type="button" data-act="close">סגור</button>
-          ${auto}
+          ${cancel}
           <div class="vc-state"><b>${state}</b>${reported ? seen : ""} · ${cmd}</div>
         </div>`;
-    }).join("");
+    }).join("") + contact;
   }
 
   async function setManualValve(deviceId, box, valveId, act){
@@ -3640,7 +3671,7 @@
     if (!v || !row) return;
     const st = STATIONS.find(s => s.deviceId === deviceId);
     const name = st ? st.name : deviceId;
-    const ref = database.ref("berries/" + deviceId + "/control/" + v.path);
+    const ref = database.ref("berries/" + deviceId + "/control/cmd/" + v.id);
     let min = Math.round(Number(row.querySelector("input").value));
     if (!(min > 0)) min = MANUAL_VALVE_DEFAULT_MIN;
     // The sprinklers have nothing automatic to hold off, so "close" just ends
@@ -3650,18 +3681,14 @@
     if (act === "auto"){
       if (!confirm("להחזיר את " + v.noun + " של " + name + " לשליטה אוטומטית?")) return;
     } else if (act === "open"){
-      // The station closes a manual watering after its own maxWateringMin and
-      // would reopen it on the next cycle, so a longer request is capped. The
-      // sprinklers are capped by the firmware itself.
-      const cap = v.sprinkler ? SPRINKLER_MAX_MIN
-        : parseFloat((await database.ref("berries/" + deviceId + "/control/wateringConfig/maxWateringMin").once("value")).val()) || 25;
-      if (min > cap){
-        if (!confirm("המגבלה היא " + cap + " דקות. לפתוח את " + v.noun + " של " + name + " ל־" + cap + " דקות?")) return;
-        min = cap;
+      if (min > VALVE_CMD_MAX_MIN){
+        if (!confirm("המגבלה היא " + VALVE_CMD_MAX_MIN + " דקות. לפתוח את " + v.noun + " של " + name + " ל־" + VALVE_CMD_MAX_MIN + " דקות?")) return;
+        min = VALVE_CMD_MAX_MIN;
       } else if (!confirm("לפתוח את " + v.noun + " של " + name + " ל־" + min + " דקות?")) return;
     } else if (v.sprinkler){
       if (!confirm("לסגור את " + v.noun + " של " + name + "?")) return;
     } else {
+      if (min > VALVE_CMD_MAX_MIN) min = VALVE_CMD_MAX_MIN;
       if (!confirm("לסגור את " + v.noun + " של " + name + " ולעצור השקיה אוטומטית ל־" + min + " דקות?")) return;
     }
 
@@ -3669,14 +3696,16 @@
     try {
       if (remove) await ref.remove();
       else await ref.set({
+        // Seconds since epoch: unique per press, and fits the firmware's uint32.
+        id: Math.floor(Date.now() / 1000),
         mode: act === "open" ? "open" : "closed",
-        until: Date.now() + min * 60000,
-        by: (auth.currentUser && (auth.currentUser.email || auth.currentUser.phoneNumber)) || "",
-        at: firebase.database.ServerValue.TIMESTAMP
+        sec: min * 60,
+        issuedAt: firebase.database.ServerValue.TIMESTAMP,
+        by: (auth.currentUser && (auth.currentUser.email || auth.currentUser.phoneNumber)) || ""
       });
-      setStatus("נשלחה פקודה ל" + v.noun + " של " + name + " — תבוצע בתקשורת הבאה של התחנה", true);
+      setStatus("נשלחה פקודה ל" + v.noun + " של " + name, true);
     } catch(e){
-      console.error("manual valve", deviceId, valveId, e);
+      console.error("valve command", deviceId, valveId, e);
       setStatus("שליחת הפקודה נכשלה: " + e.message, false);
     }
     // The listener repaints when the value changes; a write that changes nothing
