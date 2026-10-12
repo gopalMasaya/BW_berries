@@ -1245,8 +1245,8 @@
   const EC_FACTOR_DEFAULT = 2;
   const calibByStation = {};   // deviceId → { current, days: [{date, applied}] }
 
-  async function loadCalibration(){
-    await Promise.all(STATIONS.map(async st => {
+  async function loadCalibration(list = STATIONS){
+    await Promise.all(list.map(async st => {
       const path = "berries/" + st.deviceId + "/calibration";
       const store = { current: null, days: [] };
       calibByStation[st.deviceId] = store;
@@ -1306,8 +1306,8 @@
     return Number.isFinite(v) ? v : 0;
   }
 
-  async function loadMlPerPulse(){
-    await Promise.all(STATIONS.map(async st => {
+  async function loadMlPerPulse(list = STATIONS){
+    await Promise.all(list.map(async st => {
       const path = "berries/" + st.deviceId + "/control/wateringConfig/mlPerPulse";
       const readVal = snap => {
         const v = parseFloat(snap.val());
@@ -1332,8 +1332,8 @@
   // normalizeReading, so every view sees waterIn = drip and waterOut = drain.
   const waterSwapByStation = {};    // deviceId -> compiled WaterSwap plan
 
-  async function loadWaterSwap(){
-    await Promise.all(STATIONS.map(async st => {
+  async function loadWaterSwap(list = STATIONS){
+    await Promise.all(list.map(async st => {
       const path = "berries/" + st.deviceId + "/control/waterSwap";
       try {
         waterSwapByStation[st.deviceId] = WaterSwap.compile((await database.ref(path).once("value")).val());
@@ -6723,11 +6723,18 @@
   });
 
   // Populate the graph station selector and refetch when it changes.
+  function buildGraphStationSelect(){
+    const sel = document.getElementById("graphStation");
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '<option value="__all__">All stations</option>' +
+      STATIONS.map(s => '<option value="' + s.deviceId + '">' + (s.name || s.deviceId) + '</option>').join("");
+    if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  }
   (function initGraphStationSelect(){
     const sel = document.getElementById("graphStation");
     if (!sel) return;
-    sel.innerHTML = '<option value="__all__">All stations</option>' +
-      STATIONS.map(s => '<option value="' + s.deviceId + '">' + (s.name || s.deviceId) + '</option>').join("");
+    buildGraphStationSelect();
     sel.addEventListener("change", () => { loadGraphData(); });
   })();
 
