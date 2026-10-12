@@ -6769,6 +6769,11 @@
     if (booted) return;
     booted = true;
 
+    // Every registered station, before anything is loaded or drawn per station.
+    await loadStationRegistry();
+    buildChartStationSelect();
+    buildGraphStationSelect();
+
     // The ml/pulse calibration must be known before the first water figure is drawn.
     await loadMlPerPulse();
     // Likewise which flowmeter is the drip and which the drain.
