@@ -6806,6 +6806,9 @@
     // Every subsequent fetch goes through here: the interval, plus a catch-up
     // whenever the tab wakes or the network returns. See the POLLING section.
     startPolling();
+
+    // From here on, a station that registers is added without a reload.
+    watchStationRegistry();
   }
 </script>
 </body>
