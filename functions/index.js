@@ -155,6 +155,20 @@ app.post("/ingest", async (req, res) => {
   }
 });
 
+// Manual valve override from the dashboard, at control/manualValve:
+// {mode: "open" | "closed", until: epoch ms, by, at}. Expressed with the two
+// flags every firmware already obeys, so no reflash is needed:
+//   open   -> watering:true, the cloud manual-watering flag (still bounded by
+//             the station's own maxWateringMin per run);
+//   closed -> wateringEnabled:false, which closes the valve even mid-way
+//             through a soil/VPD watering and keeps automatic watering off.
+// `until` is enforced HERE rather than on the station: a forgotten override
+// lapses on its own and the station goes back to its automatic logic.
+function manualValveMode(v, nowMs) {
+  if (!v || (v.mode !== "open" && v.mode !== "closed")) return null;
+  return Number(v.until) > nowMs ? v.mode : null;
+}
+
 app.get("/watering", async (req, res) => {
   try {
     if (!isAuthorizedQuery(req)) {
