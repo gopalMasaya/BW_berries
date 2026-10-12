@@ -169,6 +169,18 @@ function manualValveMode(v, nowMs) {
   return Number(v.until) > nowMs ? v.mode : null;
 }
 
+// Valve #2 = sprinklers, at control/manualValve2: {mode: "open", until, by, at}.
+// There is no automatic sprinkler logic, so the only command is "open until".
+// Sent as "spr" = whole seconds left, and only while it is running: an absent
+// key means closed, which keeps the body unchanged for every station that has
+// no sprinklers (the Mega stations' MKR link truncates it at 300 bytes). The
+// station holds the deadline itself, so it closes on time without the cloud.
+function sprinklerFields(v, nowMs) {
+  if (!v || v.mode !== "open") return {};
+  const left = Math.ceil((Number(v.until) - nowMs) / 1000);
+  return left > 0 ? {spr: left} : {};
+}
+
 app.get("/watering", async (req, res) => {
   try {
     if (!isAuthorizedQuery(req)) {
@@ -176,15 +188,18 @@ app.get("/watering", async (req, res) => {
     }
 
     const stationId = String(req.query.stationId || "");
-    const [waterSnap, configSnap, calSnap, manualSnap] = await Promise.all([
+    const [waterSnap, configSnap, calSnap, manualSnap, sprSnap] =
+      await Promise.all([
       admin.database().ref(`/berries/${stationId}/control/watering`).get(),
       admin.database().ref(`/berries/${stationId}/control/wateringConfig`).get(),
       calSession.getSession(stationId).catch(() => null),
       admin.database().ref(`/berries/${stationId}/control/manualValve`).get(),
+      admin.database().ref(`/berries/${stationId}/control/manualValve2`).get(),
     ]);
 
     const config = configSnap.val() || {};
     const manual = manualValveMode(manualSnap.val(), Date.now());
+    const sprFields = sprinklerFields(sprSnap.val(), Date.now());
 
     // VPD comes from FieldClimate, which the station itself cannot reach.
     // Only touched when the user has switched it on for this station: every
@@ -298,7 +313,7 @@ app.get("/watering", async (req, res) => {
       noRiseTimeoutMin: config.noRiseTimeoutMin ?? 10,
       maxWateringMin: config.maxWateringMin ?? 25,
       postWateringWaitMin: config.postWateringWaitMin ?? 20,
-    }, valveFields, vpdFields));
+    }, valveFields, sprFields, vpdFields));
   } catch (err) {
     logger.error("watering failed", err);
     return res.status(500).json({ok: false, error: "server error"});
