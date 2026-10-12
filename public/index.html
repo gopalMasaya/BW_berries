@@ -3552,6 +3552,97 @@
     paintVpdIntoSquares();
   }
 
+  // ===============================
+  // MANUAL VALVE CONTROL
+  // ===============================
+  // The dashboard writes control/manualValve = {mode, until, by, at}; the
+  // /watering function turns it into the flags the station already obeys and
+  // drops it once `until` passes (see manualValveMode in functions/index.js).
+  // The station only picks it up on its next call to /watering, so the card
+  // shows the requested override next to the valve state of the last reading.
+  const MANUAL_VALVE_DEFAULT_MIN = 10;
+  const manualValveByStation = {};   // deviceId -> {mode, until, by, at} | null
+  const manualValveWatched = new Set();
+
+  function watchManualValve(list = STATIONS){
+    list.forEach(st => {
+      if (manualValveWatched.has(st.deviceId)) return;
+      manualValveWatched.add(st.deviceId);
+      database.ref("berries/" + st.deviceId + "/control/manualValve").on("value", snap => {
+        manualValveByStation[st.deviceId] = snap.val();
+        const box = document.querySelector('.station-square[data-device="' + st.deviceId + '"] .sq-valvectl');
+        if (box) paintValveControl(st.deviceId, box);
+      });
+    });
+  }
+
+  function activeManualValve(deviceId){
+    const m = manualValveByStation[deviceId];
+    return m && (m.mode === "open" || m.mode === "closed") && Number(m.until) > Date.now() ? m : null;
+  }
+
+  function hhmm(ms){ return new Date(ms).toLocaleTimeString("he-IL", { hour:"2-digit", minute:"2-digit" }); }
+
+  function paintValveControl(deviceId, box){
+    const latest = latestByDevice[deviceId];
+    const item = latest && latest.item;
+    const valve = item && typeof item.valve === "boolean"
+      ? (item.valve ? "פתוח" : "סגור") : "לא ידוע";
+    const seen = latest ? " (בקריאה מ־" + hhmm(new Date(latest.tsISO).getTime()) + ")" : "";
+    const m = activeManualValve(deviceId);
+    const manual = m
+      ? '<span class="vc-man">' + (m.mode === "open" ? "פתיחה" : "סגירה") + " ידנית עד " + hhmm(Number(m.until)) +
+        "</span> · תתבצע בתקשורת הבאה של התחנה"
+      : "מצב אוטומטי";
+    const prevMin = box.querySelector("input") ? box.querySelector("input").value : MANUAL_VALVE_DEFAULT_MIN;
+    box.innerHTML = `
+      <span class="vc-title">🚰 ברז</span>
+      <input type="number" min="1" max="240" step="1" value="${prevMin}" title="משך בדקות"> דק'
+      <button type="button" data-act="open">פתח</button>
+      <button type="button" data-act="close">סגור</button>
+      ${m ? '<button type="button" data-act="auto">חזור לאוטומטי</button>' : ""}
+      <div class="vc-state">ברז: <b>${valve}</b>${seen} · ${manual}</div>
+    `;
+  }
+
+  async function setManualValve(deviceId, box, act){
+    const st = STATIONS.find(s => s.deviceId === deviceId);
+    const name = st ? st.name : deviceId;
+    const ref = database.ref("berries/" + deviceId + "/control/manualValve");
+    let min = Math.round(Number(box.querySelector("input").value));
+    if (!(min > 0)) min = MANUAL_VALVE_DEFAULT_MIN;
+
+    if (act === "auto"){
+      if (!confirm("להחזיר את " + name + " לשליטה אוטומטית?")) return;
+    } else if (act === "open"){
+      // The station closes a manual watering after its own maxWateringMin and
+      // would reopen it on the next cycle, so a longer request is capped.
+      const cap = parseFloat((await database.ref("berries/" + deviceId + "/control/wateringConfig/maxWateringMin").once("value")).val()) || 25;
+      if (min > cap){
+        if (!confirm("מגבלת ההשקיה של התחנה היא " + cap + " דקות. לפתוח ל־" + cap + " דקות?")) return;
+        min = cap;
+      } else if (!confirm("לפתוח את הברז של " + name + " ל־" + min + " דקות?")) return;
+    } else {
+      if (!confirm("לסגור את הברז של " + name + " ולעצור השקיה אוטומטית ל־" + min + " דקות?")) return;
+    }
+
+    box.querySelectorAll("button").forEach(b => b.disabled = true);
+    try {
+      if (act === "auto") await ref.remove();
+      else await ref.set({
+        mode: act === "open" ? "open" : "closed",
+        until: Date.now() + min * 60000,
+        by: (auth.currentUser && (auth.currentUser.email || auth.currentUser.phoneNumber)) || "",
+        at: firebase.database.ServerValue.TIMESTAMP
+      });
+      setStatus("נשלחה פקודת ברז ל־" + name + " — תבוצע בתקשורת הבאה של התחנה", true);
+    } catch(e){
+      console.error("manual valve", deviceId, e);
+      setStatus("שליחת פקודת הברז נכשלה: " + e.message, false);
+      paintValveControl(deviceId, box);
+    }
+  }
+
   function openDrawer(deviceId){
     drawerDeviceId = deviceId;
     drawer.classList.add("open");
