@@ -392,6 +392,27 @@
       display:flex; flex-direction:column; gap:8px;
     }
     .sq-irrig-head{ font-size:14px; font-weight:bold; }
+    /* Manual valve control — managers only (body.is-manager, see showManagerButtons). */
+    .sq-valvectl{
+      display:none; align-items:center; gap:8px; flex-wrap:wrap; cursor:default;
+      border-top:1px solid var(--border); padding-top:12px; font-size:14px;
+    }
+    body.is-manager .sq-valvectl{ display:flex; }
+    .sq-valvectl .vc-title{ font-weight:bold; }
+    .sq-valvectl .vc-state{ color:var(--muted); font-size:13px; flex:1 1 100%; }
+    .sq-valvectl .vc-state b{ color:var(--text); }
+    .sq-valvectl .vc-state .vc-man{ color:#7c3aed; font-weight:700; }
+    .sq-valvectl input{
+      width:56px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);
+      background:#fff; color:var(--text); font-size:14px;
+    }
+    .sq-valvectl button{
+      padding:7px 14px; border-radius:10px; border:1px solid var(--border);
+      background:#fff; color:var(--text); cursor:pointer; font-size:14px; font-weight:700;
+    }
+    .sq-valvectl button[data-act="open"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
+    .sq-valvectl button[data-act="close"]{ background:var(--bad); border-color:var(--bad); color:#fff; }
+    .sq-valvectl button:disabled{ opacity:.5; cursor:wait; }
     .sq-irrig-empty{ font-size:13px; color:var(--muted); padding:6px 2px; }
     .sq-irrig-toggle{
       width:100%; text-align:right; padding:9px 12px; border-radius:10px;
