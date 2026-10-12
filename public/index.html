@@ -394,10 +394,12 @@
     .sq-irrig-head{ font-size:14px; font-weight:bold; }
     /* Manual valve control — managers only (body.is-manager, see showManagerButtons). */
     .sq-valvectl{
-      display:none; align-items:center; gap:8px; flex-wrap:wrap; cursor:default;
+      display:none; flex-direction:column; gap:10px; cursor:default;
       border-top:1px solid var(--border); padding-top:12px; font-size:14px;
     }
     body.is-manager .sq-valvectl{ display:flex; }
+    .sq-valvectl .vc-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .sq-valvectl .vc-title{ min-width:72px; }
     .sq-valvectl .vc-title{ font-weight:bold; }
     .sq-valvectl .vc-state{ color:var(--muted); font-size:13px; flex:1 1 100%; }
     .sq-valvectl .vc-state b{ color:var(--text); }
@@ -3504,7 +3506,8 @@
       valveBox.addEventListener("click", (e) => {
         e.stopPropagation();   // not a click on the card (which opens the drawer)
         const btn = e.target.closest("button[data-act]");
-        if (btn) setManualValve(st.deviceId, valveBox, btn.dataset.act);
+        const row = btn && btn.closest(".vc-row");
+        if (row) setManualValve(st.deviceId, valveBox, row.dataset.valve, btn.dataset.act);
       });
 
       // Clicking the card opens the drawer, except over interactive areas
@@ -3565,29 +3568,39 @@
   // ===============================
   // MANUAL VALVE CONTROL
   // ===============================
-  // The dashboard writes control/manualValve = {mode, until, by, at}; the
-  // /watering function turns it into the flags the station already obeys and
-  // drops it once `until` passes (see manualValveMode in functions/index.js).
-  // The station only picks it up on its next call to /watering, so the card
-  // shows the requested override next to the valve state of the last reading.
+  // Every station has two valves: #1 irrigation (automatic, with a manual
+  // override) and #2 sprinklers (app command only). The dashboard writes
+  // control/manualValve{,2} = {mode, until, by, at}; the /watering function
+  // turns that into what the firmware obeys and drops it once `until` passes
+  // (manualValveMode / sprinklerFields in functions/index.js). The station only
+  // picks it up on its next call to /watering, so the card shows the requested
+  // command next to the valve state of the last reading.
   const MANUAL_VALVE_DEFAULT_MIN = 10;
-  const manualValveByStation = {};   // deviceId -> {mode, until, by, at} | null
+  const SPRINKLER_MAX_MIN = 120;   // firmware SPRINKLER_MAX_S
+  const VALVES = [
+    { id:"irrig", path:"manualValve",  field:"valve",  title:"🚰 השקיה", noun:"ברז ההשקיה" },
+    { id:"spr",   path:"manualValve2", field:"valve2", title:"💦 מתזים", noun:"המתזים", sprinkler:true }
+  ];
+  const manualValveByStation = {};   // deviceId -> { irrig: {...}|null, spr: {...}|null }
   const manualValveWatched = new Set();
 
   function watchManualValve(list = STATIONS){
     list.forEach(st => {
       if (manualValveWatched.has(st.deviceId)) return;
       manualValveWatched.add(st.deviceId);
-      database.ref("berries/" + st.deviceId + "/control/manualValve").on("value", snap => {
-        manualValveByStation[st.deviceId] = snap.val();
-        const box = document.querySelector('.station-square[data-device="' + st.deviceId + '"] .sq-valvectl');
-        if (box) paintValveControl(st.deviceId, box);
+      manualValveByStation[st.deviceId] = {};
+      VALVES.forEach(v => {
+        database.ref("berries/" + st.deviceId + "/control/" + v.path).on("value", snap => {
+          manualValveByStation[st.deviceId][v.id] = snap.val();
+          const box = document.querySelector('.station-square[data-device="' + st.deviceId + '"] .sq-valvectl');
+          if (box) paintValveControl(st.deviceId, box);
+        });
       });
     });
   }
 
-  function activeManualValve(deviceId){
-    const m = manualValveByStation[deviceId];
+  function activeManualValve(deviceId, v){
+    const m = (manualValveByStation[deviceId] || {})[v.id];
     return m && (m.mode === "open" || m.mode === "closed") && Number(m.until) > Date.now() ? m : null;
   }
 
@@ -3596,61 +3609,79 @@
   function paintValveControl(deviceId, box){
     const latest = latestByDevice[deviceId];
     const item = latest && latest.item;
-    const valve = item && typeof item.valve === "boolean"
-      ? (item.valve ? "פתוח" : "סגור") : "לא ידוע";
     const seen = latest ? " (בקריאה מ־" + hhmm(new Date(latest.tsISO).getTime()) + ")" : "";
-    const m = activeManualValve(deviceId);
-    const manual = m
-      ? '<span class="vc-man">' + (m.mode === "open" ? "פתיחה" : "סגירה") + " ידנית עד " + hhmm(Number(m.until)) +
-        "</span> · תתבצע בתקשורת הבאה של התחנה"
-      : "מצב אוטומטי";
-    const prevMin = box.querySelector("input") ? box.querySelector("input").value : MANUAL_VALVE_DEFAULT_MIN;
-    box.innerHTML = `
-      <span class="vc-title">🚰 ברז</span>
-      <input type="number" min="1" max="240" step="1" value="${prevMin}" title="משך בדקות"> דק'
-      <button type="button" data-act="open">פתח</button>
-      <button type="button" data-act="close">סגור</button>
-      ${m ? '<button type="button" data-act="auto">חזור לאוטומטי</button>' : ""}
-      <div class="vc-state">ברז: <b>${valve}</b>${seen} · ${manual}</div>
-    `;
+    box.innerHTML = VALVES.map(v => {
+      const reported = item && typeof item[v.field] === "boolean";
+      const state = reported ? (item[v.field] ? "פתוח" : "סגור")
+        : (v.sprinkler ? "התחנה עדיין לא מדווחת על ברז זה" : "לא ידוע");
+      const m = activeManualValve(deviceId, v);
+      const cmd = m
+        ? '<span class="vc-man">' + (m.mode === "open" ? "פתיחה" : "סגירה") + " ידנית עד " + hhmm(Number(m.until)) +
+          "</span> · תתבצע בתקשורת הבאה של התחנה"
+        : (v.sprinkler ? "נפתח רק בפקודה" : "מצב אוטומטי");
+      const prev = box.querySelector('.vc-row[data-valve="' + v.id + '"] input');
+      const min = prev ? prev.value : MANUAL_VALVE_DEFAULT_MIN;
+      const auto = m && !v.sprinkler ? '<button type="button" data-act="auto">חזור לאוטומטי</button>' : "";
+      return `
+        <div class="vc-row" data-valve="${v.id}">
+          <span class="vc-title">${v.title}</span>
+          <input type="number" min="1" max="${v.sprinkler ? SPRINKLER_MAX_MIN : 240}" step="1" value="${min}" title="משך בדקות"> דק'
+          <button type="button" data-act="open">פתח</button>
+          <button type="button" data-act="close">סגור</button>
+          ${auto}
+          <div class="vc-state"><b>${state}</b>${reported ? seen : ""} · ${cmd}</div>
+        </div>`;
+    }).join("");
   }
 
-  async function setManualValve(deviceId, box, act){
+  async function setManualValve(deviceId, box, valveId, act){
+    const v = VALVES.find(x => x.id === valveId);
+    const row = box.querySelector('.vc-row[data-valve="' + valveId + '"]');
+    if (!v || !row) return;
     const st = STATIONS.find(s => s.deviceId === deviceId);
     const name = st ? st.name : deviceId;
-    const ref = database.ref("berries/" + deviceId + "/control/manualValve");
-    let min = Math.round(Number(box.querySelector("input").value));
+    const ref = database.ref("berries/" + deviceId + "/control/" + v.path);
+    let min = Math.round(Number(row.querySelector("input").value));
     if (!(min > 0)) min = MANUAL_VALVE_DEFAULT_MIN;
+    // The sprinklers have nothing automatic to hold off, so "close" just ends
+    // the command; for irrigation it holds automatic watering off for `min`.
+    const remove = act === "auto" || (v.sprinkler && act === "close");
 
     if (act === "auto"){
-      if (!confirm("להחזיר את " + name + " לשליטה אוטומטית?")) return;
+      if (!confirm("להחזיר את " + v.noun + " של " + name + " לשליטה אוטומטית?")) return;
     } else if (act === "open"){
       // The station closes a manual watering after its own maxWateringMin and
-      // would reopen it on the next cycle, so a longer request is capped.
-      const cap = parseFloat((await database.ref("berries/" + deviceId + "/control/wateringConfig/maxWateringMin").once("value")).val()) || 25;
+      // would reopen it on the next cycle, so a longer request is capped. The
+      // sprinklers are capped by the firmware itself.
+      const cap = v.sprinkler ? SPRINKLER_MAX_MIN
+        : parseFloat((await database.ref("berries/" + deviceId + "/control/wateringConfig/maxWateringMin").once("value")).val()) || 25;
       if (min > cap){
-        if (!confirm("מגבלת ההשקיה של התחנה היא " + cap + " דקות. לפתוח ל־" + cap + " דקות?")) return;
+        if (!confirm("המגבלה היא " + cap + " דקות. לפתוח את " + v.noun + " של " + name + " ל־" + cap + " דקות?")) return;
         min = cap;
-      } else if (!confirm("לפתוח את הברז של " + name + " ל־" + min + " דקות?")) return;
+      } else if (!confirm("לפתוח את " + v.noun + " של " + name + " ל־" + min + " דקות?")) return;
+    } else if (v.sprinkler){
+      if (!confirm("לסגור את " + v.noun + " של " + name + "?")) return;
     } else {
-      if (!confirm("לסגור את הברז של " + name + " ולעצור השקיה אוטומטית ל־" + min + " דקות?")) return;
+      if (!confirm("לסגור את " + v.noun + " של " + name + " ולעצור השקיה אוטומטית ל־" + min + " דקות?")) return;
     }
 
-    box.querySelectorAll("button").forEach(b => b.disabled = true);
+    row.querySelectorAll("button").forEach(b => b.disabled = true);
     try {
-      if (act === "auto") await ref.remove();
+      if (remove) await ref.remove();
       else await ref.set({
         mode: act === "open" ? "open" : "closed",
         until: Date.now() + min * 60000,
         by: (auth.currentUser && (auth.currentUser.email || auth.currentUser.phoneNumber)) || "",
         at: firebase.database.ServerValue.TIMESTAMP
       });
-      setStatus("נשלחה פקודת ברז ל־" + name + " — תבוצע בתקשורת הבאה של התחנה", true);
+      setStatus("נשלחה פקודה ל" + v.noun + " של " + name + " — תבוצע בתקשורת הבאה של התחנה", true);
     } catch(e){
-      console.error("manual valve", deviceId, e);
-      setStatus("שליחת פקודת הברז נכשלה: " + e.message, false);
-      paintValveControl(deviceId, box);
+      console.error("manual valve", deviceId, valveId, e);
+      setStatus("שליחת הפקודה נכשלה: " + e.message, false);
     }
+    // The listener repaints when the value changes; a write that changes nothing
+    // (closing sprinklers that are already closed) would leave the buttons disabled.
+    paintValveControl(deviceId, box);
   }
 
   function openDrawer(deviceId){
