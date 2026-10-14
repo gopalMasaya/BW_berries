@@ -2502,7 +2502,9 @@
     // IRROMETER RSU-V tensiometer (station1, A6): kPa, 0 = saturated, rises as soil dries.
     tension1:"מתח מים בקרקע",
     // Cellular signal at send time (MKR modem, AT+CSQ mapped to dBm).
-    rssi:"קליטה סלולרית"
+    rssi:"קליטה סלולרית",
+    // Real load cell (station3, HX711 on the KC868-A16), kg.
+    weight_kg:"משקל"
   };
   // Note: scale1 is simulated while the load cell is unwired (see SCALE_SIM), but
   // it is deliberately labelled like any other sensor.
@@ -2543,7 +2545,7 @@
   const SENSOR_FIELDS = [
     "soil1_humidity","soil2_humidity","ec","ec2","ph1","ph2",
     "soil1_temp","soil2_temp","soil1_ec","soil2_ec","soil1_ph","soil2_ph",
-    "npk_n","npk_p","npk_k","temp","scale1","voltage","tension1","rssi"
+    "npk_n","npk_p","npk_k","temp","scale1","weight_kg","voltage","tension1","rssi"
   ];
 
   // Per-station history of the last time each numeric field was seen (+ its last
@@ -5984,7 +5986,7 @@
     ["soil2_ec", "EC קרקע 2 (dS/m)"], ["soil2_ph", "pH קרקע 2"],
     ["tension1", "מתח מים בקרקע (kPa)"],
     ["npk_n", "חנקן N (mg/kg)"], ["npk_p", "זרחן P (mg/kg)"], ["npk_k", "אשלגן K (mg/kg)"],
-    ["scale1", "משקל (kg)"],
+    ["scale1", "משקל (kg)"], ["weight_kg", "משקל (kg)"],
   ];
   function xlStationValue(row, f) {
     if (SOIL_EC_FIELDS.has(f)) { const v = parseFloat(row[f]); return Number.isFinite(v) ? xlRound(v / 1000, 2) : null; }
@@ -6336,7 +6338,7 @@
       unit: "kg",
       agg: "avg",
       fields: [
-        { label: "scale", candidates: ["scale1","scale","Scale","weight","Weight"], color: C_GREEN, bg: F_GREEN }
+        { label: "scale", candidates: ["scale1","weight_kg","scale","Scale","weight","Weight"], color: C_GREEN, bg: F_GREEN }
       ]
     },
     {
