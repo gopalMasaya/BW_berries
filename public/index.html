@@ -1770,6 +1770,7 @@
 
   function unitFor(fieldName){
     const lower = fieldName.toLowerCase();
+    if (/^spoon\d+_l$/.test(lower)) return "L";
     if (lower.includes("npk")) return "mg/kg";
     if (lower === "rssi") return "dBm";
     if (lower.includes("tension")) return lower.endsWith("_v") ? "V" : "kPa";
@@ -1787,6 +1788,7 @@
 
   function decimalsFor(fieldName){
     const lower = fieldName.toLowerCase();
+    if (/^spoon\d+_l$/.test(lower)) return 3;
     if (lower.includes("npk")) return 0;
     if (lower === "rssi") return 0;
     if (lower.includes("tension")) return lower.endsWith("_v") ? 2 : 3;
@@ -2504,7 +2506,10 @@
     // Cellular signal at send time (MKR modem, AT+CSQ mapped to dBm).
     rssi:"קליטה סלולרית",
     // Real load cell (station3, HX711 on the KC868-A16), kg.
-    weight_kg:"משקל"
+    weight_kg:"משקל",
+    // Tipping-spoon water counters (station3): X15 = drain, X16 = drip; litres since local
+    // midnight, reset by the station each day.
+    spoon1_l:"נקז (היום)", spoon2_l:"טפטפת (היום)"
   };
   // Note: scale1 is simulated while the load cell is unwired (see SCALE_SIM), but
   // it is deliberately labelled like any other sensor.
@@ -2517,6 +2522,8 @@
     "waterIn","water_in","WaterIn","waterOut","water_out","WaterOut",
     "uptime","apiFails","modemFails","gps_lat","gps_lng","ec_dSm","ec2_dSm",
     "tension1_v","csq",
+    // Raw tipping-spoon counts since station boot; the tiles show spoon*_l.
+    "spoon1_tips","spoon2_tips",
     // Diagnostics from the Agrinovo water probes: the registers as received and
     // the reason a reading was refused. For debugging a probe, not tiles.
     "ec_raw","ec_raw_temp","ph1_raw","ec_err","ph1_err",
@@ -2545,7 +2552,8 @@
   const SENSOR_FIELDS = [
     "soil1_humidity","soil2_humidity","ec","ec2","ph1","ph2",
     "soil1_temp","soil2_temp","soil1_ec","soil2_ec","soil1_ph","soil2_ph",
-    "npk_n","npk_p","npk_k","temp","scale1","weight_kg","voltage","tension1","rssi"
+    "npk_n","npk_p","npk_k","temp","scale1","weight_kg","spoon1_l","spoon2_l",
+    "voltage","tension1","rssi"
   ];
 
   // Per-station history of the last time each numeric field was seen (+ its last
@@ -5987,6 +5995,7 @@
     ["tension1", "מתח מים בקרקע (kPa)"],
     ["npk_n", "חנקן N (mg/kg)"], ["npk_p", "זרחן P (mg/kg)"], ["npk_k", "אשלגן K (mg/kg)"],
     ["scale1", "משקל (kg)"], ["weight_kg", "משקל (kg)"],
+    ["spoon1_l", "נקז היום (L)"], ["spoon2_l", "טפטפת היום (L)"],
   ];
   function xlStationValue(row, f) {
     if (SOIL_EC_FIELDS.has(f)) { const v = parseFloat(row[f]); return Number.isFinite(v) ? xlRound(v / 1000, 2) : null; }
