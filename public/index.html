@@ -3591,9 +3591,13 @@
   const VALVE_CMD_MAX_MIN = 120;          // firmware CMD_MAX_S
   const CMD_PICKUP_MS = 10 * 60 * 1000;   // server CMD_PICKUP_MS
   const CMD_FRESH_MS = 3 * 60 * 1000;     // server CMD_FRESH_MS
+  // v3 is the dosing pump (station3 only): app command only like the
+  // sprinklers, and it also runs by itself while v1 is open. Shown only for a
+  // station that reports "pump".
   const VALVES = [
     { id:"v1", field:"valve",  title:"🚰 השקיה", noun:"ברז ההשקיה" },
-    { id:"v2", field:"valve2", title:"💦 מתזים", noun:"המתזים", sprinkler:true }
+    { id:"v2", field:"valve2", title:"💦 מתזים", noun:"המתזים", sprinkler:true },
+    { id:"v3", field:"pump",   title:"⚙️ משאבה", noun:"המשאבה", sprinkler:true, pump:true }
   ];
   const valveCmdByStation = {};   // deviceId -> control/cmd value
   const valveCmdWatched = new Set();
@@ -3646,15 +3650,18 @@
     const contact = stationPollsCmd(deviceId)
       ? '<div class="vc-state">התחנה בודקת פקודות כל 30 שניות · בדיקה אחרונה ' + hhmm(poll) + "</div>"
       : '<div class="vc-state">התחנה עדיין לא בודקת פקודות כל 30 שניות (קושחה ישנה) — פקודה תתבצע בשידור הבא, והזמן נספר מהלחיצה</div>';
-    box.innerHTML = VALVES.map(v => {
+    box.innerHTML = VALVES.filter(v => !v.pump
+        || (item && typeof item.pump === "boolean")
+        || (valveCmdByStation[deviceId] || {})[v.id]).map(v => {
       const reported = item && typeof item[v.field] === "boolean";
-      const state = reported ? (item[v.field] ? "פתוח" : "סגור")
+      const state = reported
+        ? (v.pump ? (item[v.field] ? "פועלת" : "כבויה") : (item[v.field] ? "פתוח" : "סגור"))
         : (v.sprinkler ? "התחנה עדיין לא מדווחת על ברז זה" : "לא ידוע");
       const a = activeValveCmd(deviceId, v);
       let cmd;
-      if (!a) cmd = v.sprinkler ? "נפתח רק בפקודה" : "מצב אוטומטי";
+      if (!a) cmd = v.pump ? "עובדת עם ההשקיה, או בפקודה" : v.sprinkler ? "נפתח רק בפקודה" : "מצב אוטומטי";
       else {
-        const what = a.c.mode === "open" ? "פתיחה" : "סגירה";
+        const what = v.pump ? "הפעלה" : a.c.mode === "open" ? "פתיחה" : "סגירה";
         const mins = Math.round(Number(a.c.sec) / 60);
         cmd = a.endMs
           ? '<span class="vc-man">' + what + " ידנית עד " + hhmm(a.endMs) + "</span>"
@@ -3667,8 +3674,8 @@
         <div class="vc-row" data-valve="${v.id}">
           <span class="vc-title">${v.title}</span>
           <input type="number" min="1" max="${VALVE_CMD_MAX_MIN}" step="1" value="${min}" title="משך בדקות"> דק'
-          <button type="button" data-act="open">פתח</button>
-          <button type="button" data-act="close">סגור</button>
+          <button type="button" data-act="open">${v.pump ? "הפעל" : "פתח"}</button>
+          <button type="button" data-act="close">${v.pump ? "כבה" : "סגור"}</button>
           ${cancel}
           <div class="vc-state"><b>${state}</b>${reported ? seen : ""} · ${cmd}</div>
         </div>`;
@@ -3691,12 +3698,14 @@
     if (act === "auto"){
       if (!confirm("להחזיר את " + v.noun + " של " + name + " לשליטה אוטומטית?")) return;
     } else if (act === "open"){
+      const verb = v.pump ? "להפעיל" : "לפתוח";
       if (min > VALVE_CMD_MAX_MIN){
-        if (!confirm("המגבלה היא " + VALVE_CMD_MAX_MIN + " דקות. לפתוח את " + v.noun + " של " + name + " ל־" + VALVE_CMD_MAX_MIN + " דקות?")) return;
+        if (!confirm("המגבלה היא " + VALVE_CMD_MAX_MIN + " דקות. " + verb + " את " + v.noun + " של " + name + " ל־" + VALVE_CMD_MAX_MIN + " דקות?")) return;
         min = VALVE_CMD_MAX_MIN;
-      } else if (!confirm("לפתוח את " + v.noun + " של " + name + " ל־" + min + " דקות?")) return;
+      } else if (!confirm(verb + " את " + v.noun + " של " + name + " ל־" + min + " דקות?")) return;
     } else if (v.sprinkler){
-      if (!confirm("לסגור את " + v.noun + " של " + name + "?")) return;
+      const note = v.pump ? " (בזמן השקיה היא תמשיך לעבוד עם ברז ההשקיה)" : "";
+      if (!confirm((v.pump ? "לכבות" : "לסגור") + " את " + v.noun + " של " + name + "?" + note)) return;
     } else {
       if (min > VALVE_CMD_MAX_MIN) min = VALVE_CMD_MAX_MIN;
       if (!confirm("לסגור את " + v.noun + " של " + name + " ולעצור השקיה אוטומטית ל־" + min + " דקות?")) return;

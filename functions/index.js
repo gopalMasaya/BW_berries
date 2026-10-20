@@ -156,10 +156,12 @@ app.post("/ingest", async (req, res) => {
 });
 
 // ---- Valve commands from the dashboard ----------------------------------
-// control/cmd = {v1: cmd, v2: cmd, poll: ms}. v1 is the irrigation valve,
-// v2 the sprinklers. cmd = {id, mode: "open" | "closed", sec, issuedAt,
-// startedAt?, by}. "closed" (valve 1 only) closes the valve and holds
-// automatic watering off for `sec`.
+// control/cmd = {v1: cmd, v2: cmd, v3: cmd, poll: ms}. v1 is the irrigation
+// valve, v2 the sprinklers, v3 the dosing pump (station3; "open" = run, it
+// also runs by itself while v1 is open).
+// cmd = {id, mode: "open" | "closed", sec, issuedAt, startedAt?, by}.
+// "closed" (valve 1 only) closes the valve and holds automatic watering off
+// for `sec`.
 //
 // The duration runs from the moment the STATION carries the command out, not
 // from the click: the station polls /cmd every 30 s and reports back which
@@ -170,7 +172,7 @@ const CMD_PICKUP_MS = 10 * 60 * 1000;
 // A station that polled /cmd this recently runs the new firmware; older ones
 // still get the commands folded into /watering (legacy below).
 const CMD_FRESH_MS = 3 * 60 * 1000;
-const CMD_VALVES = [["v1", 1], ["v2", 2]];
+const CMD_VALVES = [["v1", 1], ["v2", 2], ["v3", 3]];
 
 // Milliseconds left on a command, or 0 when it is finished / never picked up.
 function cmdLeftMs(c, nowMs) {
