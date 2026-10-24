@@ -1774,6 +1774,7 @@
     if (lower.includes("npk")) return "mg/kg";
     if (lower === "rssi") return "dBm";
     if (lower.includes("tension")) return lower.endsWith("_v") ? "V" : "kPa";
+    if (lower === "pressure") return "bar";
     if (lower.includes("temp")) return "\u00B0C";
     if (lower.includes("humidity")) return "%";
     if (lower.includes("ec")) return "\u00B5S/cm";
@@ -1792,6 +1793,7 @@
     if (lower.includes("npk")) return 0;
     if (lower === "rssi") return 0;
     if (lower.includes("tension")) return lower.endsWith("_v") ? 2 : 3;
+    if (lower === "pressure") return 2;
     if (lower.includes("ec")) return 0;
     if (lower.includes("voltage")) return 2;
     if (lower.includes("power")) return 2;
@@ -2503,6 +2505,8 @@
     temp:"טמפ׳ אוויר", scale1:"משקל", voltage:"מתח",
     // IRROMETER RSU-V tensiometer (station1, A6): kPa, 0 = saturated, rises as soil dries.
     tension1:"מתח מים בקרקע",
+    // DFRobot SEN0257 water pressure sensor (station3, A2), bar.
+    pressure:"לחץ מים",
     // Cellular signal at send time (MKR modem, AT+CSQ mapped to dBm).
     rssi:"קליטה סלולרית",
     // Real load cell (station3, HX711 on the KC868-A16), kg.
@@ -2521,7 +2525,7 @@
     "stationId","serverTimestamp","time","deviceId","sortKey","resetReason",
     "waterIn","water_in","WaterIn","waterOut","water_out","WaterOut",
     "uptime","apiFails","modemFails","gps_lat","gps_lng","ec_dSm","ec2_dSm",
-    "tension1_v","csq",
+    "tension1_v","csq","pressure_v",
     // Raw tipping-spoon counts since station boot; the tiles show spoon*_l.
     "spoon1_tips","spoon2_tips",
     // Diagnostics from the Agrinovo water probes: the registers as received and
@@ -2553,7 +2557,7 @@
     "soil1_humidity","soil2_humidity","ec","ec2","ph1","ph2",
     "soil1_temp","soil2_temp","soil1_ec","soil2_ec","soil1_ph","soil2_ph",
     "npk_n","npk_p","npk_k","temp","scale1","weight_kg","spoon1_l","spoon2_l",
-    "voltage","tension1","rssi"
+    "voltage","tension1","pressure","rssi"
   ];
 
   // Per-station history of the last time each numeric field was seen (+ its last
@@ -6002,6 +6006,7 @@
     ["soil2_humidity", "לחות קרקע 2 (%)"], ["soil2_temp", "טמפ׳ קרקע 2 (°C)"],
     ["soil2_ec", "EC קרקע 2 (dS/m)"], ["soil2_ph", "pH קרקע 2"],
     ["tension1", "מתח מים בקרקע (kPa)"],
+    ["pressure", "לחץ מים (bar)"],
     ["npk_n", "חנקן N (mg/kg)"], ["npk_p", "זרחן P (mg/kg)"], ["npk_k", "אשלגן K (mg/kg)"],
     ["scale1", "משקל (kg)"], ["weight_kg", "משקל (kg)"],
     ["spoon1_l", "נקז היום (L)"], ["spoon2_l", "טפטפת היום (L)"],
@@ -6366,6 +6371,15 @@
       agg: "avg",
       fields: [
         { label: "tension1", candidates: ["tension1"], color: C_GREEN, bg: F_GREEN }
+      ]
+    },
+    {
+      // DFRobot SEN0257 water pressure sensor (station3, A2), 0-16 bar.
+      title: "Water Pressure",
+      unit: "bar",
+      agg: "avg",
+      fields: [
+        { label: "pressure", candidates: ["pressure"], color: C_BLUE, bg: F_BLUE }
       ]
     },
     {

@@ -137,8 +137,11 @@ function lastAvg(sensor) {
   return null;
 }
 
+// The latest raw (5-minute) record, not the hourly row: FieldClimate's newest
+// hourly row is a running average of the hour so far, so the same "13:00"
+// reading changes on every fetch and lags the actual air by up to an hour.
 async function fetchVpd(fcStationId) {
-  const data = await apiGet("/data/" + fcStationId + "/hourly/last/2");
+  const data = await apiGet("/data/" + fcStationId + "/raw/last/1");
   const sensors = Array.isArray(data.data) ? data.data : [];
   const dates = Array.isArray(data.dates) ? data.dates : [];
   const stationTime = dates.length ? dates[dates.length - 1] : null;
@@ -187,7 +190,10 @@ async function fetchVpd(fcStationId) {
  * with it, so failures degrade to the cached value, then to ok:false.
  */
 async function readVpd(db, stationId, fcStationId) {
-  const cacheRef = db.ref("/berries/" + stationId + "/fieldclimate/last");
+  // Keyed by the FieldClimate station, not ours: several of our stations can
+  // point at the same weather station, and separate caches fetched at
+  // different times made them show different numbers for the same air.
+  const cacheRef = db.ref("/fieldclimate/" + fcStationId + "/last");
   const nowSec = Math.floor(Date.now() / 1000);
 
   let cached = null;
@@ -197,15 +203,21 @@ async function readVpd(db, stationId, fcStationId) {
     logger.warn("vpd cache read failed", {stationId, err: err.message});
   }
 
+  // settings.html reads the reading under the station itself, so keep that
+  // copy in step with the shared one.
+  const mirror = (r) => db.ref("/berries/" + stationId + "/fieldclimate/last").set(r)
+      .catch((err) => logger.warn("vpd mirror write failed", {stationId, err: err.message}));
+
   const age = cached && cached.fetchedAt ? nowSec - cached.fetchedAt : Infinity;
   if (cached && age < MIN_INTERVAL_SEC) {
+    await mirror(cached);
     return Object.assign({}, cached, {ok: true, stale: false, ageSec: age});
   }
 
   try {
     const fresh = await fetchVpd(fcStationId);
     fresh.fetchedAt = nowSec;
-    await cacheRef.set(fresh);
+    await Promise.all([cacheRef.set(fresh), mirror(fresh)]);
     return Object.assign({}, fresh, {ok: true, stale: false, ageSec: 0});
   } catch (err) {
     logger.error("fieldclimate fetch failed", {stationId, fcStationId, err: err.message});
