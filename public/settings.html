@@ -883,7 +883,8 @@
         const p = ilParts(new Date());
         const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day));
         for (let i = 0; i < 3; i++, d.setUTCDate(d.getUTCDate() - 1)) {
-          const rows = (await readingsOfDay(stationId, d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()))
+          const dayRows = await readingsOfDay(stationId, d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+          const rows = dayRows
             .map(([k, it]) => ({ s: WaterSwap.keyToSort(k), rIn: waterOf(it, IN_NAMES), rOut: waterOf(it, OUT_NAMES) }))
             .filter(r => r.s && r.rIn !== null && r.rOut !== null)
             .sort((a, b) => a.s.localeCompare(b.s));
