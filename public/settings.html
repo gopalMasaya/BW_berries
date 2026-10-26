@@ -914,7 +914,7 @@
           ? totals.some(t => (t.s1 ?? 0) > (t.s2 ?? 0) && (t.s1 ?? 0) > 0.05)
           : totals.some(t => t.pOut > t.pIn && t.pOut > 20);
         swapEls.swapRecent.innerHTML = `<b>כפי שהתחנה שולחת (לפני ההחלפה):</b><br>${lines}` +
-          (suspicious ? `<br><span style="color:var(--bad);">⚠️ waterOut גבוה מ־waterIn — סביר שהמדים הפוכים.</span>` : "");
+          (suspicious ? `<br><span style="color:var(--bad);">⚠️ ${spoons ? "הנקז גבוה מהטפטפת" : "waterOut גבוה מ־waterIn"} — סביר שהמדים הפוכים.</span>` : "");
       } catch (e) { console.error("swap recent", e); }
     }
 
