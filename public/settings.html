@@ -893,11 +893,25 @@
             pIn += b.rIn >= a.rIn ? b.rIn - a.rIn : b.rIn;
             pOut += b.rOut >= a.rOut ? b.rOut - a.rOut : b.rOut;
           }
-          totals.push({ day: `${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}`, pIn, pOut });
+          // Tipping-spoon stations (station3): spoon1 = drain, spoon2 = drip, litres
+          // since local midnight — the day's total is the highest value seen.
+          let s1 = null, s2 = null;
+          for (const [, it] of dayRows) {
+            const a = Number(it.spoon1_l), b = Number(it.spoon2_l);
+            if (it.spoon1_l != null && Number.isFinite(a)) s1 = Math.max(s1 ?? 0, a);
+            if (it.spoon2_l != null && Number.isFinite(b)) s2 = Math.max(s2 ?? 0, b);
+          }
+          totals.push({ day: `${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}`, pIn, pOut, s1, s2 });
         }
         if (stationSelect.value !== stationId) return;
-        const lines = totals.map(t => `${t.day}: waterIn ${t.pIn} · waterOut ${t.pOut} פולסים`).join("<br>");
-        const suspicious = totals.some(t => t.pOut > t.pIn && t.pOut > 20);
+        const spoons = totals.some(t => t.s1 !== null || t.s2 !== null);
+        const fmtL = (v) => v === null ? "—" : (+v.toFixed(3)) + " L";
+        const lines = totals.map(t => spoons
+          ? `${t.day}: נקז (spoon1) ${fmtL(t.s1)} · טפטפת (spoon2) ${fmtL(t.s2)}`
+          : `${t.day}: waterIn ${t.pIn} · waterOut ${t.pOut} פולסים`).join("<br>");
+        const suspicious = spoons
+          ? totals.some(t => (t.s1 ?? 0) > (t.s2 ?? 0) && (t.s1 ?? 0) > 0.05)
+          : totals.some(t => t.pOut > t.pIn && t.pOut > 20);
         swapEls.swapRecent.innerHTML = `<b>כפי שהתחנה שולחת (לפני ההחלפה):</b><br>${lines}` +
           (suspicious ? `<br><span style="color:var(--bad);">⚠️ waterOut גבוה מ־waterIn — סביר שהמדים הפוכים.</span>` : "");
       } catch (e) { console.error("swap recent", e); }

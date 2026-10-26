@@ -89,10 +89,20 @@
     if (!item || typeof item !== "object") return item;
     const p = periodAt(plan, tsKey || item.time);
     if (!p) return item;
-    const rIn = num(item.waterIn), rOut = num(item.waterOut);
-    if (rIn === null && rOut === null) return item;
-    const v = mapPeriod(p, rIn, rOut);
     const out = { ...item };
+    // Tipping-spoon stations (station3) report spoon1 = drain, spoon2 = drip as
+    // litres/tips since local midnight, reset daily — a plain exchange is enough.
+    if (p.swapped) {
+      for (const f of ["_l", "_tips"]) {
+        const a = "spoon1" + f, b = "spoon2" + f;
+        if (!(a in item) && !(b in item)) continue;
+        if (b in item) out[a] = item[b]; else delete out[a];
+        if (a in item) out[b] = item[a]; else delete out[b];
+      }
+    }
+    const rIn = num(item.waterIn), rOut = num(item.waterOut);
+    if (rIn === null && rOut === null) return out;
+    const v = mapPeriod(p, rIn, rOut);
     if (v.in !== null) out.waterIn = v.in; else delete out.waterIn;
     if (v.out !== null) out.waterOut = v.out; else delete out.waterOut;
     return out;
