@@ -277,6 +277,10 @@
       { stationId: "station2", plots: [
         { from: "", code: "B07", fields: { ecIn: "ec2", ecOut: "ec", ph1: "ph1", ph2: "ph2" } },
       ] },
+      // station3: shares B07 with station2; one EC + one pH probe on the dripper.
+      { stationId: "station3", plots: [
+        { from: "", code: "B07", fields: { ecIn: "ec", ecOut: null, ph1: "ph1", ph2: null } },
+      ] },
     ];
     const plotAt = (pair, day) => pair.plots.find(p => day >= p.from) || pair.plots[pair.plots.length - 1];
     const plotOn = (pair, day) => plotAt(pair, day).code;

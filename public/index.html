@@ -2873,6 +2873,8 @@
       { from: "", code: "B09", map: { ec: "dripEc", ph1: "dripPh" } },
     ],
     station2: [{ from: "", code: "B07", map: { ec2: "dripEc", ec: "drainEc", ph1: "dripPh", ph2: "drainPh" } }],
+    // station3 shares B07 with station2; its one EC + one pH probe are on the dripper.
+    station3: [{ from: "", code: "B07", map: { ec: "dripEc", ph1: "dripPh" } }],
   };
   const manualDayCache = {};           // "YYYY-MM-DD" → promise of that day's records
   function localDayKey(d){

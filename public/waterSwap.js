@@ -129,7 +129,7 @@
     return !!(p && p.swapped);
   }
 
-  const api = { compile, apply, swappedAt, fromToSort, keyToSort };
+  const api = { compile, apply, fromSpoons, swappedAt, fromToSort, keyToSort };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.WaterSwap = api;
 })(typeof self !== "undefined" ? self : this);

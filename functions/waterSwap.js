@@ -85,8 +85,23 @@
 
   // Returns the reading with waterIn = drip and waterOut = drain. `item` must
   // already carry the canonical waterIn/waterOut names.
+  // Tipping-spoon stations (station3) send waterIn/waterOut as 0 and count in
+  // spoon2_tips (drip) / spoon1_tips (drain) instead: cumulative since boot, one
+  // tip per pulse, so they stand in for the counters as they are.
+  function fromSpoons(item) {
+    if (!item || typeof item !== "object") return item;
+    const drip = num(item.spoon2_tips), drain = num(item.spoon1_tips);
+    if (drip === null && drain === null) return item;
+    if (num(item.waterIn) > 0 || num(item.waterOut) > 0) return item;
+    const out = { ...item };
+    if (drip !== null) out.waterIn = drip;
+    if (drain !== null) out.waterOut = drain;
+    return out;
+  }
+
   function apply(plan, item, tsKey) {
     if (!item || typeof item !== "object") return item;
+    item = fromSpoons(item);
     const p = periodAt(plan, tsKey || item.time);
     if (!p) return item;
     const out = { ...item };
@@ -114,7 +129,7 @@
     return !!(p && p.swapped);
   }
 
-  const api = { compile, apply, swappedAt, fromToSort, keyToSort };
+  const api = { compile, apply, fromSpoons, swappedAt, fromToSort, keyToSort };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.WaterSwap = api;
 })(typeof self !== "undefined" ? self : this);

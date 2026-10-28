@@ -833,7 +833,8 @@
       for (let i = 0; i < 14; i++, d.setUTCDate(d.getUTCDate() - 1)) {
         const rows = await readingsOfDay(stationId, d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
         let best = null;
-        for (const [k, it] of rows) {
+        for (const [k, raw] of rows) {
+          const it = WaterSwap.fromSpoons(raw);   // spoon stations: tips stand in for the counters
           const s = WaterSwap.keyToSort(k);
           const rIn = waterOf(it, IN_NAMES), rOut = waterOf(it, OUT_NAMES);
           if (!s || s >= fromSort || rIn === null || rOut === null) continue;
