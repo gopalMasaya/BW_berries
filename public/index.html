@@ -2830,7 +2830,6 @@
   // ── Squares view: date range + sensor-line state ──
   const squaresCharts = {};            // deviceId → Chart instance (destroyed on re-render)
   const squaresExpanded = {};          // deviceId → bool: is the chart panel open
-  const squaresIrrigExpanded = {};     // deviceId → bool: is the irrigation list open
   const squaresSensorSel = {};         // deviceId → field plotted as the chart line (set by clicking a metric tile)
   let squaresInited = false;           // toolbar defaults populated once
 
@@ -2921,30 +2920,226 @@
     }
     return { inL: inP * ml / 1000, outL: outP * ml / 1000 };
   }
-  // One table row for a manual check: the manual values, and under each the
-  // station's own total measured up to that same moment.
-  function manualCheckRow(m, readings, ml, multiDay){
+  // ── Irrigation modal (Squares view): station irrigations, manual checks and
+  // the Galcon runs of the station's valve on one timeline ──
+  // A Galcon run this close to a station irrigation is the same irrigation.
+  const IRR_GALCON_PAIR_MS = 20 * 60000;
+  let _irrModalSeq = 0;
+
+  function ensureIrrModal(){
+    let el = document.getElementById("irrModal");
+    if (el) return el;
+    el = document.createElement("div");
+    el.id = "irrModal";
+    el.className = "irr-modal";
+    el.hidden = true;
+    el.innerHTML = `
+      <div class="irr-modal-box" role="dialog" aria-modal="true">
+        <div class="irr-modal-head">
+          <div><h3 class="irr-modal-title"></h3><div class="irr-modal-sub"></div></div>
+          <button class="irr-modal-close" type="button" title="סגור (Esc)">✕</button>
+        </div>
+        <div class="irr-modal-body"></div>
+      </div>`;
+    document.body.appendChild(el);
+    el.querySelector(".irr-modal-close").addEventListener("click", closeIrrModal);
+    el.addEventListener("click", (e) => { if (e.target === el) closeIrrModal(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !el.hidden) closeIrrModal(); });
+    // Clicking a station irrigation reveals every sampling point inside it.
+    el.querySelector(".irr-modal-body").addEventListener("click", (ev) => {
+      const row = ev.target.closest("tr.ir-row");
+      if (!row) return;
+      const samplesRow = el.querySelector(`tr.ir-samples[data-idx="${row.dataset.idx}"]`);
+      if (!samplesRow) return;
+      const opening = samplesRow.style.display === "none";
+      samplesRow.style.display = opening ? "" : "none";
+      const caret = row.querySelector(".ir-caret");
+      if (caret) caret.textContent = opening ? "▲" : "▼";
+    });
+    return el;
+  }
+  function closeIrrModal(){
+    const el = document.getElementById("irrModal");
+    if (el) el.hidden = true;
+    _irrModalSeq++;
+  }
+
+  async function openIrrModal(deviceId, d){
+    const el = ensureIrrModal();
+    const st = STATIONS.find(s => s.deviceId === deviceId);
+    const plots = MANUAL_PLOTS[deviceId] || [];
+    el.querySelector(".irr-modal-title").textContent = `💧 השקיות · ${st ? st.name : deviceId}`;
+    el.querySelector(".irr-modal-sub").textContent =
+      `${d.periodLabel} · ${deviceId}${plots.length ? " · ברז " + plots.map(p => p.code).join(" ← ") : ""}`;
+    const body = el.querySelector(".irr-modal-body");
+    el.hidden = false;
+
+    // Station + manual show at once; the Galcon columns fill in when they arrive.
+    const seq = ++_irrModalSeq;
+    body.innerHTML = irrModalHtml(d, null);
+    try {
+      const list = await fetchGalconForStations([{ deviceId }], localDayKey(d.from), localDayKey(d.to));
+      if (seq === _irrModalSeq) body.innerHTML = irrModalHtml(d, list);
+    } catch (err){
+      console.warn("galcon (irrigation modal)", deviceId, err);
+      if (seq === _irrModalSeq) body.innerHTML = irrModalHtml(d, { error: err.message || String(err) });
+    }
+  }
+
+  // Manual-check values beside the station's own total up to the same moment.
+  function manualCheckInfo(m, readings, ml){
     const r = m.rec;
     const num = v => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
-    const f = (v, dec) => v == null ? "—" : v.toFixed(dec);
     const dripL = num(r.dripMl) != null ? num(r.dripMl) / 1000 : null;
     const drainL = num(r.drainMl) != null ? num(r.drainMl) / 1000 : null;
-    const st = stationTotalsUntil(readings, m.time, ml);
-    const manPct = dripL ? (drainL || 0) / dripL * 100 : null;
-    const stPct = st.inL > 0 ? st.outL / st.inL * 100 : null;
-    // A 0 in EC/pH means "not measured" in the entry form.
-    const pair = (a, b, dec) => (num(a) == null && num(b) == null) ? "—"
-      : `${f(num(a), dec)} / ${f(num(b), dec)}<span class="ir-man-st">טפטפת / נקז</span>`;
-    const name = String(r.stationName || "").replace(/[&<>"]/g, "");
-    return `
-      <tr class="ir-manual" title="בדיקה ידנית (אפליקציית qrCode). מתחת לכל ערך: סה״כ מדידת התחנה מתחילת הטווח עד שעת הבדיקה">
-        <td colspan="4" class="ir-man-label">📋 בדיקה ידנית · ${multiDay ? m.time.toLocaleDateString("he-IL") + " " : ""}${fmtHM(m.time)}<span class="ir-man-st">${name}</span></td>
-        <td class="ir-in">${f(dripL, 3)}<span class="ir-man-st">תחנה עד כה: ${st.inL.toFixed(3)}</span></td>
-        <td class="ir-out">${f(drainL, 3)}<span class="ir-man-st">תחנה עד כה: ${st.outL.toFixed(3)}</span></td>
-        <td>${pair(r.dripEc, r.drainEc, 2)}</td>
-        <td>${pair(r.dripPh, r.drainPh, 2)}</td>
-        <td colspan="2">נקז ${f(manPct, 0)}%<span class="ir-man-st">תחנה עד כה: ${f(stPct, 0)}%</span></td>
-      </tr>`;
+    const stTot = stationTotalsUntil(readings, m.time, ml);
+    return {
+      dripL, drainL, stTot,
+      manPct: dripL ? (drainL || 0) / dripL * 100 : null,
+      stPct: stTot.inL > 0 ? stTot.outL / stTot.inL * 100 : null,
+      // A 0 in EC/pH means "not measured" in the entry form.
+      dripEc: num(r.dripEc), drainEc: num(r.drainEc), dripPh: num(r.dripPh), drainPh: num(r.drainPh),
+      name: String(r.stationName || "").replace(/[&<>"]/g, ""),
+    };
+  }
+
+  // `galcon`: null = still loading, { error } = failed, else a fetchGalconForStations() list.
+  function irrModalHtml(d, galcon){
+    const COLS = 14;
+    const f = (v, dec) => v == null || !Number.isFinite(v) ? "—" : v.toFixed(dec);
+    const when = (t) => (d.multiDay ? t.toLocaleDateString("he-IL") + " " : "") + fmtHM(t);
+    const gNum = (v) => { const n = Number(v); return v == null || v === "" || !Number.isFinite(n) ? null : n; };
+    const gPos = (v) => { const n = gNum(v); return n != null && n > 0 ? n : null; };
+
+    const gList = Array.isArray(galcon) ? galcon.map(({ code, e }) => ({
+      code, prog: e.ProgNum,
+      start: new Date(e.DateTimeStartValve), stop: new Date(e.DateTimeStopValve),
+      dur: gNum(e.DurationValve), vol: gNum(e.VolumeM3Valve), flow: gNum(e.FlowRateM3h),
+      ec: gPos(e.EcMed), ecReq: gPos(e.EcRequired), ph: gPos(e.PhMed), phReq: gPos(e.PhRequired),
+    })).filter(g => !isNaN(g.start)) : [];
+
+    // Pair each station irrigation with the nearest unused Galcon run.
+    const used = new Set();
+    const items = d.events.map((e, i) => {
+      let best = null, bestD = Infinity;
+      gList.forEach((g, gi) => {
+        if (used.has(gi)) return;
+        const gStop = isNaN(g.stop) ? g.start : g.stop;
+        const dist = (gStop >= e.startTime && g.start <= e.endTime) ? 0
+          : Math.min(Math.abs(g.start - e.endTime), Math.abs(gStop - e.startTime));
+        if (dist < bestD){ bestD = dist; best = gi; }
+      });
+      if (best != null && bestD <= IRR_GALCON_PAIR_MS) used.add(best); else best = null;
+      return { t: e.startTime, kind: "st", idx: i, e, g: best == null ? null : gList[best] };
+    });
+    gList.forEach((g, gi) => { if (!used.has(gi)) items.push({ t: g.start, kind: "g", g }); });
+    d.manual.forEach(m => items.push({ t: m.time, kind: "man", m }));
+    items.sort((a, b) => a.t - b.t);
+
+    const gCells = (g) => g ? `
+      <td class="gc sep">${fmtHM(g.start)}–${isNaN(g.stop) ? "…" : fmtHM(g.stop)}<span class="ir-man-st">${g.code}${g.prog != null && g.prog !== "" ? " · תוכנית " + g.prog : ""}</span></td>
+      <td class="gc">${f(g.dur, 1)}</td>
+      <td class="gc ir-g">${fmtVolL(g.vol)}</td>
+      <td class="gc">${fmtFlowL(g.flow)}</td>
+      <td class="gc">${f(g.ec, 2)}${g.ecReq != null ? `<span class="ir-man-st">נדרש ${g.ecReq.toFixed(2)}</span>` : ""}</td>
+      <td class="gc">${f(g.ph, 2)}${g.phReq != null ? `<span class="ir-man-st">נדרש ${g.phReq.toFixed(2)}</span>` : ""}</td>`
+      : `<td class="gc sep irr-none" colspan="6">${galcon == null ? "טוען…" : Array.isArray(galcon) ? "אין השקיית Galcon תואמת" : "—"}</td>`;
+
+    let n = 0;
+    const rows = items.map(it => {
+      if (it.kind === "man"){
+        const x = manualCheckInfo(it.m, d.readings, d.ml);
+        const pair = (a, b) => a == null && b == null ? null : `${f(a, 2)} / ${f(b, 2)}`;
+        const ec = pair(x.dripEc, x.drainEc), ph = pair(x.dripPh, x.drainPh);
+        return `
+          <tr class="ir-manual" title="בדיקה ידנית (אפליקציית qrCode). ״תחנה עד כה״ = סה״כ מדידת התחנה מתחילת הטווח עד שעת הבדיקה">
+            <td colspan="${COLS}">
+              <span class="irr-man-label">📋 בדיקה ידנית · ${when(it.m.time)}${x.name ? " · " + x.name : ""}</span>
+              <span class="ir-chip w-in"><b>טפטפת</b> ${f(x.dripL, 3)} ל׳ · תחנה עד כה ${x.stTot.inL.toFixed(3)}</span>
+              <span class="ir-chip w-out"><b>נקז</b> ${f(x.drainL, 3)} ל׳ · תחנה עד כה ${x.stTot.outL.toFixed(3)}</span>
+              <span class="ir-chip"><b>נקז %</b> ${f(x.manPct, 0)}% · תחנה עד כה ${f(x.stPct, 0)}%</span>
+              ${ec ? `<span class="ir-chip"><b>EC טפטפת / נקז</b> ${ec}</span>` : ""}
+              ${ph ? `<span class="ir-chip"><b>pH טפטפת / נקז</b> ${ph}</span>` : ""}
+            </td>
+          </tr>`;
+      }
+      if (it.kind === "g"){
+        return `
+          <tr class="irr-gonly" title="השקיית Galcon בברז התחנה שלא נמדדה כהשקיה בתחנה">
+            <td class="ir-idx">—</td>
+            <td colspan="7" class="irr-none">${when(it.g.start)} · לא נמדדה השקיה בתחנה</td>
+            ${gCells(it.g)}
+          </tr>`;
+      }
+      const e = it.e;
+      n++;
+      const ec = pickIrrigSensor(e.samples, IRRIG_EC_FIELDS);
+      const ph = pickIrrigSensor(e.samples, IRRIG_PH_FIELDS);
+      const samplesHtml = (e.samples || []).map(s => `
+        <div class="ir-sample">
+          <span class="ir-sample-t">${fmtHM(s.time)}</span>
+          <span class="ir-sample-v">${irrigSampleChips(s, d.ml)}</span>
+        </div>`).join("");
+      return `
+        <tr class="ir-row" data-idx="${it.idx}" title="לחץ להצגת כל נקודות הדגימה בהשקיה">
+          <td class="ir-idx">${n}<span class="ir-caret">▼</span></td>
+          <td>${when(e.startTime)}–${fmtHM(e.endTime)}</td>
+          <td>${e.durationMin}</td>
+          <td class="ir-in">${e.waterInL.toFixed(3)}</td>
+          <td class="ir-out">${e.waterOutL.toFixed(3)}</td>
+          <td>${f(e.drainPct, 0)}${e.drainPct != null ? "%" : ""}</td>
+          ${irrigSensorCell(ec)}
+          ${irrigSensorCell(ph)}
+          ${gCells(it.g)}
+        </tr>
+        <tr class="ir-samples" data-idx="${it.idx}" style="display:none;">
+          <td colspan="${COLS}">${samplesHtml || "—"}</td>
+        </tr>`;
+    }).join("");
+
+    // ── summary boxes ──
+    const stPct = d.totIn > 0 ? d.totOut / d.totIn * 100 : null;
+    let gDur = 0, gVol = 0;
+    const gEc = [], gPh = [];
+    gList.forEach(g => { gDur += g.dur || 0; gVol += g.vol || 0; if (g.ec) gEc.push(g.ec); if (g.ph) gPh.push(g.ph); });
+    const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+    const kv = (k, v) => `<span>${k} <b>${v}</b></span>`;
+    const gBody = galcon == null ? `<span>טוען…</span>`
+      : !Array.isArray(galcon) ? `<span class="irr-err">שגיאה: ${String(galcon.error).replace(/[&<>"]/g, "")}</span>`
+      : !gList.length ? `<span>אין השקיות Galcon בטווח</span>`
+      : kv("השקיות", gList.length) + kv("משך כולל", gDur.toFixed(1) + " דק׳") + kv("כמות (ברז)", fmtVolL(gVol))
+        + kv("EC ממוצע", f(avg(gEc), 2)) + kv("pH ממוצע", f(avg(gPh), 2));
+    const lastMan = d.manual.length ? d.manual[d.manual.length - 1] : null;
+    const summary = `
+      <div class="irr-sum">
+        <div class="irr-sum-box st"><div class="irr-sum-t">📡 תחנה</div><div class="irr-sum-kv">
+          ${kv("השקיות", d.events.length)}${kv("טפטפת", d.totIn.toFixed(3) + " ל׳")}${kv("נקז", d.totOut.toFixed(3) + " ל׳")}${kv("נקז %", f(stPct, 0) + (stPct != null ? "%" : ""))}
+        </div></div>
+        <div class="irr-sum-box g"><div class="irr-sum-t">🚰 Galcon</div><div class="irr-sum-kv">${gBody}</div></div>
+        <div class="irr-sum-box man"><div class="irr-sum-t">📋 בדיקות ידניות</div><div class="irr-sum-kv">
+          ${d.manual.length ? kv("בדיקות", d.manual.length) + kv("אחרונה", when(lastMan.time)) : "<span>אין בדיקות ידניות בטווח</span>"}
+        </div></div>
+      </div>`;
+
+    const warn = d.stuckInlet
+      ? `<div class="sq-irrig-warn">⚠️ מד כניסת המים (waterIn) תקוע בטווח — המחזורים זוהו לפי הנקז (waterOut). כמות ההשקיה אינה נמדדת.</div>` : "";
+
+    if (!items.length) return summary + warn + `<div class="sq-irrig-empty">אין השקיות בטווח שנבחר</div>`;
+    return summary + warn + `
+      <div class="irr-table-wrap">
+      <table class="sq-irrig-table irr-table">
+        <thead>
+          <tr class="irr-grp"><th></th><th colspan="7" class="grp-st">📡 תחנה</th><th colspan="6" class="grp-g sep">🚰 Galcon (ברז התחנה)</th></tr>
+          <tr><th>#</th><th>שעות</th><th>משך (ד׳)</th><th>טפטפת (ל׳)</th><th>נקז (ל׳)</th><th>נקז %</th><th>EC</th><th>pH</th>
+            <th class="sep">שעות</th><th>משך (ד׳)</th><th>כמות</th><th>ספיקה</th><th>EC</th><th>pH</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="3">סה״כ</td><td class="ir-in">${d.totIn.toFixed(3)}</td><td class="ir-out">${d.totOut.toFixed(3)}</td>
+          <td>${f(stPct, 0)}${stPct != null ? "%" : ""}</td><td colspan="2"></td>
+          <td class="sep">${gList.length || ""}</td><td>${gList.length ? gDur.toFixed(1) : ""}</td><td class="ir-g">${gList.length ? fmtVolL(gVol) : ""}</td><td colspan="3"></td></tr></tfoot>
+      </table>
+      </div>
+      <div class="irr-legend">לחיצה על השקיית תחנה מציגה את כל נקודות הדגימה שלה · השקיית Galcon משויכת להשקיית התחנה אם היא חופפת לה או במרחק עד 20 דק׳ · כמות Galcon היא של כל הברז</div>`;
   }
 
   // Async-fill one station square's irrigation panel + sensor/irrigation chart for
@@ -2991,12 +3186,11 @@
         ? `<span class="sq-badge-clog" title="מד הספיקה של ההשקיה לא סופר — כנראה סתום. יש לנקות את החיישן.">🚱 מד מים סתום — לניקוי</span>`
         : "";
 
-      // ── Irrigation panel: a toggle button (with summary) + an expandable table ──
+      // ── Irrigation panel: a summary button that opens the irrigation modal ──
       let totIn = 0, totOut = 0;
       events.forEach(e => { totIn += e.waterInL; totOut += e.waterOutL; });
       const totMain = stuckInlet ? totOut : totIn; // headline volume
 
-      const open = !!squaresIrrigExpanded[deviceId];
       const btnLabel = (events.length
         ? `💧 השקיות · ${periodLabel} · ${events.length} · סה״כ ${totMain.toFixed(3)} ל׳${stuckInlet ? " (נקז)" : ""}`
         : `💧 השקיות · ${periodLabel} · אין`)
@@ -3006,82 +3200,14 @@
         ? `<div class="sq-irrig-warn">⚠️ מד כניסת המים (waterIn) תקוע בטווח — המחזורים זוהו לפי הנקז (waterOut). כמות ההשקיה אינה נמדדת.</div>`
         : "";
 
-      let detailHtml;
-      if (events.length || manual.length){
-        // Manual checks go in between the irrigations, at their own time.
-        let mi = 0;
-        const manualUntil = (t) => {
-          let html = "";
-          while (mi < manual.length && (t === null || manual[mi].time < t))
-            html += manualCheckRow(manual[mi++], readings, mlThisStation, multiDay);
-          return html;
-        };
-        const bodyRows = events.map((e, i) => manualUntil(e.startTime) + (() => {
-          const ec  = pickIrrigSensor(e.samples, IRRIG_EC_FIELDS);
-          const ph  = pickIrrigSensor(e.samples, IRRIG_PH_FIELDS);
-          const hu1 = pickIrrigSensor(e.samples, ["soil1_humidity"]);
-          const hu2 = pickIrrigSensor(e.samples, ["soil2_humidity"]);
-          const samplesHtml = (e.samples || []).map(s => `
-            <div class="ir-sample">
-              <span class="ir-sample-t">${fmtHM(s.time)}</span>
-              <span class="ir-sample-v">${irrigSampleChips(s, mlThisStation)}</span>
-            </div>`).join("");
-          return `
-          <tr class="ir-row" data-idx="${i}" title="לחץ להצגת כל נקודות הדגימה בהשקיה">
-            <td class="ir-idx">${i + 1}<span class="ir-caret">▼</span></td>
-            <td>${multiDay ? e.startTime.toLocaleDateString("he-IL") + " " : ""}${fmtHM(e.startTime)}</td>
-            <td>${fmtHM(e.endTime)}</td>
-            <td>${e.durationMin}</td>
-            <td class="ir-in">${e.waterInL.toFixed(3)}</td>
-            <td class="ir-out">${e.waterOutL.toFixed(3)}</td>
-            ${irrigSensorCell(ec)}
-            ${irrigSensorCell(ph)}
-            ${irrigSensorCell(hu1)}
-            ${irrigSensorCell(hu2)}
-          </tr>
-          <tr class="ir-samples" data-idx="${i}" style="display:none;">
-            <td colspan="10">${samplesHtml || "—"}</td>
-          </tr>`;
-        })()).join("") + manualUntil(null);
-        detailHtml = `
-          <div class="sq-irrig-scroll">
-          <table class="sq-irrig-table">
-            <thead><tr><th>#</th><th>התחלה</th><th>סיום</th><th>משך (ד׳)</th><th>טפטפת (ל׳)</th><th>נקז (ל׳)</th><th>EC</th><th>pH</th><th>לחות 1</th><th>לחות 2</th></tr></thead>
-            <tbody>${bodyRows}</tbody>
-            <tfoot><tr><td colspan="4">סה״כ</td><td class="ir-in">${totIn.toFixed(3)}</td><td class="ir-out">${totOut.toFixed(3)}</td><td colspan="4"></td></tr></tfoot>
-          </table>
-          </div>`;
-      } else {
-        detailHtml = `<div class="sq-irrig-empty">אין השקיות בטווח שנבחר</div>`;
-      }
-
       irrigEl.innerHTML = `
-        <button class="sq-irrig-toggle" type="button">${btnLabel} <span class="caret">${open ? "▲" : "▼"}</span></button>
-        ${warnHtml}
-        <div class="sq-irrig-detail" style="display:${open ? "" : "none"};">${detailHtml}</div>`;
+        <button class="sq-irrig-toggle" type="button" title="פתח חלון השקיות: תחנה + בדיקות ידניות + Galcon">${btnLabel} <span class="caret">⤢</span></button>
+        ${warnHtml}`;
 
-      const irrigToggle = irrigEl.querySelector(".sq-irrig-toggle");
-      const irrigDetail = irrigEl.querySelector(".sq-irrig-detail");
-      irrigToggle.addEventListener("click", (e) => {
+      irrigEl.querySelector(".sq-irrig-toggle").addEventListener("click", (e) => {
         e.stopPropagation();
-        const opening = irrigDetail.style.display === "none";
-        squaresIrrigExpanded[deviceId] = opening;
-        irrigDetail.style.display = opening ? "" : "none";
-        irrigToggle.querySelector(".caret").textContent = opening ? "▲" : "▼";
-      });
-
-      // Clicking an irrigation row reveals every sampling point inside it, each
-      // with the sensor values (EC/pH/soil/…) recorded at that exact moment.
-      irrigDetail.addEventListener("click", (ev) => {
-        const row = ev.target.closest("tr.ir-row");
-        if (!row) return;
-        ev.stopPropagation();
-        const samplesRow = irrigDetail.querySelector(`tr.ir-samples[data-idx="${row.dataset.idx}"]`);
-        if (!samplesRow) return;
-        const opening = samplesRow.style.display === "none";
-        samplesRow.style.display = opening ? "" : "none";
-        const caret = row.querySelector(".ir-caret");
-        if (caret) caret.textContent = opening ? "▲" : "▼";
+        openIrrModal(deviceId, { events, manual, readings, ml: mlThisStation, stuckInlet,
+          from, to, multiDay, periodLabel, totIn, totOut });
       });
 
       // ── Chart data: stored on the square; built lazily when the chart is open ──
