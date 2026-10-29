@@ -469,6 +469,56 @@
     .ir-chip b{ color:var(--text); font-weight:700; }
     .ir-chip.w-in b{ color:var(--accent); }
     .ir-chip.w-out b{ color:var(--warn); }
+    /* Irrigation modal (Squares view): 75% of the screen, light theme like #squaresView. */
+    .irr-modal{
+      --text:#1a1a1a; --muted:#5a6472; --border:rgba(0,0,0,0.12); --accent:#ff7a18;
+      color:var(--text);
+      position:fixed; inset:0; z-index:5000; background:rgba(10,18,32,0.55);
+      display:flex; align-items:center; justify-content:center;
+    }
+    .irr-modal[hidden]{ display:none; }
+    .irr-modal-box{
+      width:75vw; height:75vh; background:#fff; border-radius:16px; overflow:hidden;
+      box-shadow:0 20px 60px rgba(0,0,0,0.35); display:flex; flex-direction:column;
+    }
+    .irr-modal-head{
+      display:flex; justify-content:space-between; align-items:center; gap:12px;
+      padding:14px 18px; border-bottom:1px solid var(--border); background:#f4f6fa;
+    }
+    .irr-modal-title{ margin:0; font-size:18px; }
+    .irr-modal-sub{ font-size:13px; color:var(--muted); margin-top:2px; }
+    .irr-modal-close{
+      border:1px solid var(--border); background:#fff; color:var(--text); border-radius:10px;
+      width:36px; height:36px; font-size:16px; cursor:pointer; flex:none;
+    }
+    .irr-modal-close:hover{ background:#eef1f6; }
+    .irr-modal-body{ flex:1; overflow:auto; padding:16px 18px; display:flex; flex-direction:column; gap:14px; }
+    .irr-sum{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px; }
+    .irr-sum-box{ border:1px solid var(--border); border-inline-start:4px solid var(--accent); border-radius:12px; padding:10px 12px; }
+    .irr-sum-box.g{ border-inline-start-color:#0ea5e9; }
+    .irr-sum-box.man{ border-inline-start-color:#7c3aed; }
+    .irr-sum-t{ font-weight:800; font-size:14px; margin-bottom:6px; }
+    .irr-sum-kv{ display:flex; flex-wrap:wrap; gap:6px 16px; font-size:13px; color:var(--muted); }
+    .irr-sum-kv b{ color:var(--text); font-variant-numeric:tabular-nums; }
+    .irr-err{ color:var(--bad); }
+    .irr-table-wrap{ overflow:auto; border:1px solid var(--border); border-radius:12px; }
+    .irr-table{ font-size:13.5px; }
+    .irr-table thead th{ position:sticky; top:0; background:#fff; z-index:1; }
+    .irr-table thead tr.irr-grp th{ font-size:13px; color:var(--text); border-bottom:none; }
+    .irr-table thead tr + tr th{ top:29px; }
+    .irr-table th.grp-st{ background:rgba(255,122,24,0.12); }
+    .irr-table th.grp-g{ background:rgba(14,165,233,0.12); }
+    .irr-table .sep{ border-inline-start:2px solid var(--border); }
+    .irr-table td.gc{ background:rgba(14,165,233,0.04); }
+    .irr-table .ir-g{ color:#0284c7; font-weight:700; }
+    .irr-table .irr-none{ color:var(--muted); font-style:italic; }
+    .irr-table tr.ir-manual td{ text-align:right; white-space:normal; }
+    .irr-table .irr-man-label{ color:#7c3aed; font-weight:700; margin-inline-end:10px; }
+    .irr-legend{ font-size:12px; color:var(--muted); }
+    @media (max-width:760px){
+      .irr-modal-box{ width:96vw; height:90vh; }
+      .irr-modal-body{ padding:12px; }
+    }
     .station-square .sq-chart{
       border-top:1px solid var(--border); padding-top:12px; margin-top:2px;
     }
