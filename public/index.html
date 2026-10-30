@@ -2865,20 +2865,14 @@
   // simulated weight (scale1) starts from a settled water balance; the extra
   // readings are dropped again before the list is returned.
   async function fetchWaterReadings(deviceId, fromDate, toDate){
-    const monthKeys = getMonthKeys(new Date(fromDate.getTime() - SCALE_SIM_WARMUP_MS), toDate);
+    const raw = await fetchRawReadings(deviceId, new Date(fromDate.getTime() - SCALE_SIM_WARMUP_MS), toDate);
     const all = [];
-    for (const mk of monthKeys){
-      const snap = await database.ref("berries/" + deviceId + "/" + mk).once("value");
-      const val = snap.val();
-      if (!val) continue;
-      Object.keys(val).forEach(tsKey => {
-        if (tsKey === "control") return;
-        const item = normalizeReading(val[tsKey], deviceId, tsKey);
-        const t = readingMoment(tsKey, item);
-        if (!t || isNaN(t.getTime()) || t > toDate) return;
-        all.push({ time: t, waterIn: Number(item.waterIn) || 0, waterOut: Number(item.waterOut) || 0, item });
-      });
-    }
+    raw.forEach(([tsKey, val]) => {
+      const item = normalizeReading(val, deviceId, tsKey);
+      const t = readingMoment(tsKey, item);
+      if (!t || isNaN(t.getTime()) || t > toDate) return;
+      all.push({ time: t, waterIn: Number(item.waterIn) || 0, waterOut: Number(item.waterOut) || 0, item });
+    });
     all.sort((a,b) => a.time - b.time);
     applyScaleSimSeries(deviceId, all.map(r => ({ time: r.time, target: r.item })));
     return all.filter(r => r.time >= fromDate);
