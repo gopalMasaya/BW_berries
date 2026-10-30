@@ -471,7 +471,7 @@
     .ir-chip.w-out b{ color:var(--warn); }
     /* Irrigation modal (Squares view): 75% of the screen, light theme like #squaresView. */
     .irr-modal{
-      --text:#1a1a1a; --muted:#5a6472; --border:rgba(0,0,0,0.12); --accent:#ff7a18;
+      --text:#1a1a1a; --muted:#5a6472; --border:rgba(0,0,0,0.14); --accent:#ff7a18;
       color:var(--text);
       position:fixed; inset:0; z-index:5000; background:rgba(10,18,32,0.55);
       display:flex; align-items:center; justify-content:center;
@@ -483,41 +483,58 @@
     }
     .irr-modal-head{
       display:flex; justify-content:space-between; align-items:center; gap:12px;
-      padding:14px 18px; border-bottom:1px solid var(--border); background:#f4f6fa;
+      padding:16px 22px; border-bottom:1px solid var(--border); background:#f4f6fa;
     }
-    .irr-modal-title{ margin:0; font-size:18px; }
-    .irr-modal-sub{ font-size:13px; color:var(--muted); margin-top:2px; }
+    .irr-modal-title{ margin:0; font-size:24px; }
+    .irr-modal-sub{ font-size:16px; color:var(--muted); margin-top:4px; }
     .irr-modal-close{
       border:1px solid var(--border); background:#fff; color:var(--text); border-radius:10px;
-      width:36px; height:36px; font-size:16px; cursor:pointer; flex:none;
+      width:44px; height:44px; font-size:20px; cursor:pointer; flex:none;
     }
     .irr-modal-close:hover{ background:#eef1f6; }
-    .irr-modal-body{ flex:1; overflow:auto; padding:16px 18px; display:flex; flex-direction:column; gap:14px; }
-    .irr-sum{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px; }
-    .irr-sum-box{ border:1px solid var(--border); border-inline-start:4px solid var(--accent); border-radius:12px; padding:10px 12px; }
-    .irr-sum-box.g{ border-inline-start-color:#0ea5e9; }
+    .irr-modal-body{ flex:1; overflow:auto; padding:18px 22px; display:flex; flex-direction:column; gap:14px; font-size:17px; }
+    .irr-modal .sq-irrig-warn, .irr-modal .sq-irrig-empty{ font-size:16px; }
+    .irr-sum{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:12px; }
+    .irr-sum-box{ border:1px solid var(--border); border-inline-start:5px solid #0ea5e9; border-radius:12px; padding:12px 16px; }
     .irr-sum-box.man{ border-inline-start-color:#7c3aed; }
-    .irr-sum-t{ font-weight:800; font-size:14px; margin-bottom:6px; }
-    .irr-sum-kv{ display:flex; flex-wrap:wrap; gap:6px 16px; font-size:13px; color:var(--muted); }
+    .irr-sum-t{ font-weight:800; font-size:18px; margin-bottom:8px; }
+    .irr-sum-kv{ display:flex; flex-wrap:wrap; gap:6px 18px; font-size:16px; color:var(--muted); margin-top:8px; }
     .irr-sum-kv b{ color:var(--text); font-variant-numeric:tabular-nums; }
-    .irr-err{ color:var(--bad); }
-    .irr-table-wrap{ overflow:auto; border:1px solid var(--border); border-radius:12px; }
-    .irr-table{ font-size:13.5px; }
-    .irr-table thead{ position:sticky; top:0; z-index:1; }
-    .irr-table thead th{ background:#fff; }
-    .irr-table thead tr.irr-grp th{ font-size:13px; color:var(--text); border-bottom:none; }
-    .irr-table th.grp-st{ background:rgba(255,122,24,0.12); }
-    .irr-table th.grp-g{ background:rgba(14,165,233,0.12); }
-    .irr-table .sep{ border-inline-start:2px solid var(--border); }
-    .irr-table td.gc{ background:rgba(14,165,233,0.04); }
-    .irr-table .ir-g{ color:#0284c7; font-weight:700; }
-    .irr-table .irr-none{ color:var(--muted); font-style:italic; }
-    .irr-table tr.ir-manual td{ text-align:right; white-space:normal; }
-    .irr-table .irr-man-label{ color:#7c3aed; font-weight:700; margin-inline-end:10px; }
-    .irr-legend{ font-size:12px; color:var(--muted); }
+    .irr-verdict{ display:inline-block; font-size:22px; font-weight:800; padding:6px 14px; border-radius:10px; }
+    .irr-verdict.ok{ background:#dcfce7; color:#166534; }
+    .irr-verdict.bad{ background:#fee2e2; color:#991b1b; }
+    .irr-verdict.na{ background:#f1f5f9; color:var(--muted); font-size:18px; }
+    .irr-h{ margin:10px 0 0; font-size:20px; }
+    .irr-table-wrap{ overflow:auto; border:1px solid var(--border); border-radius:12px; flex:none; }
+    .irr-cmp{ width:100%; border-collapse:collapse; font-size:17px; }
+    .irr-cmp th, .irr-cmp td{
+      padding:9px 10px; text-align:center; border:1px solid var(--border);
+      white-space:nowrap; font-variant-numeric:tabular-nums;
+    }
+    .irr-cmp thead{ position:sticky; top:0; z-index:1; }
+    .irr-cmp thead th{ background:#f4f6fa; font-size:15px; font-weight:800; }
+    .irr-cmp thead th.grp{ font-size:16px; }
+    .irr-cmp th.g-w{ background:#dbeafe; }
+    .irr-cmp th.g-ec{ background:#fde7d6; }
+    .irr-cmp th.g-ph{ background:#ede4f7; }
+    .irr-cmp th.g-t{ background:#e5e7eb; }
+    .irr-cmp td.m-ok{ background:#dcfce7; color:#166534; font-weight:700; }
+    .irr-cmp td.m-bad{ background:#fee2e2; color:#991b1b; font-weight:800; }
+    .m-badge{ display:inline-block; padding:3px 10px; border-radius:999px; font-weight:800; font-size:15px; }
+    .m-badge.ok{ background:#16a34a; color:#fff; }
+    .m-badge.bad{ background:#dc2626; color:#fff; }
+    .m-badge.na{ color:var(--muted); }
+    .irr-cmp tr.ir-row{ cursor:pointer; }
+    .irr-cmp tr.ir-row:hover td:not(.m-ok):not(.m-bad){ background:rgba(0,0,0,0.03); }
+    .irr-cmp tr.irr-miss td:first-child{ box-shadow:inset -4px 0 0 #dc2626; }
+    .irr-cmp .ir-caret{ color:var(--muted); font-size:11px; margin-inline-start:4px; }
+    .irr-cmp tr.ir-samples > td{ background:rgba(0,0,0,0.02); text-align:right; padding:8px 12px; white-space:normal; }
+    .irr-modal .ir-chip{ font-size:14px; }
+    .irr-legend{ font-size:14px; color:var(--muted); }
     @media (max-width:760px){
       .irr-modal-box{ width:96vw; height:90vh; }
       .irr-modal-body{ padding:12px; }
+      .irr-cmp{ font-size:15px; }
     }
     .station-square .sq-chart{
       border-top:1px solid var(--border); padding-top:12px; margin-top:2px;
@@ -2610,34 +2627,130 @@
     "voltage","tension1","pressure","rssi"
   ];
 
+  // ===============================
+  // READINGS CACHE
+  // ===============================
+  // A month node grows by ~200 KB per station per day (5 MB+ by the end of the
+  // month), and the views used to download whole months on every render — the
+  // squares view again on every 5-min poll. Readings are instead read by date
+  // range and kept in memory:
+  //   • keys inside a month node are DDMMYYYY_HHMMSS, so within the node they
+  //     sort chronologically and a day range is a plain orderByKey() range;
+  //   • a cached node only ever grows at its tail, so later calls fetch just
+  //     the readings from the last key already held.
+  const monthCache = {};   // "deviceId/MMYYYY" → { data, fromKey, fetchedAt, lock }
+  const MONTH_TAIL_REFRESH_MS = 30 * 1000;
+
+  // A month stops receiving readings once it is over (+1 day of slack for late uploads).
+  function monthClosed(mk){
+    const end = new Date(Number(mk.slice(2)), Number(mk.slice(0, 2)), 1);
+    return Date.now() > end.getTime() + 24 * 3600 * 1000;
+  }
+
+  function lastReadingKey(data){
+    let last = null;
+    for (const k in data) if (/^\d/.test(k) && (last === null || k > last)) last = k;
+    return last;
+  }
+
+  // Raw readings of one month node from day prefix startKey ("DD", or null =
+  // the whole month) to the end of the node. Calls on the same node are
+  // serialised, so overlapping renders never download the same range twice.
+  function readMonth(deviceId, mk, startKey){
+    const id = deviceId + "/" + mk;
+    const e = monthCache[id] || (monthCache[id] = { data: null, fromKey: null, fetchedAt: 0, lock: Promise.resolve() });
+    const want = startKey || "";
+    const run = e.lock.then(async () => {
+      const ref = database.ref("berries/" + deviceId + "/" + mk).orderByKey();
+      if (!e.data){
+        const snap = await (want ? ref.startAt(want) : ref).once("value");
+        e.data = snap.val() || {};
+        e.fromKey = want;
+        e.fetchedAt = Date.now();
+        return e.data;
+      }
+      const jobs = [];
+      if (want < e.fromKey){   // earlier days than held so far
+        jobs.push((want ? ref.startAt(want) : ref).endAt(e.fromKey).once("value"));
+      }
+      if (!monthClosed(mk) && Date.now() - e.fetchedAt > MONTH_TAIL_REFRESH_MS){
+        const last = lastReadingKey(e.data);
+        jobs.push((last ? ref.startAt(last) : e.fromKey ? ref.startAt(e.fromKey) : ref).once("value"));
+      }
+      if (jobs.length){
+        const snaps = await Promise.all(jobs);
+        snaps.forEach(s => Object.assign(e.data, s.val() || {}));
+        if (want < e.fromKey) e.fromKey = want;
+        e.fetchedAt = Date.now();
+      }
+      return e.data;
+    });
+    e.lock = run.catch(() => {});   // a failed read must not block the next one
+    return run;
+  }
+
+  // [tsKey, raw reading] pairs of a station covering [fromDate, toDate] (with a
+  // day of slack before fromDate; callers filter by exact time). Months are read
+  // in parallel. The raw objects are shared with the cache — do not mutate them
+  // (normalizeReading() returns a copy).
+  async function fetchRawReadings(deviceId, fromDate, toDate){
+    const from = new Date(fromDate.getTime() - 24 * 3600 * 1000);
+    const firstMk = getMonthKeys(from, from)[0];
+    const parts = await Promise.all(getMonthKeys(from, toDate).map(mk => {
+      const startKey = (mk === firstMk && from.getDate() > 1) ? String(from.getDate()).padStart(2, "0") : null;
+      return readMonth(deviceId, mk, startKey).then(data => ({ data, startKey }));
+    }));
+    const out = [];
+    parts.forEach(({ data, startKey }) => Object.keys(data).forEach(k => {
+      if (k === "control" || (startKey && k < startKey)) return;
+      out.push([k, data[k]]);
+    }));
+    return out;
+  }
+
   // Per-station history of the last time each numeric field was seen (+ its last
-  // value), used to flag sensors that have stopped reporting. Cached ~30 min.
+  // value), used to flag sensors that have stopped reporting. Cached ~30 min in
+  // memory; the summary is also kept in localStorage, so the next visit scans
+  // only readings newer than the last one already summarised instead of
+  // downloading ~3 months again.
   const stationFieldHistory = {}; // deviceId → { ts, fields:{ key:{lastSeen,lastValue} } }
+  const FIELD_HISTORY_LS = "fieldHistory:";
   async function getStationFieldHistory(deviceId){
     const cached = stationFieldHistory[deviceId];
     if (cached && (Date.now() - cached.ts) < 30 * 60 * 1000) return cached.fields;
     const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth() - 2, 1); // ~3 month nodes
+    const windowStart = new Date(now.getFullYear(), now.getMonth() - 2, 1); // ~3 month nodes
     const fields = {};
-    for (const mk of getMonthKeys(from, now)){
-      const snap = await database.ref("berries/" + deviceId + "/" + mk).once("value");
-      const val = snap.val();
-      if (!val) continue;
-      Object.keys(val).forEach(tsKey => {
-        if (tsKey === "control") return;
-        const item = applyPhFallback(val[tsKey], deviceId);
-        if (!item || typeof item !== "object") return;
-        const t = readingMoment(tsKey, item);
-        if (!t || isNaN(t.getTime())) return;
-        Object.keys(item).forEach(f => {
-          const v = parseFloat(item[f]);
-          if (!Number.isFinite(v)) return;
-          const cur = fields[f];
-          if (!cur || t > cur.lastSeen) fields[f] = { lastSeen: t, lastValue: v };
-        });
+    let scanFrom = windowStart;
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(FIELD_HISTORY_LS + deviceId)); } catch(e){}
+    if (saved && saved.scannedTo > windowStart.getTime()){
+      Object.entries(saved.fields || {}).forEach(([f, h]) => {
+        if (h.lastSeen >= windowStart.getTime()) fields[f] = { lastSeen: new Date(h.lastSeen), lastValue: h.lastValue };
       });
+      scanFrom = new Date(saved.scannedTo);
     }
+    let scannedTo = scanFrom.getTime();
+    (await fetchRawReadings(deviceId, scanFrom, now)).forEach(([tsKey, raw]) => {
+      const item = applyPhFallback(raw, deviceId);
+      if (!item || typeof item !== "object") return;
+      const t = readingMoment(tsKey, item);
+      if (!t || isNaN(t.getTime())) return;
+      // A bogus far-future clock (device_clock_2106) must not end the scan window.
+      if (t.getTime() > scannedTo && t.getTime() <= Date.now()) scannedTo = t.getTime();
+      Object.keys(item).forEach(f => {
+        const v = parseFloat(item[f]);
+        if (!Number.isFinite(v)) return;
+        const cur = fields[f];
+        if (!cur || t > cur.lastSeen) fields[f] = { lastSeen: t, lastValue: v };
+      });
+    });
     stationFieldHistory[deviceId] = { ts: Date.now(), fields };
+    try {
+      const out = {};
+      Object.entries(fields).forEach(([f, h]) => { out[f] = { lastSeen: h.lastSeen.getTime(), lastValue: h.lastValue }; });
+      localStorage.setItem(FIELD_HISTORY_LS + deviceId, JSON.stringify({ scannedTo, fields: out }));
+    } catch(e){}
     return fields;
   }
 
@@ -3122,7 +3235,7 @@
         .map(s => chartCellNumber(s.item, fld)).filter(v => Number.isFinite(v) && v > 0);
       return vs.length ? vs.reduce((x, y) => x + y, 0) / vs.length : null;
     };
-    const cols1 = [{ g: "#" }, { g: "תאריך / שעה" },
+    const cols1 = [{ g: "#" }, { g: "תאריך" },
       { g: "שעת התחלה", s: "תחנה" }, { g: "שעת התחלה", s: "Galcon" },
       { g: "משך (דק׳)", s: "תחנה" }, { g: "משך (דק׳)", s: "Galcon" },
       { g: "טפטפת (מ״ל)", s: "תחנה" }, { g: "טפטפת (מ״ל)", s: "Galcon (הערכה)" },
@@ -3138,7 +3251,7 @@
       const dStart = e && g ? Math.abs(g.start - e.startTime) / 60000 : null;
       const sDur = e ? e.durationMin : null;
       const sEc = e ? stDrip(e, "dripEc") : null, sPh = e ? stDrip(e, "dripPh") : null;
-      const cells = [e ? `${++n}<span class="ir-caret">▼</span>` : "—", when(p.t),
+      const cells = [e ? `${++n}<span class="ir-caret">▼</span>` : "—", d.multiDay ? p.t.toLocaleDateString("he-IL") : null,
         ...both(e ? fmtHM(e.startTime) : null, g ? fmtHM(g.start) : null, dStart > IRR_TOL.startMin),
         ...both(sDur, g ? f(g.dur, 1) : null,
           sDur != null && g && g.dur != null && Math.abs(sDur - g.dur) > Math.max(IRR_TOL.durMin, g.dur * IRR_TOL.durRel)),
@@ -3202,7 +3315,7 @@
       <div class="irr-legend">כמויות מים — מתחילת היום עד שעת הבדיקה · ערכי התחנה — ממוצע ±15 דק׳ סביב הבדיקה · Galcon — ההשקיה הקרובה (עד שעתיים) · פער: EC מעל 15%, pH מעל 0.3, מים מעל 20%, נקז % מעל 10 נקודות</div>` : "";
     const t1 = pairs.length ? `
       <h4 class="irr-h">💧 השקיות: תחנה מול Galcon</h4>
-      ${irrCmpTableHtml(cols1, rows1, 2)}
+      ${irrCmpTableHtml(cols1, rows1, 1)}
       <div class="irr-legend">פער: שעת התחלה מעל ${IRR_TOL.startMin} דק׳, משך מעל ${IRR_TOL.durMin} דק׳ / ${IRR_TOL.durRel * 100}%, מים מעל ${IRR_TOL.ml * 100}%, EC מעל ${IRR_TOL.ec * 100}%, pH מעל ${IRR_TOL.ph} · מים Galcon (הערכה) = משך × ספיקת הטפטפת מיומן הגידול · לחיצה על שורה מציגה את נקודות הדגימה</div>`
       : `<div class="sq-irrig-empty">אין השקיות בטווח שנבחר</div>`;
     return summary + warn + t2 + t1;
