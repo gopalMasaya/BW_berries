@@ -803,12 +803,27 @@ async function appLogin() {
   return "Bearer " + token;
 }
 
+// One login at a time per instance. A burst of requests on a cold instance (or
+// a burst of 401s) used to log in once EACH, and since every login takes the
+// single Galcon session over from the one before, they kicked each other out
+// ("galileo login failed" ×100 on 2026-10-30). `stale` = the token that just
+// got a 401: only that one is replaced, a newer token is reused as-is.
+let appLoginP = null;
+function appTokenFresh(stale) {
+  if (appToken && appToken !== stale) return Promise.resolve(appToken);
+  if (!appLoginP) {
+    appLoginP = appLogin()
+        .then((t) => { appToken = t; return t; })
+        .finally(() => { appLoginP = null; });
+  }
+  return appLoginP;
+}
+
 async function appGet(path) {
-  if (!appToken) appToken = await appLogin();
-  let r = await appRequest("GET", path, {token: appToken});
+  const token = await appTokenFresh(null);
+  let r = await appRequest("GET", path, {token});
   if (r.status === 401) {
-    appToken = await appLogin();
-    r = await appRequest("GET", path, {token: appToken});
+    r = await appRequest("GET", path, {token: await appTokenFresh(token)});
   }
   return r;
 }
