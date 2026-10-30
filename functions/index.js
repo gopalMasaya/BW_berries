@@ -1101,67 +1101,70 @@ galconApp.get("/valves", async (req, res) => {
     const fromLocal = `${fromStr} 00:00:00`;
     const toLocal = `${toStr} 23:59:59`;
 
-    const all = await listControllers();
-    const targets = filterSerial ?
-      all.filter((c) => c.serial === filterSerial) : all;
-    logger.info("valves filter", {
-      filterSerial, controllerSerials: all.map((c) => c.serial),
-    });
-
-    const perController = await Promise.all(targets.map(async (c) => {
-      const [items, nominalFlows] = await Promise.all([
-        fetchFinishIrrigation(c.configId, fromLocal, toLocal),
-        getNominalFlows(c.configId),
-      ]);
-      const out = [];
-      let empty = 0;
-      for (const row of items) {
-        const durMin = Number(row.lastTime) || 0;
-        const volume = Number(row.lastWater) || 0;
-        const stopMs = row.time == null ? null : Number(row.time);
-        const startMs = (stopMs != null && durMin > 0) ?
-          stopMs - Math.round(durMin * 60000) : stopMs;
-
-        const group = [0, 1, 2, 3, 4]
-            .map((i) => row["valve" + i])
-            .filter((n) => n != null && Number(n) > 0)
-            .map(Number);
-        // A row with no valve at all carries nothing the report can place.
-        if (!group.length) { empty++; continue; }
-
-        const shares = group.length > 1 ?
-          valveShares(group, nominalFlows) : [1];
-
-        group.forEach((valveNo, i) => {
-          const valveVolume = round2(volume * shares[i]);
-          out.push({
-            SerialNumber: c.serial,
-            DateTimeStartValve: ilStamp(startMs),
-            DateTimeStopValve: ilStamp(stopMs),
-            ValveNo: valveNo,
-            ProgNum: row.programNumber,
-            DurationValve: row.lastTime,
-            FlowRateM3h: round2(
-                valveFlow(group.length, row.measureFlow, valveVolume, durMin)),
-            VolumeM3Valve: valveVolume,
-            PhMin: row.phLast, PhMed: row.phLast, PhMax: row.phLast,
-            EcMin: row.ecLast, EcMed: row.ecLast, EcMax: row.ecLast,
-            EcRequired: row.ecRequired, PhRequired: row.phRequired,
-            ValveCount: group.length, // >1 → volume/flow are this valve's share
-            ValveGroup: group,
-          });
-        });
-      }
-      logger.info("valves loaded", {
-        serial: c.serial, rows: items.length, events: out.length, skippedEmpty: empty,
+    return res.json(await memo(["valves", fromStr, toStr, filterSerial].join("|"),
+        toStr < new Date().toISOString().slice(0, 10) ? MEMO_SETUP_MS : MEMO_LIVE_MS, async () => {
+      const all = await listControllers();
+      const targets = filterSerial ?
+        all.filter((c) => c.serial === filterSerial) : all;
+      logger.info("valves filter", {
+        filterSerial, controllerSerials: all.map((c) => c.serial),
       });
-      return out;
+
+      const perController = await Promise.all(targets.map(async (c) => {
+        const [items, nominalFlows] = await Promise.all([
+          fetchFinishIrrigation(c.configId, fromLocal, toLocal),
+          getNominalFlows(c.configId),
+        ]);
+        const out = [];
+        let empty = 0;
+        for (const row of items) {
+          const durMin = Number(row.lastTime) || 0;
+          const volume = Number(row.lastWater) || 0;
+          const stopMs = row.time == null ? null : Number(row.time);
+          const startMs = (stopMs != null && durMin > 0) ?
+            stopMs - Math.round(durMin * 60000) : stopMs;
+
+          const group = [0, 1, 2, 3, 4]
+              .map((i) => row["valve" + i])
+              .filter((n) => n != null && Number(n) > 0)
+              .map(Number);
+          // A row with no valve at all carries nothing the report can place.
+          if (!group.length) { empty++; continue; }
+
+          const shares = group.length > 1 ?
+            valveShares(group, nominalFlows) : [1];
+
+          group.forEach((valveNo, i) => {
+            const valveVolume = round2(volume * shares[i]);
+            out.push({
+              SerialNumber: c.serial,
+              DateTimeStartValve: ilStamp(startMs),
+              DateTimeStopValve: ilStamp(stopMs),
+              ValveNo: valveNo,
+              ProgNum: row.programNumber,
+              DurationValve: row.lastTime,
+              FlowRateM3h: round2(
+                  valveFlow(group.length, row.measureFlow, valveVolume, durMin)),
+              VolumeM3Valve: valveVolume,
+              PhMin: row.phLast, PhMed: row.phLast, PhMax: row.phLast,
+              EcMin: row.ecLast, EcMed: row.ecLast, EcMax: row.ecLast,
+              EcRequired: row.ecRequired, PhRequired: row.phRequired,
+              ValveCount: group.length, // >1 → volume/flow are this valve's share
+              ValveGroup: group,
+            });
+          });
+        }
+        logger.info("valves loaded", {
+          serial: c.serial, rows: items.length, events: out.length, skippedEmpty: empty,
+        });
+        return out;
+      }));
+
+      const valves = perController.flat();
+      valves.sort((a, b) => (b.DateTimeStartValve || "").localeCompare(a.DateTimeStartValve || ""));
+
+      return {ok: true, valves};
     }));
-
-    const valves = perController.flat();
-    valves.sort((a, b) => (b.DateTimeStartValve || "").localeCompare(a.DateTimeStartValve || ""));
-
-    return res.json({ok: true, valves});
   } catch (err) {
     logger.error("galcon valves failed", err);
     return res.status(500).json({ok: false, error: err.message || "server error"});
@@ -1222,55 +1225,57 @@ galconApp.get("/sensors", async (req, res) => {
 galconApp.get("/dosing", async (req, res) => {
   try {
     const serial = String(req.query.serial || "").trim();
-    const cfg = serial ?
-      await getConfigIdForSerial(serial) : await getMevoConfigId();
-    const to = new Date();
-    const from = new Date(to.getTime() - 7 * 86400000);
-    const range = `startDate=${encodeURIComponent(fmtAppDate(from))}` +
-                  `&endDate=${encodeURIComponent(fmtAppDate(to))}`;
+    return res.json(await memo("dosing|" + serial, MEMO_LIVE_MS, async () => {
+      const cfg = serial ?
+        await getConfigIdForSerial(serial) : await getMevoConfigId();
+      const to = new Date();
+      const from = new Date(to.getTime() - 7 * 86400000);
+      const range = `startDate=${encodeURIComponent(fmtAppDate(from))}` +
+                    `&endDate=${encodeURIComponent(fmtAppDate(to))}`;
 
-    const [c1, c2, sensorsRes] = await Promise.all([
-      appGet(`/config/${cfg}/dashboard/ecph-widget-info?fertCenterNumber=1&${range}`),
-      appGet(`/config/${cfg}/dashboard/ecph-widget-info?fertCenterNumber=2&${range}`),
-      appGet(`/config/${cfg}/dashboard/active-data-collection-sensors`),
-    ]);
+      const [c1, c2, sensorsRes] = await Promise.all([
+        appGet(`/config/${cfg}/dashboard/ecph-widget-info?fertCenterNumber=1&${range}`),
+        appGet(`/config/${cfg}/dashboard/ecph-widget-info?fertCenterNumber=2&${range}`),
+        appGet(`/config/${cfg}/dashboard/active-data-collection-sensors`),
+      ]);
 
-    const lastPoint = (r) => {
-      const arr = (r.json && r.json.body) || [];
-      return Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null;
-    };
-    const fertCenter = (p, num) => {
-      if (!p) return {number: num, name: `שולחן דישון ${num}`, hasData: false};
-      return {
-        number: p.fertCenterNum || num,
-        name: (p.fertCenterName || `שולחן דישון ${num}`).trim(),
-        currentEC: p.currAverageEC,
-        currentPH: p.currAveragePH,
-        requiredEC: p.currRequiredEC,
-        requiredPH: p.currRequiredPH,
-        waterFlow: p.averageWaterFlow,
-        time: p.time || p.receivedDate || null,
-        hasData: true,
+      const lastPoint = (r) => {
+        const arr = (r.json && r.json.body) || [];
+        return Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null;
       };
-    };
+      const fertCenter = (p, num) => {
+        if (!p) return {number: num, name: `שולחן דישון ${num}`, hasData: false};
+        return {
+          number: p.fertCenterNum || num,
+          name: (p.fertCenterName || `שולחן דישון ${num}`).trim(),
+          currentEC: p.currAverageEC,
+          currentPH: p.currAveragePH,
+          requiredEC: p.currRequiredEC,
+          requiredPH: p.currRequiredPH,
+          waterFlow: p.averageWaterFlow,
+          time: p.time || p.receivedDate || null,
+          hasData: true,
+        };
+      };
 
-    const sensors = (((sensorsRes.json && sensorsRes.json.body) || []))
-        .map((s) => ({
-          number: s.number,
-          name: (s.name || "").trim(),
-          unit: s.unit,
-          sensorType: s.sensorType,
-          id: s.id,
-        }));
+      const sensors = (((sensorsRes.json && sensorsRes.json.body) || []))
+          .map((s) => ({
+            number: s.number,
+            name: (s.name || "").trim(),
+            unit: s.unit,
+            sensorType: s.sensorType,
+            id: s.id,
+          }));
 
-    return res.json({
-      ok: true,
-      controllerName: serial ? serial : "מבוא חורון",
-      serial: serial || null,
-      configId: cfg,
-      fertCenters: [fertCenter(lastPoint(c1), 1), fertCenter(lastPoint(c2), 2)],
-      sensors,
-    });
+      return {
+        ok: true,
+        controllerName: serial ? serial : "מבוא חורון",
+        serial: serial || null,
+        configId: cfg,
+        fertCenters: [fertCenter(lastPoint(c1), 1), fertCenter(lastPoint(c2), 2)],
+        sensors,
+      };
+    }));
   } catch (err) {
     logger.error("galcon dosing failed", err);
     return res.status(500).json({ok: false, error: err.message || "server error"});
@@ -1286,15 +1291,17 @@ galconApp.get("/irrigation-method", async (req, res) => {
   try {
     const serial = String(req.query.serial || "").trim();
     if (!serial) return res.status(400).json({ok: false, error: "serial required"});
-    const cfg = await getConfigIdForSerial(serial);
-    const r = await appGet(`/config/${cfg}/program/irrigation-method`);
-    const body = (r.json && r.json.body) || {};
-    return res.json({
-      ok: true,
-      serial,
-      configId: cfg,
-      changeWaterByCycle: body.changeWaterByCycleItems || [],
-    });
+    return res.json(await memo("method|" + serial, MEMO_SETUP_MS, async () => {
+      const cfg = await getConfigIdForSerial(serial);
+      const r = await appGet(`/config/${cfg}/program/irrigation-method`);
+      const body = (r.json && r.json.body) || {};
+      return {
+        ok: true,
+        serial,
+        configId: cfg,
+        changeWaterByCycle: body.changeWaterByCycleItems || [],
+      };
+    }));
   } catch (err) {
     logger.error("galcon irrigation-method failed", err);
     return res.status(500).json({ok: false, error: err.message || "server error"});
@@ -1308,19 +1315,21 @@ galconApp.get("/programs", async (req, res) => {
   try {
     const serial = String(req.query.serial || "").trim();
     if (!serial) return res.status(400).json({ok: false, error: "serial required"});
-    const cfg = await getConfigIdForSerial(serial);
-    const r = await appGet(`/config/${cfg}/program/irrigation-program-multi-programs`);
-    const items = (r.json && r.json.body && r.json.body.items) || [];
-    const programs = items.map((p) => ({
-      number: p.number,
-      name: (p.name || "").trim(),
-      waterProgAmount: p.waterProgAmount,
-      waterUnit: p.waterUnit,
-      cyclePerDay: p.cyclePerDay,
-      valveA: p.valveA,
-      valves: [p.valveA, p.valveB, p.valveC, p.valveD, p.valveE].filter((x) => x != null),
+    return res.json(await memo("programs|" + serial, MEMO_SETUP_MS, async () => {
+      const cfg = await getConfigIdForSerial(serial);
+      const r = await appGet(`/config/${cfg}/program/irrigation-program-multi-programs`);
+      const items = (r.json && r.json.body && r.json.body.items) || [];
+      const programs = items.map((p) => ({
+        number: p.number,
+        name: (p.name || "").trim(),
+        waterProgAmount: p.waterProgAmount,
+        waterUnit: p.waterUnit,
+        cyclePerDay: p.cyclePerDay,
+        valveA: p.valveA,
+        valves: [p.valveA, p.valveB, p.valveC, p.valveD, p.valveE].filter((x) => x != null),
+      }));
+      return {ok: true, serial, configId: cfg, programs};
     }));
-    return res.json({ok: true, serial, configId: cfg, programs});
   } catch (err) {
     logger.error("galcon programs failed", err);
     return res.status(500).json({ok: false, error: err.message || "server error"});

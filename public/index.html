@@ -5420,7 +5420,7 @@
     if (_dosingByLetter[letter]) return _dosingByLetter[letter];
     const p = galconGet(`/dosing?serial=${encodeURIComponent(serial)}`)
       .then(d => { galconDosingByLetter[letter] = d; refreshOpenValvePanel(); return d; })
-      .catch(() => null);
+      .catch(() => { delete _dosingByLetter[letter]; return null; });   // retry on next open
     _dosingByLetter[letter] = p;
     return p;
   }
@@ -5635,6 +5635,7 @@
       return byKey;
     })();
     _gValvesByDate[date] = p;
+    p.catch(() => { delete _gValvesByDate[date]; });   // a failed day is retried, not kept
     return p;
   }
   // `${cycle}|${program}` → configured water-dose percentage (שיטת השקיה).
@@ -5647,6 +5648,7 @@
       return map;
     })();
     _gMethodBySerial[serial] = p;
+    p.catch(() => { delete _gMethodBySerial[serial]; });
     return p;
   }
   // valveNo → { base (100% dose, m³), name, prog, cyclePerDay }.
@@ -5665,6 +5667,7 @@
       return byValve;
     })();
     _gBasesBySerial[serial] = p;
+    p.catch(() => { delete _gBasesBySerial[serial]; });
     return p;
   }
 
