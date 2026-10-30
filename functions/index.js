@@ -896,6 +896,29 @@ function ilStamp(ms) {
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`;
 }
 
+// Short-lived per-instance cache of endpoint results, shared by requests already
+// in flight. A report page renders many stations of the same controller at once
+// and each used to cost its own round of Galcon calls — on 2026-10-30 ~150
+// parallel /dosing requests ran the instance out of memory. Failures are not kept.
+const galconMemo = new Map(); // key → {at, ttl, p}
+function memo(key, ttlMs, fn) {
+  const now = Date.now();
+  const hit = galconMemo.get(key);
+  if (hit && now - hit.at < hit.ttl) return hit.p;
+  if (galconMemo.size > 200) {
+    for (const [k, v] of galconMemo) if (now - v.at >= v.ttl) galconMemo.delete(k);
+  }
+  const p = fn();
+  galconMemo.set(key, {at: now, ttl: ttlMs, p});
+  p.catch(() => {
+    const cur = galconMemo.get(key);
+    if (cur && cur.p === p) galconMemo.delete(key);
+  });
+  return p;
+}
+const MEMO_LIVE_MS = 2 * 60 * 1000; // data that changes during the day
+const MEMO_SETUP_MS = 10 * 60 * 1000; // controller setup (programs, methods)
+
 const galconApp = express();
 galconApp.use(express.json());
 
