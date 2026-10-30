@@ -5937,36 +5937,28 @@
   // (scale1) enters the window on a settled water balance; the warm-up rows are
   // filtered out again at the end.
   async function fetchChartDataForStation(deviceId, fromDate, toDate) {
-    const monthKeys = getMonthKeys(new Date(fromDate.getTime() - SCALE_SIM_WARMUP_MS), toDate);
+    const raw = await fetchRawReadings(deviceId, new Date(fromDate.getTime() - SCALE_SIM_WARMUP_MS), toDate);
     const rows = [];
 
-    for (const mk of monthKeys) {
-      const ref = database.ref("berries/" + deviceId + "/" + mk);
-      const snap = await ref.once("value");
-      const val = snap.val();
-      if (!val) continue;
+    raw.forEach(([tsKey, val]) => {
+      const item = normalizeReading(val, deviceId, tsKey);
 
-      Object.keys(val).forEach(tsKey => {
-        if (tsKey === "control") return;
-        const item = normalizeReading(val[tsKey], deviceId, tsKey);
+      let tsISO = null;
+      if (item.serverTimestamp) {
+        tsISO = new Date(item.serverTimestamp).toISOString();
+      } else if (tsKey && tsKey.length >= 13) {
+        const dd = tsKey.substring(0, 2);
+        const mm = tsKey.substring(2, 4);
+        const yyyy = tsKey.substring(4, 8);
+        const hh = tsKey.substring(9, 11) || "00";
+        const mi = tsKey.substring(11, 13) || "00";
+        tsISO = new Date(yyyy + "-" + mm + "-" + dd + "T" + hh + ":" + mi + ":00").toISOString();
+      }
 
-        let tsISO = null;
-        if (item.serverTimestamp) {
-          tsISO = new Date(item.serverTimestamp).toISOString();
-        } else if (tsKey && tsKey.length >= 13) {
-          const dd = tsKey.substring(0, 2);
-          const mm = tsKey.substring(2, 4);
-          const yyyy = tsKey.substring(4, 8);
-          const hh = tsKey.substring(9, 11) || "00";
-          const mi = tsKey.substring(11, 13) || "00";
-          tsISO = new Date(yyyy + "-" + mm + "-" + dd + "T" + hh + ":" + mi + ":00").toISOString();
-        }
-
-        if (tsISO && new Date(tsISO) <= toDate) {
-          rows.push({ deviceId, tsISO, tsKey, ...item });
-        }
-      });
-    }
+      if (tsISO && new Date(tsISO) <= toDate) {
+        rows.push({ deviceId, tsISO, tsKey, ...item });
+      }
+    });
 
     rows.sort((a, b) => new Date(a.tsISO) - new Date(b.tsISO));
     applyScaleSimSeries(deviceId, rows.map(r => ({ time: new Date(r.tsISO), target: r })));
@@ -6005,11 +5997,7 @@
     chartBody.innerHTML = '<tr><td colspan="20" style="padding:20px;color:#5c6b85;font-size:16px;">טוען נתונים...</td></tr>';
 
     try {
-      const allRows = [];
-      for (const st of targets) {
-        const rows = await fetchChartDataForStation(st.deviceId, fromDate, toDate);
-        allRows.push(...rows);
-      }
+      const allRows = (await Promise.all(targets.map(st => fetchChartDataForStation(st.deviceId, fromDate, toDate)))).flat();
 
       // Sort by timestamp descending
       allRows.sort((a, b) => new Date(b.tsISO) - new Date(a.tsISO));
@@ -6800,11 +6788,7 @@
     titleEl.textContent = "Loading...";
 
     try {
-      const allRows = [];
-      for (const st of targets) {
-        const rows = await fetchChartDataForStation(st.deviceId, fromDate, toDate);
-        allRows.push(...rows);
-      }
+      const allRows = (await Promise.all(targets.map(st => fetchChartDataForStation(st.deviceId, fromDate, toDate)))).flat();
       allRows.sort((a, b) => new Date(a.tsISO) - new Date(b.tsISO));
       graphData = allRows;
       computeGraphWaterDeltas(graphData);
