@@ -5940,13 +5940,22 @@
   const _gTime = (s) => { if (!s) return "—"; const x = new Date(s); return isNaN(x) ? "—" : x.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }); };
   const _todayStr = () => { const d = new Date(), p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
 
-  async function galconGet(path){
-    const user = auth.currentUser;
-    if (!user) throw new Error("not signed in");
-    const token = await user.getIdToken();
-    const resp = await fetch(GALCON_API + path, { headers: { Authorization: "Bearer " + token } });
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    return resp.json();
+  // Identical requests that are already in flight share one fetch (e.g. three
+  // stations on controller B asking for the same day's /valves at once).
+  const _galconInFlight = {};
+  function galconGet(path){
+    if (_galconInFlight[path]) return _galconInFlight[path];
+    const p = (async () => {
+      const user = auth.currentUser;
+      if (!user) throw new Error("not signed in");
+      const token = await user.getIdToken();
+      const resp = await fetch(GALCON_API + path, { headers: { Authorization: "Bearer " + token } });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      return resp.json();
+    })();
+    _galconInFlight[path] = p;
+    p.then(() => { delete _galconInFlight[path]; }, () => { delete _galconInFlight[path]; });
+    return p;
   }
 
   // Caches keyed by date / serial so reopening stations is cheap within a session.
