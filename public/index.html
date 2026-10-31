@@ -3196,7 +3196,7 @@
     const el = ensureIrrModal();
     const st = STATIONS.find(s => s.deviceId === deviceId);
     const plots = MANUAL_PLOTS[deviceId] || [];
-    el.querySelector(".irr-modal-title").textContent = `💧 השוואת השקיות · ${st ? st.name : deviceId}`;
+    el.querySelector(".irr-modal-title").textContent = `💧 השקיות · ${st ? st.name : deviceId}`;
     el.querySelector(".irr-modal-sub").textContent =
       `${d.periodLabel} · ${deviceId}${plots.length ? " · ברז " + plots.map(p => p.code).join(" ← ") : ""}`;
     const body = el.querySelector(".irr-modal-body");
