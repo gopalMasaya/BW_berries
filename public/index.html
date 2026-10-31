@@ -7560,6 +7560,12 @@
   // ===============================
   // BOOT
   // ===============================
+  // Swap the light loading splash for the app (see body.booting in the CSS).
+  function revealApp(){
+    document.getElementById("app").style.display = "flex";
+    document.body.classList.remove("booting");
+  }
+
   async function boot(){
     if (booted) return;
     booted = true;
