@@ -5942,7 +5942,13 @@
     const p = (async () => {
       const data = await galconGet(`/programs?serial=${encodeURIComponent(serial)}`);
       const byValve = {};
+      // Per-program dose/name ride along as non-enumerable props, so code that
+      // iterates the valves never sees them. byProg: program → 100% dose (m³).
+      const byProg = {}, nameByProg = {};
+      Object.defineProperty(byValve, "byProg", { value: byProg });
+      Object.defineProperty(byValve, "nameByProg", { value: nameByProg });
       for (const pr of (data.programs || [])){
+        if (pr.number != null){ byProg[pr.number] = pr.waterProgAmount; nameByProg[pr.number] = pr.name; }
         if (pr.waterProgAmount == null) continue;
         for (const vn of (pr.valves || [])){
           if (byValve[vn] == null || pr.valveA === vn)
