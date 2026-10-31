@@ -4,19 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Stations Map Dashboard</title>
+  <meta name="color-scheme" content="light" />
 
-  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
   <link  href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
 
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-database.js"></script>
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- Drip/drain flowmeter swap by date (shared with compare/irrigations pages) -->
-  <script defer src="waterSwap.js"></script>
 
   <style>
     :root{
@@ -1213,6 +1205,18 @@
   </section>
 </div>
 
+<!-- Libraries load HERE (not in <head>) so the light #bootSplash paints first;
+     in <head> they blocked the first paint and the page showed black meanwhile. -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-database.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Drip/drain flowmeter swap by date (shared with compare/irrigations pages) -->
+  <script src="waterSwap.js"></script>
+
 <script>
   // ===============================
   // CONFIG
@@ -1813,8 +1817,9 @@
   }
   auth.onAuthStateChanged(user => {
     if (user) {
-      document.getElementById("app").style.display = "flex";
-      document.body.classList.remove("booting");
+      // #app stays hidden behind the light #bootSplash until boot() has switched
+      // to the main view (revealApp) — showing it here exposed the dark-theme
+      // panels for ~2 s while boot() loaded the station settings.
       // The position-edit (✏️) button is owner-only — its edits are global.
       const posBtn = document.getElementById("planPosBtn");
       if (posBtn && (user.email || "").toLowerCase() === POSITION_EDITOR_EMAIL) {
