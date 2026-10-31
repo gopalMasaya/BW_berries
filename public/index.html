@@ -3204,12 +3204,214 @@
 
     const seq = ++_irrModalSeq;
     body.innerHTML = `<div class="sq-irrig-empty">טוען נתוני Galcon…</div>`;
-    const [galcon, dripperFlow] = await Promise.all([
+    // שיטת השקיה (% per cycle) + program doses for every controller the station's
+    // plots sit on — they turn each Galcon run into "אמור → נכנס". Optional: a
+    // failure only drops those columns.
+    const serials = [...new Set(plots.map(p => LETTER_TO_SERIAL[p.code.charAt(0)]).filter(Boolean))];
+    const enrichP = Promise.all(serials.map(async s => [s,
+        await gMethodMap(s).catch(() => null), await gProgramBases(s).catch(() => null)]))
+      .then(list => {
+        const o = { method: {}, bases: {} };
+        list.forEach(([s, m, b]) => { o.method[s] = m; o.bases[s] = b; });
+        return o;
+      });
+    const [galcon, dripperFlow, enrich] = await Promise.all([
       fetchGalconForStations([{ deviceId }], localDayKey(d.from), localDayKey(d.to))
         .catch(err => { console.warn("galcon (irrigation modal)", deviceId, err); return { error: err.message || String(err) }; }),
       fetchDripperFlow(plots.map(p => p.code)),
+      enrichP,
     ]);
-    if (seq === _irrModalSeq) body.innerHTML = irrModalHtml(deviceId, d, galcon, dripperFlow);
+    if (seq !== _irrModalSeq) return;
+    body.innerHTML = irrTimelineHtml(deviceId, d, galcon, enrich)
+      + `<details class="irl-details"><summary>🔍 השוואה מפורטת: תחנה ↔ Galcon ↔ בדיקות ידניות</summary>
+          <div>${irrModalHtml(deviceId, d, galcon, dripperFlow)}</div></details>`;
+  }
+
+  // Pots per plot + variety, mirrored from qrCode's stations-catalog.mjs
+  // (PLANTS_BY_CODE / STATIONS) for the plots in MANUAL_PLOTS. The pot count turns
+  // a Galcon valve volume (m³) into ml per pot, comparable to the manual טפטפת.
+  const PLOT_INFO = {
+    B01: { pots: 3080, variety: "Zawadi" },
+    B07: { pots: 1000, variety: "Amanda" },
+    B09: { pots: 1000, variety: "Amanda" },
+  };
+  const IRL_EC_OFF = 0.10;     // EC off its setpoint by more than 10% → red
+  const IRL_PH_OFF = 0.3;      // pH off its setpoint by more than 0.3 → red
+  const IRL_GAP_ALERT = 15;    // planned vs. delivered dose gap (%) → red
+
+  // Mean of the station probe on one line (dripEc/drainEc/dripPh/drainPh) over an
+  // irrigation's samples, per the plot's field map; null when no probe sits there.
+  function stationLineMean(plot, e, kind){
+    const fld = plot && Object.keys(plot.map || {}).find(k => plot.map[k] === kind);
+    if (!fld) return null;
+    const vs = (e.samples || []).filter(s => s.item && !s.item.calMode)
+      .map(s => chartCellNumber(s.item, fld)).filter(v => Number.isFinite(v) && v > 0);
+    return vs.length ? vs.reduce((x, y) => x + y, 0) / vs.length : null;
+  }
+
+  // The irrigation timeline: one chronological table of the Galcon runs (🚰),
+  // manual checks (numbered) and station irrigations (📡) — the layout of the
+  // qrCode irrigation report. Galcon: אמור = program dose × the cycle's % (both
+  // from the program that actually ran), נכנס = metered volume, פער between them.
+  function irrTimelineHtml(deviceId, d, galcon, enrich){
+    const plots = MANUAL_PLOTS[deviceId] || [];
+    const plotOn = (t) => { const day = localDayKey(t); return plots.find(x => day >= x.from) || plots[plots.length - 1]; };
+    const num = (v) => { const n = Number(v); return v == null || v === "" || !Number.isFinite(n) ? null : n; };
+    const pos = (v) => { const n = num(v); return n != null && n > 0 ? n : null; };
+    const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const val = (v) => v == null || v === "" ? "—" : esc(v);
+    const fx = (v, dec) => v == null || !Number.isFinite(v) ? "—" : v.toFixed(dec);
+    const sub = (txt) => `<div class="irl-sub">${txt}</div>`;
+    const dayPfx = (t) => d.multiDay ? t.toLocaleDateString("he-IL", { day: "numeric", month: "numeric" }) + " " : "";
+    const target = (v, req, dec, isOff) => {
+      if (v == null) return "—";
+      const r = pos(req);
+      return `<span class="${r != null && isOff(v, r) ? "irl-off" : ""}">${v.toFixed(dec)}</span>`
+        + (r != null ? sub("נדרש " + r.toFixed(dec)) : "");
+    };
+    const pctCell = (p) => p == null || !Number.isFinite(p) ? "—"
+      : `<span class="irl-pct ${p >= 35 ? "blue" : p >= 25 ? "good" : p >= 10 ? "warn" : "bad"}">${p.toFixed(1)}%</span>`;
+    const galconCols = `<td class="col-plan col-galcon"></td><td class="col-plan col-galcon"></td><td class="col-galcon"></td>`;
+    const rows = [];
+
+    // ── Galcon runs ──
+    const galconOk = Array.isArray(galcon) ? galcon : [];
+    const cycleCount = {};
+    const ranProgs = {};   // plot code → Set of programs that ran (for the dose pill)
+    galconOk.forEach(({ code, e }) => {
+      const start = new Date(e.DateTimeStartValve);
+      if (isNaN(start)) return;
+      const ck = code + "|" + localDayKey(start);
+      const cycle = cycleCount[ck] = (cycleCount[ck] || 0) + 1;   // 1 = first irrigation of that day
+      const serial = LETTER_TO_SERIAL[code.charAt(0)];
+      const methodMap = enrich.method[serial], bases = enrich.bases[serial];
+      const prog = e.ProgNum;
+      if (prog != null) (ranProgs[code] = ranProgs[code] || new Set()).add(prog);
+      const pctRaw = methodMap && prog != null ? methodMap[`${cycle}|${prog}`] : null;
+      const pct = pctRaw == null || Number(pctRaw) === 0 ? null : Number(pctRaw);
+      const valveNo = parseInt(code.slice(1), 10);
+      const base = bases && prog != null && bases.byProg[prog] != null ? Number(bases.byProg[prog])
+        : bases && bases[valveNo] ? Number(bases[valveNo].base) : null;
+      const actual = num(e.VolumeM3Valve);
+      const expected = base != null && pct != null ? base * pct / 100 : null;
+      let plan = "—", gap = "—";
+      if (actual != null){
+        plan = expected != null ? `אמור <b>${expected.toFixed(2)}</b> → נכנס <b>${actual.toFixed(2)}</b>` : `נכנס <b>${actual.toFixed(2)}</b>`;
+        if (expected > 0){
+          const g = (actual - expected) / expected * 100;
+          gap = `<b class="${Math.abs(g) > IRL_GAP_ALERT ? "irl-off" : "irl-ok"}">${g > 0 ? "+" : ""}${Math.round(g)}%</b>`;
+        }
+      }
+      const pots = PLOT_INFO[code] && PLOT_INFO[code].pots;
+      let water = "—";
+      if (actual != null){
+        water = pots ? `<b class="irl-gw" title="${actual.toFixed(3)} m³ ÷ ${pots} עציצים">${Math.round(actual * 1e6 / pots)}</b>` : `<b>${actual.toFixed(2)}</b> m³`;
+        if (e.ValveCount > 1) water += sub(`חלק יחסי מתוך ${e.ValveCount} ברזים`);
+      }
+      const stop = new Date(e.DateTimeStopValve);
+      rows.push({ t: start, html: `<tr class="irl-g" title="Galcon · ${code} · תוכנית ${prog ?? "—"} · מחזור ${cycle}">
+        <td class="irl-test">🚰</td>
+        <td class="irl-time">${dayPfx(start)}${fmtHM(start)}${isNaN(stop) ? "" : "–" + fmtHM(stop)}${sub("משך " + fx(num(e.DurationValve), 1) + " דק׳")}</td>
+        <td>${water}</td><td></td><td></td>
+        <td class="col-plan col-galcon">${plan}</td>
+        <td class="col-plan col-galcon">${gap}</td>
+        <td class="col-galcon"><b>${fx(num(e.FlowRateM3h), 1)}</b></td>
+        <td>${pct != null ? pct + "%" : "—"}</td>
+        <td><b>${target(pos(e.EcMed), e.EcRequired, 2, (v, r) => Math.abs(v - r) / r > IRL_EC_OFF)}</b></td><td></td>
+        <td><b>${target(pos(e.PhMed), e.PhRequired, 1, (v, r) => Math.abs(v - r) > IRL_PH_OFF)}</b></td><td></td>
+        <td class="irl-muted">גלקון</td></tr>` });
+    });
+
+    // ── Manual checks (qrCode measurements) ──
+    const pcts = [];
+    d.manual.forEach(({ time, rec: r }, i) => {
+      const drip = num(r.dripMl) || 0;
+      const drain = (num(r.drainMl) || 0) / (num(r.plantCount) || 1);
+      const net = drip - drain;
+      const pct = drip > 0 ? drain / drip * 100 : null;
+      if (pct != null) pcts.push(pct);
+      rows.push({ t: time, html: `<tr class="irl-m">
+        <td class="irl-test">${i + 1}</td>
+        <td>${dayPfx(time)}${fmtHM(time)}</td>
+        <td><b class="irl-mw">${Math.round(drip)}</b></td>
+        <td>${Math.round(drain)}</td>
+        <td><b class="${net < 0 ? "irl-off" : ""}">${Math.round(net)}</b></td>
+        ${galconCols}
+        <td>${pctCell(pct)}</td>
+        <td>${val(r.dripEc)}</td><td>${val(r.drainEc)}</td><td>${val(r.dripPh)}</td><td>${val(r.drainPh)}</td>
+        <td>${val(r.workerId)}</td></tr>` });
+    });
+
+    // ── Station irrigations (click → sampling points) ──
+    d.events.forEach((e, i) => {
+      const p = plotOn(e.startTime);
+      const ln = (kind) => fx(stationLineMean(p, e, kind), 2);
+      const inMl = Math.round(e.waterInL * 1000), outMl = Math.round(e.waterOutL * 1000);
+      const dur = num(e.durationMin);
+      const samplesHtml = (e.samples || []).map(s => `
+        <div class="ir-sample">
+          <span class="ir-sample-t">${fmtHM(s.time)}</span>
+          <span class="ir-sample-v">${irrigSampleChips(s, d.ml)}</span>
+        </div>`).join("");
+      rows.push({ t: e.startTime, html: `<tr class="irl-s ir-row" data-idx="${i}" title="תחנה — לחץ להצגת נקודות הדגימה">
+        <td class="irl-test">📡<span class="ir-caret">▼</span></td>
+        <td class="irl-time">${dayPfx(e.startTime)}${fmtHM(e.startTime)}–${fmtHM(e.endTime)}${sub("משך " + (dur == null ? "—" : Number.isInteger(dur) ? dur : dur.toFixed(1)) + " דק׳")}</td>
+        <td><b class="irl-sw">${d.stuckInlet ? "—" : inMl}</b></td>
+        <td>${outMl}</td>
+        <td>${d.stuckInlet ? "—" : `<b class="${inMl - outMl < 0 ? "irl-off" : ""}">${inMl - outMl}</b>`}</td>
+        ${galconCols}
+        <td>${d.stuckInlet ? "—" : pctCell(e.drainPct)}</td>
+        <td>${ln("dripEc")}</td><td>${ln("drainEc")}</td><td>${ln("dripPh")}</td><td>${ln("drainPh")}</td>
+        <td class="irl-muted">תחנה</td></tr>
+        <tr class="ir-samples" data-idx="${i}" style="display:none;"><td colspan="14">${samplesHtml || "—"}</td></tr>` });
+    });
+    rows.sort((a, b) => a.t - b.t);
+
+    // ── Header: plot, variety, dose of the program(s) that ran, Galcon valve, Avg % ──
+    const cur = plotOn(d.to);
+    const code = cur ? cur.code : "";
+    const info = PLOT_INFO[code] || {};
+    const serial = LETTER_TO_SERIAL[code.charAt(0)];
+    const bases = enrich.bases[serial];
+    const valveNo = parseInt(code.slice(1), 10);
+    let dose = "";
+    if (bases){
+      const ran = [...(ranProgs[code] || [])].filter(p => bases.byProg[p] != null);
+      if (ran.length){
+        const amounts = [...new Set(ran.map(p => bases.byProg[p]))];
+        const names = [...new Set(ran.map(p => bases.nameByProg[p]).filter(Boolean))];
+        dose = `🪣 מנת מים: ${amounts.join(" / ")} קוב${names.length ? " · " + esc(names.join(" / ")) : ""}`;
+      } else if (bases[valveNo]){
+        dose = `🪣 מנת מים: ${bases[valveNo].base} קוב${bases[valveNo].name ? " · " + esc(bases[valveNo].name) : ""}`;
+      }
+    }
+    const avg = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
+    const head = `<div class="irl-head">
+        <div class="irl-title">${esc(code)}.S01
+          ${info.variety ? `<span>🫐 זן: ${esc(info.variety)}</span>` : ""}
+          ${dose ? `<span class="irl-pill dose">${dose}</span>` : ""}
+          ${code ? `<span class="irl-pill gid">🚰 ${code.charAt(0)}·ברז ${valveNo}</span>` : ""}
+        </div>
+        <div class="irl-meta">
+          <button type="button" class="irl-pill irl-btn g" data-irl-toggle="g">🚰 הסתר גלקון ▲</button>
+          <button type="button" class="irl-pill irl-btn s" data-irl-toggle="s">📡 הסתר תחנה ▲</button>
+          ${avg != null ? `<span class="irl-pill" title="ממוצע נקז מהטפטפת (בדיקות ידניות)">Avg %: ${avg.toFixed(1)}%</span>` : ""}
+        </div>
+      </div>`;
+
+    const warn = Array.isArray(galcon) ? ""
+      : `<div class="sq-irrig-warn">⚠️ שגיאה בטעינת Galcon: ${esc(galcon.error)}</div>`;
+    const table = rows.length ? `<div class="irl-table-wrap"><table class="irl">
+        <thead><tr>
+          <th>test</th><th>שעה</th><th>טפטפת</th><th>נקז</th><th>צריכה</th>
+          <th class="col-plan col-galcon">מנת השקיה (m³)<div class="irl-sub">מתוכנן → בפועל</div></th>
+          <th class="col-plan col-galcon">פער</th>
+          <th class="col-galcon">ספיקה<br>m³/h</th>
+          <th>%</th><th>EC טפטפת</th><th>EC נקז</th><th>pH טפטפת</th><th>pH נקז</th><th>עובד</th>
+        </tr></thead>
+        <tbody>${rows.map(r => r.html).join("")}</tbody></table></div>`
+      : `<div class="irl-empty">אין השקיות או בדיקות בטווח שנבחר</div>`;
+    return warn + `<div class="irl-wrap">${head}${table}</div>`;
   }
 
   // Dripper flow (L/h) per plot code, from the growth log (qrCode plantingByStation).
