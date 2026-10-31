@@ -3164,9 +3164,20 @@
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !el.hidden) closeIrrModal(); });
     // Clicking a station irrigation reveals every sampling point inside it.
     el.querySelector(".irr-modal-body").addEventListener("click", (ev) => {
+      // Timeline header toggles: show/hide the Galcon rows+columns or the station rows.
+      const tg = ev.target.closest("[data-irl-toggle]");
+      if (tg){
+        const k = tg.dataset.irlToggle;
+        const hid = tg.closest(".irl-wrap").classList.toggle("hide-" + k);
+        tg.textContent = (k === "g" ? "🚰 " : "📡 ") + (hid ? "הצג " : "הסתר ")
+          + (k === "g" ? "גלקון" : "תחנה") + (hid ? " ▼" : " ▲");
+        return;
+      }
       const row = ev.target.closest("tr.ir-row");
       if (!row) return;
-      const samplesRow = el.querySelector(`tr.ir-samples[data-idx="${row.dataset.idx}"]`);
+      // Scoped to the row's own table: the timeline and the detailed comparison
+      // table both carry station rows with the same data-idx.
+      const samplesRow = row.closest("table").querySelector(`tr.ir-samples[data-idx="${row.dataset.idx}"]`);
       if (!samplesRow) return;
       const opening = samplesRow.style.display === "none";
       samplesRow.style.display = opening ? "" : "none";
