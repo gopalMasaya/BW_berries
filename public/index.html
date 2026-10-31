@@ -16,7 +16,7 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <!-- Drip/drain flowmeter swap by date (shared with compare/irrigations pages) -->
-  <script src="waterSwap.js"></script>
+  <script defer src="waterSwap.js"></script>
 
   <style>
     :root{
@@ -546,10 +546,64 @@
     .irr-cmp tr.ir-samples > td{ background:rgba(0,0,0,0.02); text-align:right; padding:8px 12px; white-space:normal; }
     .irr-modal .ir-chip{ font-size:14px; }
     .irr-legend{ font-size:14px; color:var(--muted); }
+    /* Irrigation timeline (top of the irrigation modal) — same layout as the qrCode
+       "דוח תמיסת השקיה" station block: Galcon runs, manual checks and station
+       irrigations woven into one chronological table. */
+    .irl-wrap{ border:1px solid #dbe3f0; border-radius:16px; overflow:hidden; flex:none; background:#fff; }
+    .irl-head{
+      display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;
+      padding:12px 16px; background:#f1f5fb; border-bottom:1px solid #dbe3f0;
+    }
+    .irl-title{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-weight:800; font-size:20px; }
+    .irl-meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .irl-pill{
+      display:inline-flex; align-items:center; gap:4px; padding:6px 14px; border-radius:999px;
+      border:1px solid #dbe3f0; background:#fff; font-size:14px; font-weight:700; white-space:nowrap;
+    }
+    .irl-pill.dose{ font-size:18px; font-weight:800; padding:8px 18px; }
+    .irl-pill.gid{ background:#e8ebf1; color:var(--muted); font-size:13px; border-color:transparent; }
+    .irl-btn{ cursor:pointer; font-family:inherit; }
+    .irl-btn.g{ background:#2563eb; color:#fff; border-color:#2563eb; }
+    .irl-btn.s{ background:#e0f2fe; color:#0369a1; border-color:#bae6fd; }
+    .irl-table-wrap{ overflow:auto; }
+    table.irl{ width:100%; border-collapse:collapse; font-size:16px; }
+    table.irl th, table.irl td{
+      padding:13px 10px; text-align:center; border-bottom:1px solid #e5eaf2;
+      white-space:nowrap; font-variant-numeric:tabular-nums;
+    }
+    table.irl thead th{ background:#eef3fb; font-size:14px; font-weight:800; position:sticky; top:0; z-index:1; }
+    table.irl thead th.col-plan{ background:#fdf0c2; }
+    table.irl td.col-plan{ background:#fef7dc; }
+    table.irl tr.irl-g td{ background:rgba(250,204,21,0.10); }
+    table.irl tr.irl-g td.col-plan{ background:#fdeeb5; }
+    table.irl tr.irl-s td{ background:#f0f7ff; }
+    table.irl tr.irl-s{ cursor:pointer; }
+    table.irl tr.ir-samples > td{ background:#f8fafc; text-align:right; white-space:normal; padding:8px 12px; }
+    table.irl .irl-test{ font-weight:800; }
+    table.irl .irl-time{ font-weight:700; }
+    .irl-sub{ font-size:11px; font-weight:400; color:var(--muted); white-space:nowrap; }
+    .irl-gw{ color:#1e293b; font-weight:900; }
+    .irl-mw{ color:#2563eb; font-weight:900; }
+    .irl-sw{ color:#0369a1; font-weight:900; }
+    .irl-off{ color:#dc2626; font-weight:800; }
+    .irl-ok{ color:#15803d; }
+    .irl-pct{ font-weight:800; }
+    .irl-pct.blue{ color:#2563eb; } .irl-pct.good{ color:#16a34a; }
+    .irl-pct.warn{ color:#d97706; } .irl-pct.bad{ color:#dc2626; }
+    .irl-muted{ color:var(--muted); font-size:13px; }
+    .irl-wrap.hide-g tr.irl-g, .irl-wrap.hide-g .col-galcon{ display:none; }
+    .irl-wrap.hide-s tr.irl-s, .irl-wrap.hide-s tr.ir-samples{ display:none; }
+    .irl-empty{ padding:16px; color:var(--muted); text-align:center; }
+    .irl-details{ border:1px solid var(--border); border-radius:12px; padding:10px 14px; flex:none; }
+    .irl-details > summary{ cursor:pointer; font-weight:800; font-size:17px; }
+    .irl-details[open] > summary{ margin-bottom:12px; }
+    .irl-details > div{ display:flex; flex-direction:column; gap:14px; }
     @media (max-width:760px){
       .irr-modal-box{ width:96vw; height:90vh; }
       .irr-modal-body{ padding:12px; }
       .irr-cmp{ font-size:15px; }
+      table.irl{ font-size:14px; }
+      table.irl th, table.irl td{ padding:9px 6px; }
     }
     .station-square .sq-chart{
       border-top:1px solid var(--border); padding-top:12px; margin-top:2px;
