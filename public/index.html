@@ -34,6 +34,21 @@
 
     html, body { height:100%; margin:0; }
     body { font-family: Arial, sans-serif; background:var(--bg); color:var(--text); overflow:hidden; }
+    /* Until Firebase auth resolves #app is hidden, so the bare body used to show as a
+       black (dark-theme --bg) page on every load. Show a light loading screen that
+       matches the default "תצוגה ראשית" view instead; removed once #app is shown. */
+    body.booting{ background:#f4f6fa; }
+    #bootSplash{ display:none; }
+    body.booting #bootSplash{
+      display:flex; position:fixed; inset:0; align-items:center; justify-content:center;
+      flex-direction:column; gap:14px; color:#5a6472; font-size:16px; direction:rtl;
+    }
+    #bootSplash .bs-spin{
+      width:34px; height:34px; border-radius:50%;
+      border:3px solid rgba(255,122,24,0.25); border-top-color:#ff7a18;
+      animation:bsSpin .8s linear infinite;
+    }
+    @keyframes bsSpin{ to{ transform:rotate(360deg); } }
 
     #app { position:relative; height:100%; width:100%; display:flex; }
 
