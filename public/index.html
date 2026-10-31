@@ -7564,19 +7564,22 @@
     if (booted) return;
     booted = true;
 
-    // Every registered station, before anything is loaded or drawn per station.
-    await loadStationRegistry();
-    buildChartStationSelect();
-    buildGraphStationSelect();
+    try {
+      // Every registered station, before anything is loaded or drawn per station.
+      await loadStationRegistry();
+      buildChartStationSelect();
+      buildGraphStationSelect();
 
-    // The ml/pulse calibration must be known before the first water figure is drawn.
-    await loadMlPerPulse();
-    // Likewise which flowmeter is the drip and which the drain.
-    await loadWaterSwap();
-    // Same for the EC/pH calibration and the first sensor value.
-    await loadCalibration();
-    // Manual valve overrides, live (painted into the station cards).
-    watchManualValve();
+      // Before the first water/sensor figure is drawn: the ml/pulse calibration,
+      // which flowmeter is the drip and which the drain, and the EC/pH
+      // calibration. Independent reads, so fetched in parallel (they used to run
+      // one after another while the page waited).
+      await Promise.all([loadMlPerPulse(), loadWaterSwap(), loadCalibration()]);
+      // Manual valve overrides, live (painted into the station cards).
+      watchManualValve();
+    } finally {
+      revealApp();   // even if a load failed, never leave the user on the splash
+    }
 
     // Open on the main (squares) view by default.
     applyView("squares");
