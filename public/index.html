@@ -3208,28 +3208,63 @@
     el.hidden = false;
 
     const seq = ++_irrModalSeq;
-    body.innerHTML = `<div class="sq-irrig-empty">טוען נתוני Galcon…</div>`;
-    // שיטת השקיה (% per cycle) + program doses for every controller the station's
-    // plots sit on — they turn each Galcon run into "אמור → נכנס". Optional: a
-    // failure only drops those columns.
-    const serials = [...new Set(plots.map(p => LETTER_TO_SERIAL[p.code.charAt(0)]).filter(Boolean))];
-    const enrichP = Promise.all(serials.map(async s => [s,
-        await gMethodMap(s).catch(() => null), await gProgramBases(s).catch(() => null)]))
-      .then(list => {
-        const o = { method: {}, bases: {} };
-        list.forEach(([s, m, b]) => { o.method[s] = m; o.bases[s] = b; });
-        return o;
-      });
-    const [galcon, dripperFlow, enrich] = await Promise.all([
-      fetchGalconForStations([{ deviceId }], localDayKey(d.from), localDayKey(d.to))
-        .catch(err => { console.warn("galcon (irrigation modal)", deviceId, err); return { error: err.message || String(err) }; }),
-      fetchDripperFlow(plots.map(p => p.code)),
-      enrichP,
-    ]);
+    // Station + manual rows are already in hand → show them at once; the Galcon
+    // rows (usually prefetched by prefetchIrrGalcon, else a few seconds on a cold
+    // Cloud Function) are woven in when they arrive.
+    const { galconP, enrichP } = prefetchIrrGalcon(deviceId, d.from, d.to);
+    const dripperP = fetchDripperFlow(plots.map(p => p.code));
+    const settled = (p) => Promise.race([p, new Promise(r => setTimeout(() => r(undefined), 0))]);
+    const ready = await Promise.all([settled(galconP), settled(enrichP)]);
     if (seq !== _irrModalSeq) return;
+    if (ready[0] === undefined || ready[1] === undefined){
+      body.innerHTML = `<div class="sq-irrig-empty">⏳ טוען נתוני Galcon…</div>`
+        + irrTimelineHtml(deviceId, d, [], { method: {}, bases: {} });
+    }
+    const [galcon, dripperFlow, enrich] = await Promise.all([galconP, dripperP, enrichP]);
+    if (seq !== _irrModalSeq) return;
+    // Keep the user's show/hide choices across the re-render.
+    const prevWrap = body.querySelector(".irl-wrap");
+    const hidden = prevWrap ? ["g", "s"].filter(k => prevWrap.classList.contains("hide-" + k)) : [];
     body.innerHTML = irrTimelineHtml(deviceId, d, galcon, enrich)
       + `<details class="irl-details"><summary>🔍 השוואה מפורטת: תחנה ↔ Galcon ↔ בדיקות ידניות</summary>
           <div>${irrModalHtml(deviceId, d, galcon, dripperFlow)}</div></details>`;
+    hidden.forEach(k => body.querySelector(`[data-irl-toggle="${k}"]`)?.click());
+  }
+
+  // Galcon data for a station's irrigation window, cached as PROMISES per
+  // station + date range so the Squares view can start the (slow, Cloud Function
+  // + Galcon login) requests in the background and the modal opens instantly.
+  // A range that includes today is refetched after IRR_GALCON_TTL (new runs end
+  // during the day); a failed request is evicted so the next open retries.
+  const _irrGalconCache = {};
+  const IRR_GALCON_TTL = 5 * 60000;
+  function prefetchIrrGalcon(deviceId, from, to){
+    const a = localDayKey(from), b = localDayKey(to);
+    const key = deviceId + "|" + a + "|" + b;
+    const hit = _irrGalconCache[key];
+    const live = b >= localDayKey(new Date());
+    if (hit && (!live || Date.now() - hit.t < IRR_GALCON_TTL)) return hit;
+    const plots = MANUAL_PLOTS[deviceId] || [];
+    const galconP = fetchGalconForStations([{ deviceId }], a, b)
+      .catch(err => {
+        console.warn("galcon (irrigation modal)", deviceId, err);
+        if (_irrGalconCache[key] === entry) delete _irrGalconCache[key];
+        return { error: err.message || String(err) };
+      });
+    // שיטת השקיה (% per cycle) + program doses for every controller the station's
+    // plots sit on — they turn each Galcon run into "אמור → נכנס". Optional: a
+    // failure only drops those columns. (gMethodMap/gProgramBases cache per serial.)
+    const serials = [...new Set(plots.map(p => LETTER_TO_SERIAL[p.code.charAt(0)]).filter(Boolean))];
+    const enrichP = Promise.all(serials.map(s => Promise.all([
+        gMethodMap(s).catch(() => null), gProgramBases(s).catch(() => null)]).then(([m, bs]) => [s, m, bs])))
+      .then(list => {
+        const o = { method: {}, bases: {} };
+        list.forEach(([s, m, bs]) => { o.method[s] = m; o.bases[s] = bs; });
+        return o;
+      });
+    const entry = { t: Date.now(), galconP, enrichP };
+    _irrGalconCache[key] = entry;
+    return entry;
   }
 
   // Pots per plot + variety, mirrored from qrCode's stations-catalog.mjs
