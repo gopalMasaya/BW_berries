@@ -3702,6 +3702,10 @@
         <button class="sq-irrig-toggle" type="button" title="פתח חלון השקיות: תחנה + בדיקות ידניות + Galcon">${btnLabel} <span class="caret">⤢</span></button>
         ${warnHtml}`;
 
+      // Warm the irrigation modal's Galcon data in the background so it opens
+      // without waiting on the Cloud Function.
+      if (MANUAL_PLOTS[deviceId]) prefetchIrrGalcon(deviceId, from, to);
+
       irrigEl.querySelector(".sq-irrig-toggle").addEventListener("click", (e) => {
         e.stopPropagation();
         openIrrModal(deviceId, { events, manual, readings, ml: mlThisStation, stuckInlet,
