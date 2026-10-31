@@ -1760,6 +1760,7 @@
   auth.onAuthStateChanged(user => {
     if (user) {
       document.getElementById("app").style.display = "flex";
+      document.body.classList.remove("booting");
       // The position-edit (✏️) button is owner-only — its edits are global.
       const posBtn = document.getElementById("planPosBtn");
       if (posBtn && (user.email || "").toLowerCase() === POSITION_EDITOR_EMAIL) {
