@@ -1218,6 +1218,16 @@
   <script src="waterSwap.js"></script>
 
 <script>
+  // Instant start: sw.js serves this page from a local copy (no black page while
+  // waiting for the CDN) and refreshes it in the background. When it reports a
+  // newer version while we're still on the loading splash, reload once into it.
+  if ("serviceWorker" in navigator){
+    navigator.serviceWorker.addEventListener("message", (ev) => {
+      if (ev.data && ev.data.type === "shell-updated" && document.body.classList.contains("booting")) location.reload();
+    });
+    navigator.serviceWorker.register("/sw.js").catch(err => console.warn("service worker", err));
+  }
+
   // ===============================
   // CONFIG
   // ===============================
