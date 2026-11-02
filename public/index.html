@@ -476,31 +476,26 @@
     .ir-chip b{ color:var(--text); font-weight:700; }
     .ir-chip.w-in b{ color:var(--accent); }
     .ir-chip.w-out b{ color:var(--warn); }
-    /* Irrigation modal (Squares view): 75% of the screen, light theme like #squaresView. */
-    .irr-modal{
+    /* Irrigation panel (Squares view): expands inline inside the station card. */
+    .irr-panel{
       --text:#1a1a1a; --muted:#5a6472; --border:rgba(0,0,0,0.14); --accent:#ff7a18;
-      color:var(--text);
-      position:fixed; inset:0; z-index:5000; background:rgba(10,18,32,0.55);
-      display:flex; align-items:center; justify-content:center;
+      color:var(--text); cursor:default;
+      border:1px solid var(--border); border-radius:14px; overflow:hidden; background:#fff;
     }
-    .irr-modal[hidden]{ display:none; }
-    .irr-modal-box{
-      width:75vw; height:75vh; background:#fff; border-radius:16px; overflow:hidden;
-      box-shadow:0 20px 60px rgba(0,0,0,0.35); display:flex; flex-direction:column;
-    }
-    .irr-modal-head{
+    .irr-panel[hidden]{ display:none; }
+    .irr-panel-head{
       display:flex; justify-content:space-between; align-items:center; gap:12px;
-      padding:16px 22px; border-bottom:1px solid var(--border); background:#f4f6fa;
+      padding:12px 18px; border-bottom:1px solid var(--border); background:#f4f6fa;
     }
-    .irr-modal-title{ margin:0; font-size:24px; }
-    .irr-modal-sub{ font-size:16px; color:var(--muted); margin-top:4px; }
-    .irr-modal-close{
+    .irr-panel-title{ margin:0; font-size:20px; }
+    .irr-panel-sub{ font-size:15px; color:var(--muted); margin-top:4px; }
+    .irr-panel-close{
       border:1px solid var(--border); background:#fff; color:var(--text); border-radius:10px;
-      width:44px; height:44px; font-size:20px; cursor:pointer; flex:none;
+      width:38px; height:38px; font-size:18px; cursor:pointer; flex:none;
     }
-    .irr-modal-close:hover{ background:#eef1f6; }
-    .irr-modal-body{ flex:1; overflow:auto; padding:18px 22px; display:flex; flex-direction:column; gap:14px; font-size:17px; }
-    .irr-modal .sq-irrig-warn, .irr-modal .sq-irrig-empty{ font-size:16px; }
+    .irr-panel-close:hover{ background:#eef1f6; }
+    .irr-panel-body{ padding:14px 18px; display:flex; flex-direction:column; gap:14px; font-size:17px; }
+    .irr-panel .sq-irrig-warn, .irr-panel .sq-irrig-empty{ font-size:16px; }
     .irr-sum{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:12px; }
     .irr-sum-box{ border:1px solid var(--border); border-inline-start:5px solid #0ea5e9; border-radius:12px; padding:12px 16px; }
     .irr-sum-box.man{ border-inline-start-color:#7c3aed; }
@@ -536,7 +531,7 @@
     .irr-cmp tr.irr-miss td:first-child{ box-shadow:inset -4px 0 0 #dc2626; }
     .irr-cmp .ir-caret{ color:var(--muted); font-size:11px; margin-inline-start:4px; }
     .irr-cmp tr.ir-samples > td{ background:rgba(0,0,0,0.02); text-align:right; padding:8px 12px; white-space:normal; }
-    .irr-modal .ir-chip{ font-size:14px; }
+    .irr-panel .ir-chip{ font-size:14px; }
     .irr-legend{ font-size:14px; color:var(--muted); }
     /* Irrigation timeline (top of the irrigation modal) — same layout as the qrCode
        "דוח תמיסת השקיה" station block: Galcon runs, manual checks and station
@@ -591,8 +586,7 @@
     .irl-details[open] > summary{ margin-bottom:12px; }
     .irl-details > div{ display:flex; flex-direction:column; gap:14px; }
     @media (max-width:760px){
-      .irr-modal-box{ width:96vw; height:90vh; }
-      .irr-modal-body{ padding:12px; }
+      .irr-panel-body{ padding:10px; }
       .irr-cmp{ font-size:15px; }
       table.irl{ font-size:14px; }
       table.irl th, table.irl td{ padding:9px 6px; }
@@ -3156,29 +3150,27 @@
   const IRR_GALCON_PAIR_MS = 20 * 60000;
   // Station vs. Galcon tolerances: start time, duration, water (relative), EC (relative), pH.
   const IRR_TOL = { startMin: 10, durMin: 3, durRel: 0.25, ml: 0.2, ec: 0.15, ph: 0.3 };
-  let _irrModalSeq = 0;
+  // Irrigation panel: expands INLINE inside the station card, under the
+  // "💧 השקיות" button (company preference — no separate window). Open state is
+  // kept per station so a data refresh re-opens it with the new range.
+  const _irrSeq = {};                  // deviceId → render sequence (drop stale renders)
+  const squaresIrrOpen = {};           // deviceId → bool: is the irrigation panel open
 
-  function ensureIrrModal(){
-    let el = document.getElementById("irrModal");
+  function ensureIrrPanel(irrigEl){
+    let el = irrigEl.querySelector(".irr-panel");
     if (el) return el;
     el = document.createElement("div");
-    el.id = "irrModal";
-    el.className = "irr-modal";
+    el.className = "irr-panel";
     el.hidden = true;
     el.innerHTML = `
-      <div class="irr-modal-box" role="dialog" aria-modal="true">
-        <div class="irr-modal-head">
-          <div><h3 class="irr-modal-title"></h3><div class="irr-modal-sub"></div></div>
-          <button class="irr-modal-close" type="button" title="סגור (Esc)">✕</button>
-        </div>
-        <div class="irr-modal-body"></div>
-      </div>`;
-    document.body.appendChild(el);
-    el.querySelector(".irr-modal-close").addEventListener("click", closeIrrModal);
-    el.addEventListener("click", (e) => { if (e.target === el) closeIrrModal(); });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !el.hidden) closeIrrModal(); });
+      <div class="irr-panel-head">
+        <div><h3 class="irr-panel-title"></h3><div class="irr-panel-sub"></div></div>
+        <button class="irr-panel-close" type="button" title="סגור">✕</button>
+      </div>
+      <div class="irr-panel-body"></div>`;
+    irrigEl.appendChild(el);
     // Clicking a station irrigation reveals every sampling point inside it.
-    el.querySelector(".irr-modal-body").addEventListener("click", (ev) => {
+    el.querySelector(".irr-panel-body").addEventListener("click", (ev) => {
       // Timeline header toggles: show/hide the Galcon rows+columns or the station rows.
       const tg = ev.target.closest("[data-irl-toggle]");
       if (tg){
@@ -3201,23 +3193,30 @@
     });
     return el;
   }
-  function closeIrrModal(){
-    const el = document.getElementById("irrModal");
-    if (el) el.hidden = true;
-    _irrModalSeq++;
+  function closeIrrPanel(deviceId, irrigEl){
+    const el = irrigEl.querySelector(".irr-panel");
+    if (el){ el.hidden = true; el.querySelector(".irr-panel-body").innerHTML = ""; }
+    const caret = irrigEl.querySelector(".sq-irrig-toggle .caret");
+    if (caret) caret.textContent = "▼";
+    squaresIrrOpen[deviceId] = false;
+    _irrSeq[deviceId] = (_irrSeq[deviceId] || 0) + 1;
   }
 
-  async function openIrrModal(deviceId, d){
-    const el = ensureIrrModal();
+  async function openIrrPanel(deviceId, irrigEl, d){
+    const el = ensureIrrPanel(irrigEl);
     const st = STATIONS.find(s => s.deviceId === deviceId);
     const plots = MANUAL_PLOTS[deviceId] || [];
-    el.querySelector(".irr-modal-title").textContent = `💧 השקיות · ${st ? st.name : deviceId}`;
-    el.querySelector(".irr-modal-sub").textContent =
+    el.querySelector(".irr-panel-title").textContent = `💧 השקיות · ${st ? st.name : deviceId}`;
+    el.querySelector(".irr-panel-sub").textContent =
       `${d.periodLabel} · ${deviceId}${plots.length ? " · ברז " + plots.map(p => p.code).join(" ← ") : ""}`;
-    const body = el.querySelector(".irr-modal-body");
+    el.querySelector(".irr-panel-close").onclick = (e) => { e.stopPropagation(); closeIrrPanel(deviceId, irrigEl); };
+    const body = el.querySelector(".irr-panel-body");
     el.hidden = false;
+    squaresIrrOpen[deviceId] = true;
+    const caret = irrigEl.querySelector(".sq-irrig-toggle .caret");
+    if (caret) caret.textContent = "▲";
 
-    const seq = ++_irrModalSeq;
+    const seq = _irrSeq[deviceId] = (_irrSeq[deviceId] || 0) + 1;
     // Station + manual rows are already in hand → show them at once; the Galcon
     // rows (usually prefetched by prefetchIrrGalcon, else a few seconds on a cold
     // Cloud Function) are woven in when they arrive.
@@ -3225,13 +3224,13 @@
     const dripperP = fetchDripperFlow(plots.map(p => p.code));
     const settled = (p) => Promise.race([p, new Promise(r => setTimeout(() => r(undefined), 0))]);
     const ready = await Promise.all([settled(galconP), settled(enrichP)]);
-    if (seq !== _irrModalSeq) return;
+    if (seq !== _irrSeq[deviceId]) return;
     if (ready[0] === undefined || ready[1] === undefined){
       body.innerHTML = `<div class="sq-irrig-empty">⏳ טוען נתוני Galcon…</div>`
         + irrTimelineHtml(deviceId, d, [], { method: {}, bases: {} });
     }
     const [galcon, dripperFlow, enrich] = await Promise.all([galconP, dripperP, enrichP]);
-    if (seq !== _irrModalSeq) return;
+    if (seq !== _irrSeq[deviceId]) return;
     // Keep the user's show/hide choices across the re-render.
     const prevWrap = body.querySelector(".irl-wrap");
     const hidden = prevWrap ? ["g", "s"].filter(k => prevWrap.classList.contains("hide-" + k)) : [];
@@ -3709,18 +3708,22 @@
         : "";
 
       irrigEl.innerHTML = `
-        <button class="sq-irrig-toggle" type="button" title="פתח חלון השקיות: תחנה + בדיקות ידניות + Galcon">${btnLabel} <span class="caret">⤢</span></button>
+        <button class="sq-irrig-toggle" type="button" title="הצג/הסתר השקיות: תחנה + בדיקות ידניות + Galcon">${btnLabel} <span class="caret">▼</span></button>
         ${warnHtml}`;
 
       // Warm the irrigation modal's Galcon data in the background so it opens
       // without waiting on the Cloud Function.
       if (MANUAL_PLOTS[deviceId]) prefetchIrrGalcon(deviceId, from, to);
 
+      const irrData = { events, manual, readings, ml: mlThisStation, stuckInlet,
+        from, to, multiDay, periodLabel, totIn, totOut };
       irrigEl.querySelector(".sq-irrig-toggle").addEventListener("click", (e) => {
         e.stopPropagation();
-        openIrrModal(deviceId, { events, manual, readings, ml: mlThisStation, stuckInlet,
-          from, to, multiDay, periodLabel, totIn, totOut });
+        if (squaresIrrOpen[deviceId]) closeIrrPanel(deviceId, irrigEl);
+        else openIrrPanel(deviceId, irrigEl, irrData);
       });
+      // Panel was open before this refresh (range change / auto-reload) → keep it open.
+      if (squaresIrrOpen[deviceId]) openIrrPanel(deviceId, irrigEl, irrData);
 
       // ── Chart data: stored on the square; built lazily when the chart is open ──
       square._chartData = { readings, sensorKey, sensorLabel, multiDay };
