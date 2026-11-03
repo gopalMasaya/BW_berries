@@ -17,6 +17,7 @@ const DEVICE_SECRETS = {
   station1: "s0001mh0001",
   station2: "s0002mh0002",
   station3: "s0003mh0003",
+  station4: "s0004mh0004",
 };
 
 function isAuthorizedQuery(req) {
@@ -97,12 +98,23 @@ function buildKeysFromDate(now) {
 // the first time it sends a reading: adding a secret to DEVICE_SECRETS is all a
 // new station needs to appear in every view. Only the first registration per
 // instance touches the database.
+//
+// Station type: firmware without valves or pump (station4) sends
+// stationType:"sensors"; the registry keeps it as /stations/{id}/type so the
+// dashboard and settings can hide valve controls before any reading loads.
+// Stations that send no stationType keep whatever type they had (none = valves).
 const registeredStations = new Set();
-async function registerStation(stationId, now) {
-  if (registeredStations.has(stationId)) return;
-  await admin.database().ref(`/stations/${stationId}`).transaction((cur) =>
-    cur || {firstSeen: now.toISOString()});
-  registeredStations.add(stationId);
+async function registerStation(stationId, now, stationType) {
+  const type = /^[a-z]{1,20}$/.test(String(stationType || "")) ?
+    String(stationType) : "";
+  const key = stationId + "|" + type;
+  if (registeredStations.has(key)) return;
+  await admin.database().ref(`/stations/${stationId}`).transaction((cur) => {
+    const next = cur || {firstSeen: now.toISOString()};
+    if (type) next.type = type;
+    return next;
+  });
+  registeredStations.add(key);
 }
 
 app.post("/ingest", async (req, res) => {
@@ -140,7 +152,7 @@ app.post("/ingest", async (req, res) => {
     await admin.database()
         .ref(`/berries/${stationId}/${monthKey}/${tsKey}`)
         .set(payload);
-    await registerStation(stationId, now).catch((e) =>
+    await registerStation(stationId, now, payload.stationType).catch((e) =>
       logger.warn("station registry", stationId, e));
 
     return res.status(200).json({

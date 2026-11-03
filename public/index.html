@@ -1348,8 +1348,21 @@
       deviceId,
       name: info.name || (num ? "Station " + num.padStart(3, "0") : deviceId),
       lng: Number.isFinite(lng) ? lng : base.lng,
-      lat: Number.isFinite(lat) ? lat : base.lat + 0.00045 * STATIONS.length
+      lat: Number.isFinite(lat) ? lat : base.lat + 0.00045 * STATIONS.length,
+      // "sensors" = no valves / pump (written by the ingest function from the
+      // firmware's stationType); absent = a valve station.
+      type: info.type || ""
     };
+  }
+
+  // A sensor-only station (station4) has no valves, sprinklers or pump, so it
+  // gets no manual valve controls. Known from the registry, or from the latest
+  // reading's stationType when the registry entry predates the field.
+  function isSensorStation(deviceId){
+    const st = STATIONS.find(s => s.deviceId === deviceId);
+    if (st && st.type === "sensors") return true;
+    const latest = latestByDevice[deviceId];
+    return !!(latest && latest.item && latest.item.stationType === "sensors");
   }
 
   function addStation(deviceId, info){
@@ -4290,6 +4303,13 @@
   function hhmm(ms){ return new Date(ms).toLocaleTimeString("he-IL", { hour:"2-digit", minute:"2-digit" }); }
 
   function paintValveControl(deviceId, box){
+    // Inline style beats the manager-only `display:flex` rule.
+    if (isSensorStation(deviceId)){
+      box.innerHTML = "";
+      box.style.display = "none";
+      return;
+    }
+    box.style.display = "";
     const latest = latestByDevice[deviceId];
     const item = latest && latest.item;
     const seen = latest ? " (בקריאה מ־" + hhmm(new Date(latest.tsISO).getTime()) + ")" : "";

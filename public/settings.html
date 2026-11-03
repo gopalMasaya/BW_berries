@@ -26,7 +26,16 @@
           </div>
 
           <div id="configForm" style="display:none;">
-            <div class="field" style="margin-bottom:18px;">
+            <!-- Sensor-only stations (station4): no valves or pump, so every
+                 .valve-only block is hidden; only the flow-meter calibration stays. -->
+            <style>#configForm.sensor-only .valve-only{ display:none !important; }
+              #sensorOnlyNote{ display:none; }
+              #configForm.sensor-only #sensorOnlyNote{ display:block; }</style>
+            <div id="sensorOnlyNote" style="margin-bottom:18px;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:var(--text-secondary);">
+              📡 תחנת חיישנים בלבד — אין בה ברזים, מתזים או משאבה, ולכן אין לה הגדרות השקיה או VPD.
+              התחנה מודדת ומדווחת בלבד; השקיה שבקר אחר מפעיל נמדדת לפי מדי הזרימה.
+            </div>
+            <div class="field valve-only" style="margin-bottom:18px;">
               <label style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">מצב עבודה</label>
               <select id="fOperationMode" style="width:100%;max-width:300px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;">
                 <option value="control">שליטה מלאה — המערכת שולטת בשסתום</option>
@@ -35,7 +44,7 @@
               <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">במצב ניטור, המערכת תזהה השקיה לפי חיישני זרימה ותישאר ערה לדגימה תכופה</span>
             </div>
 
-            <div class="field" style="margin-bottom:18px;">
+            <div class="field valve-only" style="margin-bottom:18px;">
               <label style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">סוג הברז</label>
               <select id="fValveType" style="width:100%;max-width:420px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;">
                 <option value="dc">ברז DC מגנטי (3 חוטים) — פולס לפתיחה ופולס לסגירה</option>
@@ -55,7 +64,7 @@
               <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">כל חישובי המים באפליקציה (השקיות, גרפים, טבלאות, משקל) ממירים פולסים לליטרים לפי הערך הזה. ברירת מחדל: 2.4</span>
             </div>
 
-            <div class="field" style="margin-bottom:18px;">
+            <div class="field valve-only" style="margin-bottom:18px;">
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
                 <input id="fWateringEnabled" type="checkbox" style="width:20px;height:20px;" />
                 <span style="font-size:15px;font-weight:600;">השקיה פעילה</span>
@@ -63,7 +72,7 @@
               <span style="font-size:13px;color:var(--muted);">כבה בימי גשם — המערכת תמשיך לקרוא חיישנים ולשלוח נתונים בלבד</span>
             </div>
 
-            <div id="wateringFields">
+            <div id="wateringFields" class="valve-only">
             <div class="form-grid">
               <div class="field">
                 <label>סף לחות קרקע 1 להתחלת השקיה (%)</label>
@@ -91,9 +100,9 @@
                        a station in monitor mode with watering switched off,
                        and burying it in there hid it completely. -->
 
-            <hr style="border:none;border-top:1px solid var(--border);margin:22px 0;" />
+            <hr class="valve-only" style="border:none;border-top:1px solid var(--border);margin:22px 0;" />
 
-            <div class="field" style="margin-bottom:14px;">
+            <div class="field valve-only" style="margin-bottom:14px;">
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
                 <input id="fVpdEnabled" type="checkbox" style="width:20px;height:20px;" />
                 <span style="font-size:15px;font-weight:600;">שימוש ב־VPD מתחנת FieldClimate</span>
@@ -105,7 +114,7 @@
               <span id="vpdLive" style="font-size:13px;color:var(--muted);display:block;margin-top:6px;"></span>
             </div>
 
-            <div id="vpdFields">
+            <div id="vpdFields" class="valve-only">
             <div class="field" style="margin-bottom:14px;">
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
                 <input id="fVpdLocal" type="checkbox" style="width:20px;height:20px;" />
@@ -370,6 +379,9 @@
       stationSelect.appendChild(opt);
     }
 
+    // Station without valves or pump (station4): only flow calibration applies.
+    let sensorOnly = false;
+
     async function loadConfig(stationId) {
       configForm.style.display = "none";
       loadingMsg.style.display = "";
@@ -379,6 +391,10 @@
       try {
         const snap = await get(ref(db, `berries/${stationId}/control/wateringConfig`));
         const config = snap.val() || {};
+        // Registry type, written by the ingest function from the firmware.
+        const typeSnap = await get(ref(db, `stations/${stationId}/type`)).catch(() => null);
+        sensorOnly = !!typeSnap && typeSnap.val() === "sensors";
+        configForm.classList.toggle("sensor-only", sensorOnly);
 
         fOperationMode.value = (config.monitorOnly ?? DEFAULTS.monitorOnly) ? "monitor" : "control";
         fValveType.value = config.valveType ?? DEFAULTS.valveType;
@@ -531,9 +547,9 @@
       try {
         const stationId = stationSelect.value;
         await set(ref(db, `berries/${stationId}/control/wateringConfig`), {
-          monitorOnly: fOperationMode.value === "monitor",
+          monitorOnly: sensorOnly || fOperationMode.value === "monitor",
           valveType: fValveType.value,
-          wateringEnabled: fWateringEnabled.checked,
+          wateringEnabled: !sensorOnly && fWateringEnabled.checked,
           soil1Threshold,
           soil2RiseToStop,
           noRiseTimeoutMin,
