@@ -1210,6 +1210,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <!-- Drip/drain flowmeter swap by date (shared with compare/irrigations pages) -->
   <script src="waterSwap.js"></script>
+  <script src="plots.js"></script>
 
 <script>
   // Instant start: sw.js serves this page from a local copy (no black page while
@@ -1390,6 +1391,7 @@
       try {
         await loadMlPerPulse([st]);
         await loadWaterSwap([st]);
+        await loadStationLocation([st]);
         await loadCalibration([st]);
       } catch(e){ console.error("new station config", st.deviceId, e); }
       watchManualValve([st]);
@@ -1414,6 +1416,19 @@
     const v = mlPerPulseByStation[deviceId];
     return Number.isFinite(v) && v > 0 ? v : ML_PER_PULSE_DEFAULT;
   }
+
+  // Per-plant scaling, also from Settings (wateringConfig): the drip meter gets
+  // ONE of the plant's drippers, the drain meter collects ALL pots of the
+  // station. So per plant: drip = pulses × ml × drippersPerPlant, drain =
+  // pulses × ml ÷ potsPerStation. Both default to 1 (= the meter's raw volume).
+  const drippersByStation = {};     // deviceId -> drippers per plant
+  const potsByStation = {};         // deviceId -> pots draining into the meter
+  function drippersPerPlant(deviceId){ return drippersByStation[deviceId] || 1; }
+  function potsPerStation(deviceId){ return potsByStation[deviceId] || 1; }
+  // ml per waterIn (drip) / waterOut (drain) pulse, per plant
+  function dripMl(deviceId){ return mlPerPulse(deviceId) * drippersPerPlant(deviceId); }
+  function drainMl(deviceId){ return mlPerPulse(deviceId) / potsPerStation(deviceId); }
+  function waterMl(deviceId){ return { in: dripMl(deviceId), out: drainMl(deviceId) }; }
 
   // Read every station's calibration before the first render, then keep listening
   // so saving a new value in Settings reaches an open dashboard without a reload.
@@ -1490,24 +1505,29 @@
   }
 
   async function loadMlPerPulse(list = STATIONS){
-    await Promise.all(list.map(async st => {
-      const path = "berries/" + st.deviceId + "/control/wateringConfig/mlPerPulse";
+    const FIELDS = [
+      ["mlPerPulse", mlPerPulseByStation],
+      ["drippersPerPlant", drippersByStation],
+      ["potsPerStation", potsByStation],
+    ];
+    await Promise.all(list.flatMap(st => FIELDS.map(async ([field, store]) => {
+      const path = "berries/" + st.deviceId + "/control/wateringConfig/" + field;
       const readVal = snap => {
         const v = parseFloat(snap.val());
         return Number.isFinite(v) && v > 0 ? v : undefined;
       };
       try {
         const v = readVal(await database.ref(path).once("value"));
-        if (v !== undefined) mlPerPulseByStation[st.deviceId] = v;
-      } catch(e){ console.error("mlPerPulse load", st.deviceId, e); }
+        if (v !== undefined) store[st.deviceId] = v;
+      } catch(e){ console.error(field + " load", st.deviceId, e); }
       database.ref(path).on("value", snap => {
         const v = readVal(snap);
-        if (v === mlPerPulseByStation[st.deviceId]) return;
-        if (v === undefined) delete mlPerPulseByStation[st.deviceId];
-        else mlPerPulseByStation[st.deviceId] = v;
+        if (v === store[st.deviceId]) return;
+        if (v === undefined) delete store[st.deviceId];
+        else store[st.deviceId] = v;
         onMlPerPulseChanged();
       });
-    }));
+    })));
   }
 
   // Drip/drain flowmeter swap periods, edited in Settings at
@@ -2135,11 +2155,11 @@
     const wIn = parseFloat(item.waterIn), wOut = parseFloat(item.waterOut);
     let inKg = 0, outKg = 0;
     if (Number.isFinite(wIn)){
-      if (sim.prevIn !== null) inKg = (wIn >= sim.prevIn ? wIn - sim.prevIn : wIn) * mlPerPulse(cfg.deviceId) / 1000;
+      if (sim.prevIn !== null) inKg = (wIn >= sim.prevIn ? wIn - sim.prevIn : wIn) * dripMl(cfg.deviceId) / 1000;
       sim.prevIn = wIn;
     }
     if (Number.isFinite(wOut)){
-      if (sim.prevOut !== null) outKg = (wOut >= sim.prevOut ? wOut - sim.prevOut : wOut) * mlPerPulse(cfg.deviceId) / 1000;
+      if (sim.prevOut !== null) outKg = (wOut >= sim.prevOut ? wOut - sim.prevOut : wOut) * drainMl(cfg.deviceId) / 1000;
       sim.prevOut = wOut;
     }
 
@@ -2633,7 +2653,7 @@
       const valveHtml = valveBadgeHtml(st.deviceId);
       item.innerHTML = `
         <div>
-          <div class="title">${st.name}</div>
+          <div class="title">${stationLabel(st)}</div>
           <div class="meta">
             <div><span style="color:var(--muted)">stationId:</span> ${st.deviceId}</div>
             <div><span style="color:var(--muted)">last seen:</span> ${latest ? new Date(latest.tsISO).toLocaleString() : "\u2014"}</div>
@@ -2981,7 +3001,7 @@
   // is stuck — detect cycles from the drainage meter instead).
   function segmentIrrigations(deviceId, readings, gapMin, boundaryField){
     const gapMs = (gapMin || IRRIG_GAP_MIN) * 60000;
-    const ml = mlPerPulse(deviceId);
+    const ml = waterMl(deviceId);
     const byOut = boundaryField === "out";
     let prevIn = null, prevOut = null, lastBoundaryTime = null, cur = null;
     const events = [];
@@ -3018,9 +3038,10 @@
     }
     for (const e of events){
       e.durationMin = Math.round((e.endTime - e.startTime) / 60000);
-      e.waterInL  = e.pulsesIn  * ml / 1000;
-      e.waterOutL = e.pulsesOut * ml / 1000;
-      e.drainPct  = e.pulsesIn > 0 ? (e.pulsesOut / e.pulsesIn) * 100 : null;
+      e.waterInL  = e.pulsesIn  * ml.in  / 1000;
+      e.waterOutL = e.pulsesOut * ml.out / 1000;
+      // per-plant volumes: drip and drain pulses are worth different amounts
+      e.drainPct  = e.pulsesIn > 0 ? (e.waterOutL / e.waterInL) * 100 : null;
     }
     // Drop "phantom" events: a stray pulse or two (a few ml at the configured
     // ml/pulse) starts an event whose litres round to 0.0 on BOTH channels, so it
@@ -3068,8 +3089,8 @@
   // All sensor values recorded at one sampling point, as chips (water first).
   function irrigSampleChips(s, ml){
     const water = [
-      `<span class="ir-chip w-in"><b>טפטפת</b> ${(s.dIn * ml / 1000).toFixed(3)} ל׳</span>`,
-      `<span class="ir-chip w-out"><b>נקז</b> ${(s.dOut * ml / 1000).toFixed(3)} ל׳</span>`
+      `<span class="ir-chip w-in"><b>טפטפת</b> ${(s.dIn * ml.in / 1000).toFixed(3)} ל׳</span>`,
+      `<span class="ir-chip w-out"><b>נקז</b> ${(s.dOut * ml.out / 1000).toFixed(3)} ל׳</span>`
     ].join("");
     const sensors = squareMetricKeys(s.item).map(k => {
       const unit = sqUnit(k);
@@ -3117,15 +3138,47 @@
   // compare.html and PLOTS_BY_STATION in functions/calibration.js.
   // `map`: which station field measures which line in that plot (mirrors
   // PLOTS_BY_STATION in functions/calibration.js) — used by the Excel comparison.
-  const MANUAL_PLOTS = {
-    station1: [
-      { from: "2026-09-25", code: "B01", map: { ec: "drainEc", ph1: "drainPh" } },
-      { from: "", code: "B09", map: { ec: "dripEc", ph1: "dripPh" } },
-    ],
-    station2: [{ from: "", code: "B07", map: { ec2: "dripEc", ec: "drainEc", ph1: "dripPh", ph2: "drainPh" } }],
-    // station3 shares B07 with station2; its one EC + one pH probe are on the dripper.
-    station3: [{ from: "", code: "B07", map: { ec: "dripEc", ph1: "dripPh" } }],
-  };
+  // Filled from public/plots.js: the station's Settings rows
+  // (berries/{id}/control/location, loaded by loadStationLocation) on top of the
+  // old hard-coded defaults. Newest first, each from its `from` day on.
+  const MANUAL_PLOTS = {};
+  const locationRows = {};             // deviceId -> raw control/location value
+  function rebuildPlots(deviceId){
+    const list = Plots.merge(deviceId, locationRows[deviceId]);
+    if (list.length) MANUAL_PLOTS[deviceId] = list; else delete MANUAL_PLOTS[deviceId];
+  }
+  Object.keys(Plots.DEFAULTS).forEach(rebuildPlots);
+  // The plot the station stands in today, e.g. "B07" ("" when not set).
+  function stationPlotCode(deviceId){
+    const p = Plots.at(MANUAL_PLOTS[deviceId]);
+    return p ? p.code : "";
+  }
+  // Station name with its location: "Station 004 · B07".
+  function stationLabel(st){
+    if (!st) return "";
+    const code = stationPlotCode(st.deviceId);
+    return (st.name || st.deviceId) + (code ? " · " + code : "");
+  }
+
+  async function loadStationLocation(list = STATIONS){
+    await Promise.all(list.map(async st => {
+      const path = "berries/" + st.deviceId + "/control/location";
+      try { locationRows[st.deviceId] = (await database.ref(path).once("value")).val(); }
+      catch(e){ console.error("location load", st.deviceId, e); }
+      rebuildPlots(st.deviceId);
+      let first = true;
+      database.ref(path).on("value", snap => {
+        if (first) { first = false; return; }   // same value as the read above
+        locationRows[st.deviceId] = snap.val();
+        rebuildPlots(st.deviceId);
+        // Galcon rows were matched to the old valve.
+        Object.keys(_irrGalconCache).forEach(k => { if (k.startsWith(st.deviceId + "|")) delete _irrGalconCache[k]; });
+        buildChartStationSelect();
+        buildGraphStationSelect();
+        onMlPerPulseChanged();
+      });
+    }));
+  }
   const manualDayCache = {};           // "YYYY-MM-DD" → promise of that day's records
   function localDayKey(d){
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -3289,14 +3342,10 @@
     return entry;
   }
 
-  // Pots per plot + variety, mirrored from qrCode's stations-catalog.mjs
-  // (PLANTS_BY_CODE / STATIONS) for the plots in MANUAL_PLOTS. The pot count turns
-  // a Galcon valve volume (m³) into ml per pot, comparable to the manual טפטפת.
-  const PLOT_INFO = {
-    B01: { pots: 3080, variety: "Zawadi" },
-    B07: { pots: 1000, variety: "Amanda" },
-    B09: { pots: 1000, variety: "Amanda" },
-  };
+  // Pots per plot + variety (public/plots.js, from qrCode's stations-catalog.mjs).
+  // The pot count turns a Galcon valve volume (m³) into ml per pot, comparable
+  // to the manual טפטפת.
+  const PLOT_INFO = Plots.INFO;
   const IRL_EC_OFF = 0.10;     // EC off its setpoint by more than 10% → red
   const IRL_PH_OFF = 0.3;      // pH off its setpoint by more than 0.3 → red
   const IRL_GAP_ALERT = 15;    // planned vs. delivered dose gap (%) → red
@@ -3672,7 +3721,7 @@
     // dedicated per-field chart instead, tracked via squaresSensorSel).
     const sensorKey = document.getElementById("sqSensor")?.value || "soil1_humidity";
     const sensorLabel = labelFor(sensorKey);
-    const mlThisStation = mlPerPulse(deviceId);
+    const mlThisStation = waterMl(deviceId);
     const periodLabel = multiDay
       ? `${from.toLocaleDateString("he-IL")}–${to.toLocaleDateString("he-IL")}`
       : from.toLocaleDateString("he-IL");
@@ -3848,8 +3897,8 @@
       prevIn = r.waterIn; prevOut = r.waterOut;
       if (t < st.viewMin || t > st.viewMax) continue;
       const i = Math.max(0, Math.min(count - 1, Math.floor((floorToBucket(t) - first) / bucketMs)));
-      inL[i]  += dIn  * st.ml / 1000;
-      outL[i] += dOut * st.ml / 1000;
+      inL[i]  += dIn  * st.ml.in  / 1000;
+      outL[i] += dOut * st.ml.out / 1000;
       const sv = parseFloat(r.item ? r.item[st.sensorKey] : NaN);
       if (Number.isFinite(sv)){ sSum[i] += sqTransform(st.sensorKey, sv, st.deviceId, r.item); sN[i]++; }
     }
@@ -3986,7 +4035,7 @@
     const dayCol  = "rgba(0,0,0,0.28)";   // midnight gridline in a multi-day window
     const tickCol = "#5a6472";
     const st = {
-      readings, sensorKey, sensorLabel, deviceId, ml: mlPerPulse(deviceId),
+      readings, sensorKey, sensorLabel, deviceId, ml: waterMl(deviceId),
       fullMin: t0, fullMax: t1, viewMin: t0, viewMax: t1,
       bucketMs: sqBucketMs(t1 - t0), origin: t0,
       tickStep: 3600000, multiDay: !!multiDay,
@@ -4152,7 +4201,7 @@
         <div class="sq-vpdbox" style="display:none;"></div>
         <div class="sq-head">
           <div>
-            <div class="sq-name">${st.name}</div>
+            <div class="sq-name">${stationLabel(st)}</div>
             <div class="sq-sub">${st.deviceId} · עודכן: ${latest ? new Date(latest.tsISO).toLocaleString() : "—"}</div>
             <div class="sq-flags"></div>
             <div class="sq-flags sq-drift"></div>
@@ -4416,7 +4465,7 @@
     const st = STATIONS.find(s => s.deviceId === deviceId);
     const latest = latestByDevice[deviceId];
 
-    drawerTitle.textContent = st ? st.name : deviceId;
+    drawerTitle.textContent = st ? stationLabel(st) : deviceId;
 
     const mins = latest ? ageMinutes(latest.tsISO) : Infinity;
     const s = statusFromAge(mins);
@@ -4791,7 +4840,7 @@
       el("circle", { cx: xy[0], cy: xy[1], r: vr * 1.4 }, g);
       const t = el("text", { x: xy[0], y: xy[1] - vr * 2.2, "font-size": fs,
         transform: `translate(0, ${(xy[1] - vr * 2.2) * 2}) scale(1, -1)` }, g);
-      t.textContent = st.name + (approx ? " ~" : "");
+      t.textContent = stationLabel(st) + (approx ? " ~" : "");
       g.addEventListener("click", (ev) => {
         if (posEditMode) return;                            // in edit mode, click = drag, not select
         ev.stopPropagation(); selectStation(st.deviceId, stationPos[st.deviceId], approx, vid);
@@ -6400,7 +6449,7 @@
     if (!sel) return;
     const prev = sel.value;
     sel.innerHTML = '<option value="__all__">כל התחנות</option>' +
-      STATIONS.map(s => '<option value="' + s.deviceId + '">' + (s.name || s.deviceId) + '</option>').join("");
+      STATIONS.map(s => '<option value="' + s.deviceId + '">' + stationLabel(s) + '</option>').join("");
     if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
     else sel.value = "station1";
   }
@@ -6467,7 +6516,7 @@
         if (val === null) { r[f.out] = cum[i]; return; }
         const prevVal = prev[i];
         const deltaPulses = prevVal === undefined ? 0 : (val >= prevVal ? val - prevVal : val);
-        cum[i] += deltaPulses * mlPerPulse(sid) / 1000;
+        cum[i] += deltaPulses * (i === 0 ? dripMl(sid) : drainMl(sid)) / 1000;
         prev[i] = val;
         r[f.out] = cum[i];
       });
@@ -6721,7 +6770,7 @@
     const pos = (v, d) => { const n = xlNum(v, d); return n > 0 ? n : null; };
     const mean = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
     const dev = list[0].deviceId;
-    const ml = mlPerPulse(dev);
+    const ml = waterMl(dev);
     const readings = stationRows.filter(r => !r.calMode)
       .map(r => ({ t: new Date(r.tsISO), r })).sort((a, b) => a.t - b.t);
     const events = galconEvents.map(g => ({ ...g, start: new Date(g.e.DateTimeStartValve), stop: new Date(g.e.DateTimeStopValve) }));
@@ -6762,9 +6811,9 @@
         if (pIn !== null) { inP += wIn >= pIn ? wIn - pIn : wIn; outP += wOut >= pOut ? wOut - pOut : wOut; }
         pIn = wIn; pOut = wOut;
       }
-      const inL = inP * ml / 1000;
-      const stPct = inL >= 0.5 ? xlRound(outP / inP * 100, 1) : null;
-      const stInMl = pIn === null ? null : Math.round(inP * ml), stOutMl = pIn === null ? null : Math.round(outP * ml);
+      const inL = inP * ml.in / 1000;
+      const stPct = inL >= 0.5 ? xlRound(outP * ml.out / (inP * ml.in) * 100, 1) : null;
+      const stInMl = pIn === null ? null : Math.round(inP * ml.in), stOutMl = pIn === null ? null : Math.round(outP * ml.out);
       // Galcon: that day's irrigations of the valve that had started by the check
       let gMin = null;
       for (const ev of events) {
@@ -6976,7 +7025,7 @@
     const sel = document.getElementById("chartStationSelect");
     if (!sel) return;
     sel.innerHTML = '<option value="__all__">כל התחנות</option>' +
-      STATIONS.map(s => '<option value="' + s.deviceId + '">' + (s.name || s.deviceId) + '</option>').join("");
+      STATIONS.map(s => '<option value="' + s.deviceId + '">' + stationLabel(s) + '</option>').join("");
     sel.value = "station1";
     sel.addEventListener("change", () => { loadChartData(); });
   })();
@@ -7122,7 +7171,7 @@
         if (key === null) continue;
         const prevVal = prev[f.name];
         const delta = prevVal === null ? 0 : (val >= prevVal ? val - prevVal : val);
-        r[key] = delta * mlPerPulse(sid) / 1000;
+        r[key] = delta * (f.name === "waterIn" ? dripMl(sid) : drainMl(sid)) / 1000;
         updated[f.name] = val;
       }
       byStation.set(sid, updated);
@@ -7604,7 +7653,7 @@
     if (!sel) return;
     const prev = sel.value;
     sel.innerHTML = '<option value="__all__">All stations</option>' +
-      STATIONS.map(s => '<option value="' + s.deviceId + '">' + (s.name || s.deviceId) + '</option>').join("");
+      STATIONS.map(s => '<option value="' + s.deviceId + '">' + stationLabel(s) + '</option>').join("");
     if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
   }
   (function initGraphStationSelect(){
@@ -7661,7 +7710,7 @@
       // which flowmeter is the drip and which the drain, and the EC/pH
       // calibration. Independent reads, so fetched in parallel (they used to run
       // one after another while the page waited).
-      await Promise.all([loadMlPerPulse(), loadWaterSwap(), loadCalibration()]);
+      await Promise.all([loadMlPerPulse(), loadWaterSwap(), loadCalibration(), loadStationLocation()]);
       // Manual valve overrides, live (painted into the station cards).
       watchManualValve();
     } finally {

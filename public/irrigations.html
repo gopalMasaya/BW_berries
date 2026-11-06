@@ -161,15 +161,18 @@
     // that was never configured.
     const ML_PER_PULSE_DEFAULT = 2.4;
 
-    async function loadMlPerPulse(stationId) {
+    // Per plant, as in index.html: drip × drippersPerPlant (the meter gets one
+    // dripper), drain ÷ potsPerStation (the meter collects every pot).
+    async function loadWaterCfg(stationId) {
+      let cfg = {};
       try {
-        const snap = await get(ref(db, `berries/${stationId}/control/wateringConfig/mlPerPulse`));
-        const v = parseFloat(snap.val());
-        if (Number.isFinite(v) && v > 0) return v;
+        cfg = (await get(ref(db, `berries/${stationId}/control/wateringConfig`))).val() || {};
       } catch (e) {
         console.error("mlPerPulse load", stationId, e);
       }
-      return ML_PER_PULSE_DEFAULT;
+      const pos = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : d; };
+      const ml = pos(cfg.mlPerPulse, ML_PER_PULSE_DEFAULT);
+      return { ml, in: ml * pos(cfg.drippersPerPlant, 1), out: ml / pos(cfg.potsPerStation, 1) };
     }
 
     async function fetchReadings(stationId, fromDate, toDate) {
@@ -206,7 +209,8 @@
       const stationId = document.getElementById("fStation").value.trim();
       const fromStr = document.getElementById("fFrom").value;
       const toStr = document.getElementById("fTo").value;
-      const mlPerPulse = await loadMlPerPulse(stationId);
+      const water = await loadWaterCfg(stationId);
+      const mlPerPulse = water.ml;
 
       if (!stationId || !fromStr || !toStr) return;
 
@@ -235,9 +239,9 @@
           prevIn  = r.waterIn;
           prevOut = r.waterOut;
           if (deltaIn <= 0 && deltaOut <= 0) continue;
-          const waterInL  = (deltaIn  * mlPerPulse) / 1000;
-          const waterOutL = (deltaOut * mlPerPulse) / 1000;
-          const drainPct  = deltaIn > 0 ? (deltaOut / deltaIn) * 100 : null;
+          const waterInL  = (deltaIn  * water.in)  / 1000;
+          const waterOutL = (deltaOut * water.out) / 1000;
+          const drainPct  = deltaIn > 0 ? (waterOutL / waterInL) * 100 : null;
           events.push({
             startTime: r.time,
             endTime: r.time,

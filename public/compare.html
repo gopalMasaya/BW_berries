@@ -363,12 +363,16 @@
     }
 
     // ---- 2. our station (berries/{stationId}/{MMYYYY}/{DDMMYYYY_HHMMSS}) ----
+    // ml per drip (waterIn) / drain (waterOut) pulse, per plant — same rule as
+    // index.html: drip × drippersPerPlant (meter gets one dripper), drain ÷
+    // potsPerStation (meter collects all pots). `ml` = the raw meter value.
     async function loadMlPerPulse(stationId) {
-      try {
-        const v = parseFloat((await get(ref(db, `berries/${stationId}/control/wateringConfig/mlPerPulse`))).val());
-        if (Number.isFinite(v) && v > 0) return v;
-      } catch (e) { console.error("mlPerPulse", e); }
-      return 2.4;
+      let cfg = {};
+      try { cfg = (await get(ref(db, `berries/${stationId}/control/wateringConfig`))).val() || {}; }
+      catch (e) { console.error("mlPerPulse", e); }
+      const pos = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : d; };
+      const ml = pos(cfg.mlPerPulse, 2.4);
+      return { ml, in: ml * pos(cfg.drippersPerPlant, 1), out: ml / pos(cfg.potsPerStation, 1) };
     }
 
     function readingTime(tsKey, item) {
@@ -476,7 +480,7 @@
       for (const [day, d] of byDay) {
         const src = d.flow.length ? d.flow : d.all;
         const avg = (f) => mean(src.map(s => s[f]).filter(v => v != null));
-        const inL = d.inP * mlPerPulse / 1000, outL = d.outP * mlPerPulse / 1000;
+        const inL = d.inP * mlPerPulse.in / 1000, outL = d.outP * mlPerPulse.out / 1000;
         out.set(day, {
           // Below half a litre in, the ratio is noise (a stuck inlet meter gave
           // 75,000%) — leave drain % blank rather than wreck the chart scale.
@@ -1073,7 +1077,7 @@
       }]));
 
       const nMan = [...manual.values()].reduce((a, l) => a + l.length, 0);
-      status.textContent = `${nMan} מדידות ידניות · ${station.n} קריאות תחנה${station.ml ? ` (${station.ml} מ״ל/פולס)` : ""}`;
+      status.textContent = `${nMan} מדידות ידניות · ${station.n} קריאות תחנה${station.ml ? ` (${station.ml.ml} מ״ל/פולס)` : ""}`;
       warnings.innerHTML = warn.map(w => `<div class="warn-line">⚠️ ${esc(w)}</div>`).join("");
 
       document.getElementById("charts").style.display = "";

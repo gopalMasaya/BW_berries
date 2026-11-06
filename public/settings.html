@@ -64,6 +64,18 @@
               <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">כל חישובי המים באפליקציה (השקיות, גרפים, טבלאות, משקל) ממירים פולסים לליטרים לפי הערך הזה. ברירת מחדל: 2.4</span>
             </div>
 
+            <div class="field" style="margin-bottom:18px;">
+              <label style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">מספר טפטפות לעציץ</label>
+              <input id="fDrippersPerPlant" type="number" step="1" min="1" max="20" dir="ltr" style="width:100%;max-width:300px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;" />
+              <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">חיישן הטפטפת מקבל טפטפת אחת בלבד. כמות הטפטפת לעציץ = פולסים × מ״ל לפולס × מספר הטפטפות. ברירת מחדל: 1</span>
+            </div>
+
+            <div class="field" style="margin-bottom:18px;">
+              <label style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">מספר עציצים בעמדה (מתנקזים לחיישן הנקז)</label>
+              <input id="fPotsPerStation" type="number" step="1" min="1" max="200" dir="ltr" style="width:100%;max-width:300px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;color:var(--text);background:var(--card);font-family:inherit;" />
+              <span style="font-size:13px;color:var(--muted);display:block;margin-top:4px;">הנקז של כל העציצים נאסף לחיישן אחד. כמות הנקז לעציץ = פולסים × מ״ל לפולס ÷ מספר העציצים. אחוז הנקז מחושב לעציץ. ברירת מחדל: 1</span>
+            </div>
+
             <div class="field valve-only" style="margin-bottom:18px;">
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
                 <input id="fWateringEnabled" type="checkbox" style="width:20px;height:20px;" />
@@ -323,6 +335,10 @@
       maxWateringMin: 25,
       postWateringWaitMin: 20,
       mlPerPulse: 2.4,
+      // Drip meter samples one dripper of one plant; drain meter collects all
+      // pots of the station. 1/1 = the meters' raw volume, as before.
+      drippersPerPlant: 1,
+      potsPerStation: 1,
       // The 3-wire latching valve every station shipped with. A farm on AC
       // valves switches this once and the same firmware drives them.
       valveType: "dc",
@@ -359,6 +375,8 @@
     const fMaxWatering = document.getElementById("fMaxWatering");
     const fPostWait = document.getElementById("fPostWait");
     const fMlPerPulse = document.getElementById("fMlPerPulse");
+    const fDrippersPerPlant = document.getElementById("fDrippersPerPlant");
+    const fPotsPerStation = document.getElementById("fPotsPerStation");
     const fVpdEnabled = document.getElementById("fVpdEnabled");
     const fVpdMode = document.getElementById("fVpdMode");
     const fVpdOn = document.getElementById("fVpdOn");
@@ -406,6 +424,8 @@
         fMaxWatering.value = config.maxWateringMin ?? DEFAULTS.maxWateringMin;
         fPostWait.value = config.postWateringWaitMin ?? DEFAULTS.postWateringWaitMin;
         fMlPerPulse.value = config.mlPerPulse ?? DEFAULTS.mlPerPulse;
+        fDrippersPerPlant.value = config.drippersPerPlant ?? DEFAULTS.drippersPerPlant;
+        fPotsPerStation.value = config.potsPerStation ?? DEFAULTS.potsPerStation;
 
         fVpdEnabled.checked = config.vpdEnabled ?? DEFAULTS.vpdEnabled;
         fVpdMode.value = config.vpdMode ?? DEFAULTS.vpdMode;
@@ -469,6 +489,8 @@
       const maxWateringMin = parseInt(fMaxWatering.value, 10);
       const postWateringWaitMin = parseInt(fPostWait.value, 10);
       const mlPerPulse = parseFloat(fMlPerPulse.value);
+      const drippersPerPlant = parseInt(fDrippersPerPlant.value, 10);
+      const potsPerStation = parseInt(fPotsPerStation.value, 10);
 
       if (isNaN(soil1Threshold) || soil1Threshold < 0 || soil1Threshold > 100) {
         formError.textContent = "סף לחות קרקע 1 חייב להיות בין 0 ל-100";
@@ -492,6 +514,14 @@
       }
       if (isNaN(mlPerPulse) || mlPerPulse < 0.1 || mlPerPulse > 1000) {
         formError.textContent = "מ״ל לפולס חייב להיות בין 0.1 ל-1000";
+        return;
+      }
+      if (isNaN(drippersPerPlant) || drippersPerPlant < 1 || drippersPerPlant > 20) {
+        formError.textContent = "מספר טפטפות לעציץ חייב להיות בין 1 ל-20";
+        return;
+      }
+      if (isNaN(potsPerStation) || potsPerStation < 1 || potsPerStation > 200) {
+        formError.textContent = "מספר עציצים בעמדה חייב להיות בין 1 ל-200";
         return;
       }
 
@@ -556,6 +586,8 @@
           maxWateringMin,
           postWateringWaitMin,
           mlPerPulse,
+          drippersPerPlant,
+          potsPerStation,
           vpdEnabled,
           vpdMode: fVpdMode.value,
           vpdOnKpa,
