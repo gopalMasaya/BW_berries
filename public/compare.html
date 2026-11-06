@@ -11,6 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   <!-- Drip/drain flowmeter swap by date -->
   <script src="waterSwap.js"></script>
+  <script src="plots.js"></script>
   <style>
     /* Source identity is fixed across every chart: station = blue, manual
        measurement = aqua (validated categorical slots 1–2).
@@ -251,6 +252,7 @@
     import { requireAuth } from "./guard.mjs";
     import { initSidebar } from "./sidebar.mjs";
     import { db } from "./auth.mjs";
+    import { STATIONS, loadStations } from "./stations.mjs";
     import { ref, get, query, orderByKey, startAt, endAt, getDatabase }
       from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
@@ -266,22 +268,24 @@
     // spans a move compares every day against the plot it was really in.
     // `fields` says which station field sits where (ecIn/ph1 = dripper,
     // ecOut/ph2 = drain). Mirrors PLOTS_BY_STATION in functions/calibration.js.
-    const PAIRS = [
-      { stationId: "station1", plots: [
-        // B01: one EC + one pH probe, both on the drain.
-        { from: "2026-09-25", code: "B01", fields: { ecIn: null, ecOut: "ec", ph1: null, ph2: "ph1" } },
-        // B09: the same two probes on the dripper.
-        { from: "", code: "B09", fields: { ecIn: "ec", ecOut: null, ph1: "ph1", ph2: null } },
-      ] },
-      // station2: feed (ec2/ph1) and drain (ec/ph2).
-      { stationId: "station2", plots: [
-        { from: "", code: "B07", fields: { ecIn: "ec2", ecOut: "ec", ph1: "ph1", ph2: "ph2" } },
-      ] },
-      // station3: shares B07 with station2; one EC + one pH probe on the dripper.
-      { stationId: "station3", plots: [
-        { from: "", code: "B07", fields: { ecIn: "ec", ecOut: null, ph1: "ph1", ph2: null } },
-      ] },
-    ];
+    // Built from public/plots.js: each station's Settings rows (📍 מיקום התחנה,
+    // berries/{id}/control/location) on top of the old hard-coded defaults.
+    // `fields` = which station field measures the drip EC (ecIn), drain EC
+    // (ecOut), drip pH (ph1) and drain pH (ph2).
+    const LINE_TO_FIELD = { dripEc: "ecIn", drainEc: "ecOut", dripPh: "ph1", drainPh: "ph2" };
+    const toFields = (map) => {
+      const f = { ecIn: null, ecOut: null, ph1: null, ph2: null };
+      for (const [field, line] of Object.entries(map || {})) if (LINE_TO_FIELD[line]) f[LINE_TO_FIELD[line]] = field;
+      return f;
+    };
+    await loadStations();
+    const PAIRS = (await Promise.all(STATIONS.map(async (stationId) => {
+      let rows = null;
+      try { rows = (await get(ref(db, `berries/${stationId}/control/location`))).val(); }
+      catch (e) { console.warn("location", stationId, e); }
+      const plots = Plots.merge(stationId, rows).map(p => ({ from: p.from, code: p.code, fields: toFields(p.map) }));
+      return plots.length ? { stationId, plots } : null;
+    }))).filter(Boolean);
     const plotAt = (pair, day) => pair.plots.find(p => day >= p.from) || pair.plots[pair.plots.length - 1];
     const plotOn = (pair, day) => plotAt(pair, day).code;
     // A chart card shows if the probe existed in any of the station's plots.
