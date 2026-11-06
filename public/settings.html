@@ -6,6 +6,7 @@
   <title>הגדרות השקיה — Plants Tracker</title>
   <link rel="stylesheet" href="app.css">
   <script src="waterSwap.js"></script>
+  <script src="plots.js"></script>
 </head>
 <body>
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -234,6 +235,63 @@
             <button class="btn-primary" id="swapAddBtn">הוסף</button>
           </div>
           <div id="swapMsg" style="font-size:14px;min-height:20px;margin-top:10px;white-space:pre-line;"></div>
+        </div>
+
+        <!-- Where the station stands: plot / Galcon valve + probe lines (public/plots.js). -->
+        <div class="card" id="locCard" style="margin-top:18px;">
+          <h2 style="margin:0 0 6px;font-size:18px;">📍 מיקום התחנה</h2>
+          <span style="font-size:13px;color:var(--muted);display:block;line-height:1.6;">
+            החלקה שבה עומדת התחנה קובעת איזה ברז Galcon מוצג לידה (למשל B07 = בקר B, ברז 7) ואילו בדיקות ידניות
+            מושוות אליה. המיקום מוצג ליד שם התחנה בכל האפליקציה. כשמעבירים תחנה מוסיפים שורה מיום המעבר —
+            הימים שלפני נשארים עם המיקום הקודם.
+          </span>
+          <div id="locList" style="margin-top:12px;font-size:14px;"></div>
+          <div class="form-grid" style="margin-top:14px;">
+            <div class="field">
+              <label>מתאריך</label>
+              <input id="locFrom" type="date" dir="ltr" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;background:var(--card);color:var(--text);font-family:inherit;" />
+            </div>
+            <div class="field">
+              <label>חלקה / ברז</label>
+              <select id="locCode" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;background:var(--card);color:var(--text);font-family:inherit;"></select>
+            </div>
+            <div class="field">
+              <label>חיישן EC <span dir="ltr" style="color:var(--muted);">(ec)</span></label>
+              <select id="locMap_ec" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;background:var(--card);color:var(--text);font-family:inherit;">
+                <option value="">לא קיים / לא בשימוש</option>
+                <option value="dripEc">בטפטפת</option>
+                <option value="drainEc">בנקז</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>חיישן EC 2 <span dir="ltr" style="color:var(--muted);">(ec2)</span></label>
+              <select id="locMap_ec2" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;background:var(--card);color:var(--text);font-family:inherit;">
+                <option value="">לא קיים / לא בשימוש</option>
+                <option value="dripEc">בטפטפת</option>
+                <option value="drainEc">בנקז</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>חיישן pH <span dir="ltr" style="color:var(--muted);">(ph1)</span></label>
+              <select id="locMap_ph1" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;background:var(--card);color:var(--text);font-family:inherit;">
+                <option value="">לא קיים / לא בשימוש</option>
+                <option value="dripPh">בטפטפת</option>
+                <option value="drainPh">בנקז</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>חיישן pH 2 <span dir="ltr" style="color:var(--muted);">(ph2)</span></label>
+              <select id="locMap_ph2" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;background:var(--card);color:var(--text);font-family:inherit;">
+                <option value="">לא קיים / לא בשימוש</option>
+                <option value="dripPh">בטפטפת</option>
+                <option value="drainPh">בנקז</option>
+              </select>
+            </div>
+          </div>
+          <div class="row" style="justify-content:flex-start;margin-top:10px;">
+            <button class="btn-primary" id="locAddBtn">שמור מיקום</button>
+          </div>
+          <div id="locMsg" style="font-size:14px;min-height:20px;margin-top:10px;white-space:pre-line;"></div>
         </div>
 
         <!-- Buffer calibration of the station's EC/pH probes (functions/calSession.js). -->
@@ -1015,6 +1073,99 @@
     });
 
     stationSelect.addEventListener("change", () => watchSwap(stationSelect.value));
+
+    // ===================== Station location (plot / Galcon valve) =====================
+    // Rows at berries/{stationId}/control/location/{pushId} = { from, code, map };
+    // merged with the old hard-coded defaults by public/plots.js.
+    const locEls = Object.fromEntries(["locList", "locFrom", "locCode", "locAddBtn", "locMsg",
+      ...Plots.FIELDS.map(f => "locMap_" + f)].map(id => [id, document.getElementById(id)]));
+    let locUnsub = null, locRows = {};
+    const locSay = (text, bad) => {
+      locEls.locMsg.textContent = text;
+      locEls.locMsg.style.color = bad ? "var(--bad)" : "var(--good)";
+    };
+    const LINE_HE = { dripEc: "EC טפטפת", drainEc: "EC נקז", dripPh: "pH טפטפת", drainPh: "pH נקז" };
+    locEls.locCode.innerHTML = Object.keys(Plots.INFO).sort().map(c => {
+      const i = Plots.INFO[c];
+      return `<option value="${c}">${c}${i.variety ? " · " + i.variety : ""}${i.pots ? " · " + i.pots + " עציצים" : ""}</option>`;
+    }).join("");
+    const todayIl = () => { const p = ilParts(new Date()); return `${p.year}-${p.month}-${p.day}`; };
+    const fmtDay = (f) => f ? f.split("-").reverse().join("/") : "מההתחלה";
+
+    function renderLoc(stationId) {
+      const list = Plots.merge(stationId, locRows);
+      const ids = new Map(Object.entries(locRows || {}).map(([id, r]) => [r.from + "|" + r.code, id]));
+      const mapTxt = (m) => Object.entries(m || {}).map(([f, l]) => `${f} = ${LINE_HE[l] || l}`).join(", ") || "—";
+      locEls.locList.innerHTML = list.length ? `<table class="crm" style="width:100%;font-size:13px;">
+        <thead><tr><th>מתאריך</th><th>חלקה</th><th>חיישנים</th><th></th></tr></thead>
+        <tbody>${list.map(r => {
+          const id = ids.get(r.from + "|" + r.code);
+          const info = Plots.INFO[r.code] || {};
+          return `<tr>
+            <td dir="ltr">${fmtDay(r.from)}</td>
+            <td><b>${r.code}</b>${info.variety ? " · " + info.variety : ""}</td>
+            <td dir="ltr">${mapTxt(r.map)}</td>
+            <td>${id ? `<button class="btn" data-loc-del="${id}" style="padding:4px 10px;">מחק</button>`
+              : `<span style="color:var(--muted);font-size:12px;">ברירת מחדל</span>`}</td>
+          </tr>`; }).join("")}</tbody></table>`
+        : `<span style="color:var(--bad);">⚠️ לא הוגדר מיקום ל־${stationId} — לא יוצגו נתוני Galcon ובדיקות ידניות.</span>`;
+      locEls.locList.querySelectorAll("[data-loc-del]").forEach(btn => btn.addEventListener("click", async () => {
+        if (!confirm("למחוק את שורת המיקום?")) return;
+        try {
+          await remove(ref(db, `berries/${stationId}/control/location/${btn.dataset.locDel}`));
+          locSay("השורה נמחקה.");
+        } catch (e) { locSay("שגיאה במחיקה: " + (e.message || e), true); }
+      }));
+      // The form starts from the location in force today.
+      const cur = Plots.at(list, todayIl());
+      if (cur) locEls.locCode.value = cur.code;
+      Plots.FIELDS.forEach(f => { locEls["locMap_" + f].value = (cur && cur.map[f]) || ""; });
+    }
+
+    function watchLoc(stationId) {
+      if (locUnsub) locUnsub();
+      locRows = {};
+      locEls.locMsg.textContent = "";
+      locEls.locFrom.value = todayIl();
+      locUnsub = onValue(ref(db, `berries/${stationId}/control/location`), snap => {
+        locRows = snap.val() || {};
+        renderLoc(stationId);
+      }, e => locSay("שגיאה בטעינה: " + (e.message || e), true));
+    }
+
+    locEls.locAddBtn.addEventListener("click", async () => {
+      const stationId = stationSelect.value;
+      const from = locEls.locFrom.value;                 // "YYYY-MM-DD"
+      const code = locEls.locCode.value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) { locSay("בחר תאריך.", true); return; }
+      if (!Plots.validCode(code)) { locSay("בחר חלקה.", true); return; }
+      const map = {};
+      Plots.FIELDS.forEach(f => { const v = locEls["locMap_" + f].value; if (v) map[f] = v; });
+      const lines = Object.values(map);
+      if (new Set(lines).size !== lines.length) {
+        locSay("שני חיישנים סומנו על אותו קו — לכל קו חיישן אחד.", true);
+        return;
+      }
+      locEls.locAddBtn.disabled = true;
+      try {
+        // The same day again is a correction of that row, not a second one.
+        const same = Object.entries(locRows).filter(([, r]) => r && r.from === from).map(([id]) => id);
+        await Promise.all(same.map(id => remove(ref(db, `berries/${stationId}/control/location/${id}`))));
+        await push(ref(db, `berries/${stationId}/control/location`), {
+          from, code, map,
+          createdAt: new Date().toISOString(),
+          createdBy: user.email || user.phoneNumber || user.uid,
+        });
+        locSay(`נשמר: ${stationId} ב־${code} מ־${fmtDay(from)}.`);
+      } catch (e) {
+        locSay("שגיאה בשמירה: " + (e.message || e), true);
+      } finally {
+        locEls.locAddBtn.disabled = false;
+      }
+    });
+
+    stationSelect.addEventListener("change", () => watchLoc(stationSelect.value));
+    watchLoc(stationSelect.value);
 
     // Load first station
     loadConfig(stationSelect.value);
