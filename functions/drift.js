@@ -96,7 +96,10 @@ async function stationDay(stationId, day) {
  * ec, ph}] comes from the Galcon app API in index.js.
  */
 async function computeDay(stationId, day, fetchValveEvents) {
-  const plot = plotOn(stationId, day);
+  const plot = await plotOn(stationId, day);
+  if (!plot) {
+    return {date: day, pairs: [], notes: ["no location set"]};
+  }
   const letter = plot.code[0];
   const valve = parseInt(plot.code.slice(1), 10);
   const {ec: ecF, ph: phF} = drainFields(plot);
@@ -168,7 +171,8 @@ async function evaluate(stationId, day) {
 
   // Baseline: the first days after the last buffer calibration (or probe
   // install, whichever is later), and only in buffer mode.
-  const plot = plotOn(stationId, day);
+  const plot = await plotOn(stationId, day);
+  if (!plot) return {date: day, notes: ["no location set"]};
   const {ec: ecF, ph: phF} = drainFields(plot);
   const since = [ecF, phF].map((f) => f && probes[f] && probes[f].since)
       .filter(Boolean).sort().pop() || "";

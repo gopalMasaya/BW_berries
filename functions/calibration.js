@@ -25,6 +25,7 @@
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const https = require("https");
+const Plots = require("./plots");
 
 // qrCode project (song-cd1cd). Cloud Functions run as THIS project's service
 // account, which has no rights on the other project's database, so we take the
@@ -39,6 +40,10 @@ const QR_DB = "song-cd1cd-default-rtdb.europe-west1.firebasedatabase.app";
 // (YYYY-MM-DD) on, so recalibrating an old day uses the old plot and probe
 // placement. The map is overridable per station at
 // berries/{stationId}/control/calibrationMap.
+// These are only the defaults for the days before a station's first Settings
+// row (📍 מיקום התחנה → berries/{id}/control/location, merged by plots.js).
+// station3 is deliberately absent: it is calibrated only once a location is
+// set for it in Settings.
 const PLOTS_BY_STATION = {
   station1: [
     // Moved to B01; its one EC + one pH probe now sit on the drain.
@@ -50,10 +55,18 @@ const PLOTS_BY_STATION = {
   station2: [{from: "", code: "B07",
     map: {ec2: "dripEc", ec: "drainEc", ph1: "dripPh", ph2: "drainPh"}}],
 };
-const plotOn = (stationId, day) => {
-  const plots = PLOTS_BY_STATION[stationId];
-  return plots.find((p) => day >= p.from) || plots[plots.length - 1];
-};
+/**
+ * The plot a station stood in on a day: its Settings rows on top of the
+ * defaults above. null = no location known (nothing to compare against).
+ * @param {string} stationId
+ * @param {string} day YYYY-MM-DD
+ * @return {Promise<object|null>} {from, code, map}
+ */
+async function plotOn(stationId, day) {
+  const rows = (await admin.database()
+      .ref(`berries/${stationId}/control/location`).get()).val();
+  return Plots.at(Plots.merge(stationId, rows, PLOTS_BY_STATION), day);
+}
 
 // Guards — a correction outside these is a broken probe, not drift.
 const MATCH_WINDOW_MIN = 15;   // manual cup vs. station reading
@@ -258,9 +271,19 @@ async function runCalibration(dateStr) {
   });
   const out = {};
 
-  for (const stationId of Object.keys(PLOTS_BY_STATION)) {
+  // Every registered station; one without a known location is skipped below.
+  const registry = (await db.ref("stations").get()).val() || {};
+  const stationIds = [...new Set([
+    ...Object.keys(PLOTS_BY_STATION), ...Object.keys(registry)])].sort();
+  for (const stationId of stationIds) {
     const result = {date: day, station: stationId, samples: {}, notes: []};
     try {
+      const plot = await plotOn(stationId, day);
+      if (!plot) {
+        result.notes.push("no location set (Settings → מיקום התחנה)");
+        out[stationId] = result;
+        continue;
+      }
       // A station off its plot (on the bench, being rebuilt) measures
       // something other than the solution the workers sample; calibrating it
       // against them would store a meaningless correction. The flag lives in
@@ -281,7 +304,6 @@ async function runCalibration(dateStr) {
         (daySnap.val() && daySnap.val().source === "buffer");
       const mapSnap = await db
           .ref(`berries/${stationId}/control/calibrationMap`).get();
-      const plot = plotOn(stationId, day);
       const map = mapSnap.val() || plot.map || {};
       const probes = await stationProbes(db, stationId);
       const manual = await fetchManual(plot.code, day);

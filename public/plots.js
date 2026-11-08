@@ -11,7 +11,8 @@
 //
 // DEFAULTS are the locations that were hard-coded before the setting existed;
 // they still apply to the days before a station's first Settings row.
-// Mirrors PLOTS_BY_STATION in functions/calibration.js (daily calibration).
+// functions/plots.js is a copy of this file for the cloud functions (daily
+// calibration + drift check, which pass their own defaults) — keep the two identical.
 (function (root) {
   // Pots per plot + main variety, from qrCode's stations-catalog.mjs
   // (PLANTS_BY_CODE / STATIONS). Pots turn a Galcon valve volume (m³) into ml/pot.
@@ -104,13 +105,13 @@
 
   // Station's locations, newest first: the Settings rows, then the defaults
   // that are older than the first Settings row. [] = location unknown.
-  function merge(stationId, entries) {
+  function merge(stationId, entries, defaults) {
     const cfg = Object.values(entries || {})
       .filter((e) => e && validCode(e.code) && validFrom(e.from || ""))
       .map((e) => ({ from: e.from || "", code: e.code, map: cleanMap(e.map) }))
       .sort((a, b) => (a.from < b.from ? 1 : a.from > b.from ? -1 : 0));
     const first = cfg.length ? cfg[cfg.length - 1].from : null;
-    const defs = (DEFAULTS[stationId] || [])
+    const defs = ((defaults || DEFAULTS)[stationId] || [])
       .filter((p) => first === null || (first !== "" && p.from < first))
       .map((p) => ({ ...p, map: { ...p.map } }));
     return cfg.concat(defs);
