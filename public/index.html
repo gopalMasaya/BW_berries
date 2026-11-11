@@ -2956,6 +2956,10 @@
   // No water-in for this many minutes ⇒ the current irrigation has ended; the
   // next flow afterwards starts a new irrigation.
   const IRRIG_GAP_MIN = 15;
+  // No drip for this many minutes ⇒ the irrigation's END is fixed at the last
+  // drip reading (duration = drip start → drip end). Drain keeps counting into
+  // the same irrigation until the next drip starts a new one.
+  const DRIP_END_MIN = 2;
 
   function fmtHM(d){
     return d ? new Date(d).toLocaleTimeString("he-IL", { hour:"2-digit", minute:"2-digit" }) : "—";
