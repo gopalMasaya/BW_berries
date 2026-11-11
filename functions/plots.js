@@ -30,7 +30,7 @@
     A11: { pots: 6750, variety: "1907" },
     A12: { pots: 9000, variety: "1901" },
     A13: { pots: 6750, variety: "Biloxi" },
-    B01: { pots: 3080, variety: "Zawadi" },
+    B01: { pots: 2900, variety: "Zawadi" },
     B02: { pots: 2900, variety: "119" },
     B03: { pots: 4800, variety: "Sarfina" },
     B04: { pots: 4800, variety: "Sarfina" },
