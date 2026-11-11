@@ -3483,7 +3483,8 @@
         </div>`).join("");
       rows.push({ t: e.startTime, html: `<tr class="irl-s ir-row" data-idx="${i}" title="תחנה — לחץ להצגת נקודות הדגימה">
         <td class="irl-test">📡<span class="ir-caret">▼</span></td>
-        <td class="irl-time">${dayPfx(e.startTime)}${fmtHM(e.startTime)}–${fmtHM(e.endTime)}${sub("משך " + (dur == null ? "—" : Number.isInteger(dur) ? dur : dur.toFixed(1)) + " דק׳")}</td>
+        <td class="irl-time">${dayPfx(e.startTime)}${fmtHM(e.startTime)}–${fmtHM(e.endTime)}${sub("משך " + (dur == null ? "—" : Number.isInteger(dur) ? dur : dur.toFixed(1)) + " דק׳" +
+          (e.drainEndTime && e.drainEndTime > e.endTime ? " · נקז עד " + fmtHM(e.drainEndTime) : ""))}</td>
         <td><b class="irl-sw">${d.stuckInlet ? "—" : inMl}</b></td>
         <td>${outMl}</td>
         <td>${d.stuckInlet ? "—" : `<b class="${inMl - outMl < 0 ? "irl-off" : ""}">${inMl - outMl}</b>`}</td>
