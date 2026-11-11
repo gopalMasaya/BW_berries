@@ -2960,6 +2960,10 @@
   // drip reading (duration = drip start → drip end). Drain keeps counting into
   // the same irrigation until the next drip starts a new one.
   const DRIP_END_MIN = 2;
+  // A drip burst smaller than this (litres per plant) after the drip stopped is
+  // residual dripping / a stray spoon tip, not a new irrigation — it is folded
+  // into the previous irrigation (see segmentIrrigations).
+  const IRRIG_MIN_NEW_L = 0.02;
 
   function fmtHM(d){
     return d ? new Date(d).toLocaleTimeString("he-IL", { hour:"2-digit", minute:"2-digit" }) : "—";
@@ -3052,20 +3056,72 @@
         }
       }
     }
+    // A stray drip pulse or two after the drip stopped (residual dripping, a
+    // knocked spoon) is not a new irrigation: fold it into the previous event
+    // as part of its tail, so it neither shows as its own row nor steals that
+    // irrigation's drainage (which follows it into the event).
+    const merged = [];
     for (const e of events){
-      // duration = first drip → last drip (drain tail excluded)
-      e.durationMin = Math.round((e.endTime - e.startTime) / 60000);
-      e.waterInL  = e.pulsesIn  * ml.in  / 1000;
-      e.waterOutL = e.pulsesOut * ml.out / 1000;
-      // per-plant volumes: drip and drain pulses are worth different amounts
-      e.drainPct  = e.pulsesIn > 0 ? (e.waterOutL / e.waterInL) * 100 : null;
+      const prev = merged[merged.length - 1];
+      const boundaryL = (byOut ? e.pulsesOut * ml.out : e.pulsesIn * ml.in) / 1000;
+      if (prev && boundaryL < IRRIG_MIN_NEW_L){
+        prev.pulsesIn  += e.pulsesIn;
+        prev.pulsesOut += e.pulsesOut;
+        prev.samples.push(...e.samples);
+        const tailEnd = e.drainEndTime && e.drainEndTime > e.endTime ? e.drainEndTime : e.endTime;
+        if (!prev.drainEndTime || tailEnd > prev.drainEndTime) prev.drainEndTime = tailEnd;
+      } else {
+        merged.push(e);
+      }
     }
+    merged.forEach(e => { e.durationMin = Math.round((e.endTime - e.startTime) / 60000); irrigTotals(e, ml); });
     // Drop "phantom" events: a stray pulse or two (a few ml at the configured
     // ml/pulse) starts an event whose litres round to 0.0 on BOTH channels, so it
     // displays as an irrigation with no drip and no drain. Keep an event only if
     // its drip OR drain reaches the 0.05 L noise floor (the table shows 3 decimals).
-    return events.filter(e =>
+    return merged.filter(e =>
       Math.round(e.waterInL * 10) > 0 || Math.round(e.waterOutL * 10) > 0);
+  }
+
+  // Litres + drain % of an event from its pulse counts (duration = first drip →
+  // last drip, drain tail excluded, is set by the caller).
+  function irrigTotals(e, ml){
+    e.waterInL  = e.pulsesIn  * ml.in  / 1000;
+    e.waterOutL = e.pulsesOut * ml.out / 1000;
+    // per-plant volumes: drip and drain pulses are worth different amounts
+    e.drainPct  = e.pulsesIn > 0 ? (e.waterOutL / e.waterInL) * 100 : null;
+  }
+
+  // Drainage keeps counting into an irrigation until the station sees the next
+  // drip, but the station sees it only ~15 min after the Galcon valve opens.
+  // Once the valve has opened again, drainage belongs to the new irrigation:
+  // move every tail reading of an event (after its last drip) that falls at or
+  // after a Galcon start — before the next station event — into that next
+  // event. Returns new event objects; the input list is left untouched.
+  function splitTailsAtGalcon(deviceId, events, galcon){
+    const starts = (Array.isArray(galcon) ? galcon : [])
+      .map(({ e }) => new Date(e.DateTimeStartValve)).filter(t => !isNaN(t)).sort((a, b) => a - b);
+    const out = events.map(e => ({ ...e, samples: [...(e.samples || [])] }));
+    if (!starts.length) return out;
+    const ml = waterMl(deviceId);
+    for (let i = 0; i + 1 < out.length; i++){
+      const e = out[i], nx = out[i + 1];
+      const g = starts.find(t => t > e.endTime && t < nx.startTime);
+      if (!g) continue;
+      const moved = e.samples.filter(s => s.time > e.endTime && s.time >= g);
+      if (!moved.length) continue;
+      e.samples = e.samples.filter(s => !moved.includes(s));
+      moved.forEach(s => {
+        e.pulsesIn -= s.dIn;  e.pulsesOut -= s.dOut;
+        nx.pulsesIn += s.dIn; nx.pulsesOut += s.dOut;
+      });
+      nx.samples = moved.concat(nx.samples);
+      const last = e.samples.filter(s => s.time > e.endTime && s.dOut > 0).pop();
+      e.drainEndTime = last ? last.time : null;
+      irrigTotals(e, ml);
+      irrigTotals(nx, ml);
+    }
+    return out;
   }
 
   // ── Sensor snapshot shown per irrigation ──
@@ -3317,9 +3373,11 @@
     // Keep the user's show/hide choices across the re-render.
     const prevWrap = body.querySelector(".irl-wrap");
     const hidden = prevWrap ? ["g", "s"].filter(k => prevWrap.classList.contains("hide-" + k)) : [];
-    body.innerHTML = irrTimelineHtml(deviceId, d, galcon, enrich)
+    // Drainage after the next Galcon start belongs to that next irrigation.
+    const dg = { ...d, events: splitTailsAtGalcon(deviceId, d.events, galcon) };
+    body.innerHTML = irrTimelineHtml(deviceId, dg, galcon, enrich)
       + `<details class="irl-details"><summary>🔍 השוואה מפורטת: תחנה ↔ Galcon ↔ בדיקות ידניות</summary>
-          <div>${irrModalHtml(deviceId, d, galcon, dripperFlow)}</div></details>`;
+          <div>${irrModalHtml(deviceId, dg, galcon, dripperFlow)}</div></details>`;
     hidden.forEach(k => body.querySelector(`[data-irl-toggle="${k}"]`)?.click());
   }
 
