@@ -3022,13 +3022,16 @@
       const dTail     = byOut ? dIn  : dOut;
 
       if (dBoundary > 0){
-        if (!cur || (lastBoundaryTime && (r.time - lastBoundaryTime) >= gapMs)){
-          cur = { startTime:r.time, endTime:r.time, pulsesIn:0, pulsesOut:0, samples:[] };
+        // new event: first ever, the drip had stopped, or a long hole in the data
+        if (!cur || dripEnded || (lastBoundaryTime && (r.time - lastBoundaryTime) >= gapMs)){
+          cur = { startTime:r.time, endTime:r.time, drainEndTime:null, pulsesIn:0, pulsesOut:0, samples:[] };
           events.push(cur);
+          dripEnded = false;
         }
         cur.pulsesIn  += dIn;
         cur.pulsesOut += dOut;
-        cur.endTime = r.time;
+        cur.endTime = r.time;              // irrigation end = last drip
+        if (dTail > 0) cur.drainEndTime = r.time;
         // keep the whole reading so the sensor values (EC/pH/…) measured at this
         // exact moment can be shown next to the irrigation
         cur.samples.push({ time:r.time, item:r.item, dIn, dOut });
