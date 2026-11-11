@@ -3003,7 +3003,12 @@
     const gapMs = (gapMin || IRRIG_GAP_MIN) * 60000;
     const ml = waterMl(deviceId);
     const byOut = boundaryField === "out";
+    const endMs = DRIP_END_MIN * 60000;
     let prevIn = null, prevOut = null, lastBoundaryTime = null, cur = null;
+    // true once the drip of `cur` has stopped (a reading with no drip ≥
+    // DRIP_END_MIN after the last one) — the next drip then starts a new event,
+    // while drain still flowing meanwhile keeps counting into `cur`.
+    let dripEnded = false;
     const events = [];
     for (const r of readings){
       let dIn = 0, dOut = 0;
