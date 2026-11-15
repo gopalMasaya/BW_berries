@@ -15,29 +15,29 @@
  */
 
 const EXPECTED_INTERVAL_MIN = 5;
-const GAP_MIN = 20;                    // a longer silence counts as a gap
+const GAP_MIN = 20; // a longer silence counts as a gap
 const OFFLINE_WARN_MIN = 20;
 const OFFLINE_CRIT_MIN = 120;
-const MISSING_AFTER_H = 6;             // field silent this long = stopped
-const FIELD_MEMORY_DAYS = 7;           // ...if it was seen within this window
+const MISSING_AFTER_H = 6; // field silent this long = stopped
+const FIELD_MEMORY_DAYS = 7; // ...if it was seen within this window
 const STUCK_WINDOW_H = 3;
-const STUCK_FIELDS = ["ec", "ec2", "ph1", "ph2", "vpd", "air_temp", "air_rh"];
+const STUCK_FIELDS = ['ec', 'ec2', 'ph1', 'ph2', 'vpd', 'air_temp', 'air_rh'];
 // Fields that are counters/status, not sensors: never "stopped reporting".
 const NOT_SENSORS = new Set([
-  "uptime", "wifiFails", "apiFails", "modemFails", "resetReason", "csq",
-  "rssi", "wifi_rssi", "queued", "queueDropped", "ageSec", "voltage",
-  "waterIn", "waterOut", "spoon1_l", "spoon2_l", "spoon1_tips", "spoon2_tips",
-  "tension1_v", "weight_kg",
+  'uptime', 'wifiFails', 'apiFails', 'modemFails', 'resetReason', 'csq',
+  'rssi', 'wifi_rssi', 'queued', 'queueDropped', 'ageSec', 'voltage',
+  'waterIn', 'waterOut', 'spoon1_l', 'spoon2_l', 'spoon1_tips', 'spoon2_tips',
+  'tension1_v', 'weight_kg',
 ]);
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
 
 function ilParts(t) {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jerusalem", hourCycle: "h23",
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit",
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jerusalem', hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
   }).formatToParts(t).reduce((a, x) => (a[x.type] = x.value, a), {});
 }
 const fmtIL = (t) => {
@@ -47,12 +47,12 @@ const fmtIL = (t) => {
 
 /** Readings of the last `ms`, oldest first: [{t, item}]. */
 async function fetchRecent(db, stationId, now, ms) {
-  const from = new Date(now - ms - DAY);  // slack: device keys are IL time
+  const from = new Date(now - ms - DAY); // slack: device keys are IL time
   const months = [];
   const cur = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1));
   while (cur <= now) {
     months.push({
-      mk: String(cur.getUTCMonth() + 1).padStart(2, "0") + cur.getUTCFullYear(),
+      mk: String(cur.getUTCMonth() + 1).padStart(2, '0') + cur.getUTCFullYear(),
       first: cur.getUTCFullYear() === from.getUTCFullYear() &&
         cur.getUTCMonth() === from.getUTCMonth(),
     });
@@ -61,10 +61,10 @@ async function fetchRecent(db, stationId, now, ms) {
   const out = [];
   await Promise.all(months.map(async ({mk, first}) => {
     let q = db.ref(`berries/${stationId}/${mk}`).orderByKey();
-    if (first) q = q.startAt(String(from.getUTCDate()).padStart(2, "0"));
+    if (first) q = q.startAt(String(from.getUTCDate()).padStart(2, '0'));
     const val = (await q.get()).val() || {};
     for (const item of Object.values(val)) {
-      if (!item || typeof item !== "object" || !item.serverTimestamp) continue;
+      if (!item || typeof item !== 'object' || !item.serverTimestamp) continue;
       const t = Date.parse(item.serverTimestamp);
       if (Number.isFinite(t) && t >= now - ms && t <= now) out.push({t, item});
     }
@@ -76,7 +76,7 @@ async function fetchRecent(db, stationId, now, ms) {
 async function lastReadingTime(db, stationId) {
   const d = new Date();
   for (let i = 0; i < 3; i++) {
-    const mk = String(d.getUTCMonth() + 1).padStart(2, "0") + d.getUTCFullYear();
+    const mk = String(d.getUTCMonth() + 1).padStart(2, '0') + d.getUTCFullYear();
     const val = (await db.ref(`berries/${stationId}/${mk}`)
         .orderByKey().limitToLast(5).get()).val() || {};
     const ts = Object.values(val).map((x) => Date.parse(x && x.serverTimestamp))
@@ -117,7 +117,7 @@ function assess(stationId, rows, prev, now) {
   }
   for (const {t, item} of rows) {
     for (const [f, v] of Object.entries(item)) {
-      if (typeof v === "number" && Number.isFinite(v) &&
+      if (typeof v === 'number' && Number.isFinite(v) &&
           !(fieldsSeen[f] >= t)) fieldsSeen[f] = t;
     }
   }
@@ -128,14 +128,14 @@ function assess(stationId, rows, prev, now) {
 
   // ---- online ----
   if (silentMin == null) {
-    add("crit", "offline", "התחנה לא שידרה בכלל ב-3 החודשים האחרונים",
-        "לבדוק חשמל/סוללה ותקשורת באתר (נורות, חיבור לרשת).");
+    add('crit', 'offline', 'התחנה לא שידרה בכלל ב-3 החודשים האחרונים',
+        'לבדוק חשמל/סוללה ותקשורת באתר (נורות, חיבור לרשת).');
   } else if (silentMin >= OFFLINE_CRIT_MIN) {
-    add("crit", "offline",
-        `התחנה לא משדרת כבר ${silentMin >= 1440 ? Math.round(silentMin / 1440) + " ימים" : Math.round(silentMin / 60) + " שעות"} (אחרון: ${fmtIL(lastSeen)})`,
-        "לבדוק חשמל/סוללה ותקשורת באתר; אם הלוח דולק — לחבר USB ולקרוא את ה-Serial.");
+    add('crit', 'offline',
+        `התחנה לא משדרת כבר ${silentMin >= 1440 ? Math.round(silentMin / 1440) + ' ימים' : Math.round(silentMin / 60) + ' שעות'} (אחרון: ${fmtIL(lastSeen)})`,
+        'לבדוק חשמל/סוללה ותקשורת באתר; אם הלוח דולק — לחבר USB ולקרוא את ה-Serial.');
   } else if (silentMin >= OFFLINE_WARN_MIN) {
-    add("warn", "late", `אין קריאה כבר ${silentMin} דקות`, "לעקוב — ייתכן ניתוק תקשורת קצר.");
+    add('warn', 'late', `אין קריאה כבר ${silentMin} דקות`, 'לעקוב — ייתכן ניתוק תקשורת קצר.');
   }
 
   // ---- coverage and gaps (24 h) ----
@@ -150,7 +150,7 @@ function assess(stationId, rows, prev, now) {
   const longest = gaps.reduce((a, g) => (!a || g.min > a.min ? g : a), null);
   const lateRows = rows.filter((r) => r.item.ageSec).length;
 
-  const wifiFails24h = counterDelta(rows, "wifiFails");
+  const wifiFails24h = counterDelta(rows, 'wifiFails');
   const apiFailsMax = rows.reduce((a, r) =>
     Math.max(a, Number(r.item.apiFails) || 0), 0);
   let reboots = 0;
@@ -163,23 +163,23 @@ function assess(stationId, rows, prev, now) {
   if (rows.length && silentMin < OFFLINE_CRIT_MIN) {
     if (coverage < 0.9) {
       const commFail = (wifiFails24h || 0) > 50 || apiFailsMax > 0;
-      add(coverage < 0.5 ? "crit" : "warn", "coverage",
+      add(coverage < 0.5 ? 'crit' : 'warn', 'coverage',
           `רק ${Math.round(coverage * 100)}% מהקריאות הצפויות הגיעו ב-24 ש׳ ` +
           `(${rows.length}/${expected}); ${gaps.length} פערים מעל ${GAP_MIN} דק׳` +
-          (longest ? `, הארוך ${longest.min} דק׳ מ-${fmtIL(longest.from)}` : ""),
+          (longest ? `, הארוך ${longest.min} דק׳ מ-${fmtIL(longest.from)}` : ''),
           commFail ?
-            "ניתוקי תקשורת: לבדוק את הנתב/נקודת הגישה (יציבות, חשמל בלילה); " +
-            "קושחה עם תור לא-מקוון ממלאת פערים קצרים." :
-            "התחנה לא דיווחה על כשלי תקשורת — לבדוק אתחולים/חשמל.");
+            'ניתוקי תקשורת: לבדוק את הנתב/נקודת הגישה (יציבות, חשמל בלילה); ' +
+            'קושחה עם תור לא-מקוון ממלאת פערים קצרים.' :
+            'התחנה לא דיווחה על כשלי תקשורת — לבדוק אתחולים/חשמל.');
     }
   }
   if ((wifiFails24h || 0) > 50) {
-    add("warn", "wifi", `${wifiFails24h} ניסיונות חיבור WiFi כושלים ב-24 ש׳`,
-        "לבדוק את הנתב: מרחק/הפרעות, כיבוי לילי, עומס. אם העוצמה טובה — הבעיה בנתב או באינטרנט שלו.");
+    add('warn', 'wifi', `${wifiFails24h} ניסיונות חיבור WiFi כושלים ב-24 ש׳`,
+        'לבדוק את הנתב: מרחק/הפרעות, כיבוי לילי, עומס. אם העוצמה טובה — הבעיה בנתב או באינטרנט שלו.');
   }
   if (reboots > 0) {
-    add(reboots > 2 ? "warn" : "info", "reboot", `${reboots} אתחולים של הבקר ב-24 ש׳`,
-        "לבדוק יציבות ספק כוח / watchdog; אם חוזר — לקרוא Serial אחרי אתחול.");
+    add(reboots > 2 ? 'warn' : 'info', 'reboot', `${reboots} אתחולים של הבקר ב-24 ש׳`,
+        'לבדוק יציבות ספק כוח / watchdog; אם חוזר — לקרוא Serial אחרי אתחול.');
   }
 
   // ---- sensors that stopped reporting ----
@@ -188,39 +188,39 @@ function assess(stationId, rows, prev, now) {
         now - t > MISSING_AFTER_H * HOUR && (!lastSeen || lastSeen - t > MISSING_AFTER_H * HOUR))
       .map(([f, t]) => ({field: f, since: t}));
   if (missing.length && rows.length) {
-    add("warn", "missing",
-        "חיישנים שהפסיקו לשדר (התחנה עצמה משדרת): " +
-        missing.map((m) => `${m.field} (מאז ${fmtIL(m.since)})`).join(", "),
-        "לבדוק חיבור/חשמל של החיישן (RS485: A/B, הזנה, כתובת). הקושחה שולחת שדה רק כשהקריאה תקינה.");
+    add('warn', 'missing',
+        'חיישנים שהפסיקו לשדר (התחנה עצמה משדרת): ' +
+        missing.map((m) => `${m.field} (מאז ${fmtIL(m.since)})`).join(', '),
+        'לבדוק חיבור/חשמל של החיישן (RS485: A/B, הזנה, כתובת). הקושחה שולחת שדה רק כשהקריאה תקינה.');
   }
 
   // ---- frozen sensors ----
   const stuck = [];
   const recent = live.filter((r) => now - r.t <= STUCK_WINDOW_H * HOUR);
   for (const f of STUCK_FIELDS) {
-    const vals = recent.map((r) => Number(r.item[f + "Raw"] ?? r.item[f]))
+    const vals = recent.map((r) => Number(r.item[f + 'Raw'] ?? r.item[f]))
         .filter(Number.isFinite);
     if (vals.length >= 20 && Math.max(...vals) === Math.min(...vals)) {
       stuck.push({field: f, value: vals[0]});
     }
   }
   if (stuck.length) {
-    add("warn", "stuck",
+    add('warn', 'stuck',
         `ערך קפוא ${STUCK_WINDOW_H} שעות: ` +
-        stuck.map((s) => `${s.field}=${s.value}`).join(", "),
-        "חיישן שלא זז בכלל כנראה מנותק או תקוע — לבדוק/לנקות את הגשש.");
+        stuck.map((s) => `${s.field}=${s.value}`).join(', '),
+        'חיישן שלא זז בכלל כנראה מנותק או תקוע — לבדוק/לנקות את הגשש.');
   }
 
   // ---- offline queue (firmware with ageSec) ----
   const queued = last ? Number(last.item.queued) : NaN;
-  const queueDropped24h = counterDelta(rows, "queueDropped");
+  const queueDropped24h = counterDelta(rows, 'queueDropped');
   if ((queueDropped24h || 0) > 0) {
-    add("warn", "queue-drop", `${queueDropped24h} קריאות נזרקו מהתור הלא-מקוון (התור התמלא)`,
-        "הניתוק ארוך מ-3 שעות — לטפל ביציבות הרשת או להגדיל את התור.");
+    add('warn', 'queue-drop', `${queueDropped24h} קריאות נזרקו מהתור הלא-מקוון (התור התמלא)`,
+        'הניתוק ארוך מ-3 שעות — לטפל ביציבות הרשת או להגדיל את התור.');
   }
 
-  const level = issues.some((i) => i.level === "crit") ? "crit" :
-    issues.some((i) => i.level === "warn") ? "warn" : "ok";
+  const level = issues.some((i) => i.level === 'crit') ? 'crit' :
+    issues.some((i) => i.level === 'warn') ? 'warn' : 'ok';
   return {
     stationId, checkedAt: now, status: level,
     lastSeen, silentMin,
@@ -240,8 +240,8 @@ function assess(stationId, rows, prev, now) {
 /** Check every station; write health/* unless write === false. */
 async function runHealthCheck(db, {write = true} = {}) {
   const now = Date.now();
-  const registry = (await db.ref("stations").get()).val() || {};
-  const prevAll = (await db.ref("health/stations").get()).val() || {};
+  const registry = (await db.ref('stations').get()).val() || {};
+  const prevAll = (await db.ref('health/stations').get()).val() || {};
   const ids = Object.keys(registry).sort();
   const out = {};
   for (const id of ids) {
@@ -255,7 +255,7 @@ async function runHealthCheck(db, {write = true} = {}) {
         const fieldsSeen = {};
         for (const {t, item} of week) {
           for (const [f, v] of Object.entries(item)) {
-            if (typeof v === "number" && Number.isFinite(v)) fieldsSeen[f] = t;
+            if (typeof v === 'number' && Number.isFinite(v)) fieldsSeen[f] = t;
           }
         }
         const lastSeen = week.length ? week[week.length - 1].t :
@@ -264,7 +264,7 @@ async function runHealthCheck(db, {write = true} = {}) {
       }
       out[id] = assess(id, rows, prev, now);
     } catch (e) {
-      out[id] = {stationId: id, checkedAt: now, status: "error", error: String(e.message || e)};
+      out[id] = {stationId: id, checkedAt: now, status: 'error', error: String(e.message || e)};
     }
   }
   // Stations silent at the same moment share a cause: the site's network or
@@ -275,25 +275,25 @@ async function runHealthCheck(db, {write = true} = {}) {
     for (const g of h.gapList.filter((x) => x.min >= 30)) {
       const others = list.filter((o) => o !== h && o.gapList.some((x) =>
         x.min >= 30 && Math.abs(x.from - g.from) <= 10 * 60000)).map((o) => o.stationId);
-      if (others.length) shared.push(`${fmtIL(g.from)} (${g.min} דק׳, גם ${others.join(", ")})`);
+      if (others.length) shared.push(`${fmtIL(g.from)} (${g.min} דק׳, גם ${others.join(', ')})`);
     }
     if (shared.length) {
-      h.issues.push({level: "info", code: "shared-outage",
-        text: "נפילה בו-זמנית עם תחנות אחרות: " + shared.join("; "),
-        fix: "סיבה משותפת — רשת/אינטרנט/חשמל באתר, לא התחנה עצמה. לבדוק את הנתב ואת מקור החשמל שלו."});
+      h.issues.push({level: 'info', code: 'shared-outage',
+        text: 'נפילה בו-זמנית עם תחנות אחרות: ' + shared.join('; '),
+        fix: 'סיבה משותפת — רשת/אינטרנט/חשמל באתר, לא התחנה עצמה. לבדוק את הנתב ואת מקור החשמל שלו.'});
     }
   }
 
   if (write) {
     const p = ilParts(new Date(now));
     const histKey = `${p.year}-${p.month}-${p.day}_${p.hour}`;
-    const updates = {"health/lastRun": now};
+    const updates = {'health/lastRun': now};
     for (const [id, h] of Object.entries(out)) {
       updates[`health/stations/${id}`] = h;
       updates[`health/history/${id}/${histKey}`] = {
         status: h.status, coverage: h.coverage ?? null,
         wifiFails24h: h.wifiFails24h ?? null, gaps24h: h.gaps24h ?? null,
-        issues: (h.issues || []).map((i) => i.code).join(",") || null,
+        issues: (h.issues || []).map((i) => i.code).join(',') || null,
       };
     }
     await db.ref().update(updates);
