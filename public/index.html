@@ -2788,7 +2788,12 @@
         jobs.push((want ? ref.startAt(want) : ref).endAt(e.fromKey).once("value"));
       }
       if (!monthClosed(mk) && Date.now() - e.fetchedAt > MONTH_TAIL_REFRESH_MS){
-        const last = lastReadingKey(e.data);
+        // Start 3 h before the newest key: a station that was offline sends its
+        // queued readings late, filed at their own (earlier) time (ageSec).
+        let last = lastReadingKey(e.data);
+        if (last && /^\d{8}_\d{6}$/.test(last)){
+          last = last.slice(0, 9) + String(Math.max(0, +last.slice(9, 11) - 3)).padStart(2, "0") + "0000";
+        }
         jobs.push((last ? ref.startAt(last) : e.fromKey ? ref.startAt(e.fromKey) : ref).once("value"));
       }
       if (jobs.length){
