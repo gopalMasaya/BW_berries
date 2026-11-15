@@ -738,66 +738,222 @@
       });
     }
 
-    function renderVpd(days, st, fc) {
+    // ---- metric picker: what the timeline shows ----
+    // vpd: station vs FieldClimate, point for point. Everything else: station vs
+    // the manual records, each at its performedAt. kind "event" = per irrigation
+    // (station pulses grouped into irrigation events), "reading" = the station's
+    // calibrated EC/pH readings. `points`: drainPct gaps are percentage points.
+    const METRICS = {
+      vpd:      { title: "VPD — התחנה שלנו מול FieldClimate", axis: "VPD (kPa)", unit: " kPa", dec: 2, zero: true },
+      dripMl:   { title: "טפטפת — מ״ל להשקיה לצמח", axis: "טפטפת (מ״ל להשקיה)", unit: " מ״ל", dec: 0, zero: true, kind: "event", manF: "dripMl" },
+      drainMl:  { title: "נקז — מ״ל להשקיה לצמח", axis: "נקז (מ״ל להשקיה)", unit: " מ״ל", dec: 0, zero: true, kind: "event", manF: "drainMl" },
+      drainPct: { title: "אחוז נקז להשקיה", axis: "נקז (%)", unit: "%", dec: 1, zero: true, kind: "event", points: true },
+      ecIn:     { title: "EC טפטפת (dS/m)", axis: "EC טפטפת (dS/m)", unit: " dS/m", dec: 2, zero: true, kind: "reading", manF: "dripEc" },
+      ecOut:    { title: "EC נקז (dS/m)", axis: "EC נקז (dS/m)", unit: " dS/m", dec: 2, zero: true, kind: "reading", manF: "drainEc" },
+      ph1:      { title: "pH טפטפת", axis: "pH טפטפת", unit: "", dec: 2, zero: false, kind: "reading", manF: "dripPh" },
+      ph2:      { title: "pH נקז", axis: "pH נקז", unit: "", dec: 2, zero: false, kind: "reading", manF: "drainPh" },
+    };
+    const METRIC_STORAGE_KEY = "compare.metric";
+    const EVENT_GAP_MS = 15 * 60000;     // no drip for 15 min = a new irrigation
+    const READ_TOL_MS = 15 * 60000;      // manual cup vs. station reading (as calibration.js)
+    const EVENT_BEFORE_MS = 3 * HOUR;    // the cup is read after the irrigation ends
+    const EVENT_AFTER_MS = 30 * 60000;
+    // Data of the last load, so switching metric doesn't refetch.
+    const tl = { days: null, readings: [], manual: new Map(), calibrate: null, ml: null, fc: [], events: null };
+
+    // Station irrigations from the cumulative pulse counters (reset-aware). Drain
+    // keeps counting into the latest irrigation until the next one starts.
+    function stationEvents() {
+      if (tl.events) return tl.events;
+      const evs = [];
+      let prevIn = null, prevOut = null, cur = null, lastIn = 0;
+      for (const { t, item } of tl.readings) {
+        const wIn = Number(item.waterIn) || 0, wOut = Number(item.waterOut) || 0;
+        const dIn = prevIn === null ? 0 : (wIn >= prevIn ? wIn - prevIn : wIn);
+        const dOut = prevOut === null ? 0 : (wOut >= prevOut ? wOut - prevOut : wOut);
+        prevIn = wIn; prevOut = wOut;
+        const x = t.getTime();
+        if (dIn > 0) {
+          if (!cur || x - lastIn > EVENT_GAP_MS) { cur = { x, inP: 0, outP: 0 }; evs.push(cur); }
+          cur.inP += dIn; lastIn = x;
+        }
+        if (dOut > 0 && cur) cur.outP += dOut;
+      }
+      const ml = tl.ml || { in: 2.4, out: 2.4 };
+      tl.events = evs.map(e => {
+        const drip = e.inP * ml.in, drain = e.outP * ml.out;
+        return { x: e.x, dripMl: drip, drainMl: drain, drainPct: drip > 0 ? drain / drip * 100 : null };
+      });
+      return tl.events;
+    }
+
+    function stationReadingPoints(field) {
+      const out = [];
+      for (const { t, item } of tl.readings) {
+        if (item.calMode) continue;
+        const v = tl.calibrate(item, ilDay(t))[field];
+        if (v != null && Number.isFinite(v)) out.push({ x: t.getTime(), y: v });
+      }
+      return out;
+    }
+
+    function manualPoints(key, m) {
+      const out = [];
+      for (const [day, recs] of tl.manual) {
+        for (const r of recs) {
+          const s = String(r.performedAt || "");
+          const x = s.length >= 16 && s[10] === "T" ? ilToMs(day, s.slice(11, 13) + s.slice(14, 16)) : ilToMs(day, "1200");
+          const drip = Number(r.dripMl) || 0, drain = Number(r.drainMl) || 0;
+          const y = key === "drainPct" ? (drip > 0 ? drain / drip * 100 : null) : pos(r[m.manF]);
+          if (y != null && Number.isFinite(y)) out.push({ x, y });
+        }
+      }
+      return out.sort((a, b) => a.x - b.x);
+    }
+
+    // Each manual record against the station: the nearest reading within 15 min,
+    // or the latest irrigation that started up to 3 h before (30 min after) it.
+    function pairManual(st, man, kind) {
+      const pairs = [];
+      for (const p of man) {
+        let best = null;
+        if (kind === "event") {
+          for (const e of st) if (e.x >= p.x - EVENT_BEFORE_MS && e.x <= p.x + EVENT_AFTER_MS) best = e;
+        } else {
+          for (const r of st) if (Math.abs(r.x - p.x) <= READ_TOL_MS && (!best || Math.abs(r.x - p.x) < Math.abs(best.x - p.x))) best = r;
+        }
+        if (best) pairs.push({ x: p.x, s: best.y, f: p.y });
+      }
+      return pairs;
+    }
+
+    const metricSel = document.getElementById("vpdMetric");
+    try { const m = localStorage.getItem(METRIC_STORAGE_KEY); if (METRICS[m]) metricSel.value = m; } catch {}
+    metricSel.addEventListener("change", () => {
+      try { localStorage.setItem(METRIC_STORAGE_KEY, metricSel.value); } catch {}
+      if (tl.days) renderTimeline(true);
+    });
+
+    // keepWindow: switching metric keeps the time window the user is looking at.
+    function renderTimeline(keepWindow) {
+      const key = METRICS[metricSel.value] ? metricSel.value : "vpd";
+      const m = METRICS[key], isVpd = key === "vpd";
+      const days = tl.days;
+      const prev = keepWindow && vpd.charts.length ? { min: vpd.charts[0].scales.x.min, max: vpd.charts[0].scales.x.max } : null;
       vpd.charts.forEach(c => c.destroy());
       vpd.charts = [];
+
+      const refName = isVpd ? "FieldClimate" : "מדידה ידנית";
+      const refCls = isVpd ? "src-fc" : "src-manual";
+      const C_REF = isVpd ? C_FC : C_MAN;
+      document.getElementById("vpdTitle").textContent = isVpd ? m.title : `${m.title} — התחנה שלנו מול מדידה ידנית`;
+      document.getElementById("vpdLblMain").textContent = m.axis;
+      document.getElementById("vpdLegend").innerHTML =
+        `<span class="src-dot src-station"></span>התחנה שלנו &nbsp;<span class="src-dot ${refCls}"></span>${refName}. ` +
+        (isVpd ? "שני המקורות מודדים כל 5 דקות. "
+          : m.kind === "event" ? "כל נקודה של התחנה = השקיה אחת (הפסקה של 15 דק׳ בטפטוף = השקיה חדשה), לצמח. "
+          : "התחנה כל 5 דקות (מכויל), המדידה הידנית בשעת הדגימה. ");
+      document.getElementById("vpdLblGap").textContent = isVpd
+        ? "סטייה של התחנה מ-FieldClimate (%) — רק כש-FieldClimate ≥ 0.5 kPa, כי בלילה VPD קרוב לאפס והאחוז חסר משמעות"
+        : m.points
+          ? "פער התחנה מהמדידה הידנית (נקודות אחוז) — בכל מדידה ידנית, מול ההשקיה האחרונה שלפניה (עד 3 שעות)"
+          : `פער התחנה מהמדידה הידנית (%) — בכל מדידה ידנית, מול ${m.kind === "event" ? "ההשקיה האחרונה שלפניה (עד 3 שעות)" : "קריאת התחנה הקרובה (עד 15 דק׳)"}`;
+      document.querySelectorAll(".vpd-ref-th").forEach((th, i) =>
+        th.innerHTML = `<span class="src-dot ${refCls}"></span>${i ? "שיא" : "ממוצע"} ${refName === "מדידה ידנית" ? "ידני" : refName}`);
+
       // The station fetch starts a day early (pulse-counter baseline); keep the
       // timeline to the chosen range.
       const t0 = ilToMs(days[0], "0000");
-      st = st.filter(p => p.x >= t0); fc = fc.filter(p => p.x >= t0);
-      vpd.pairs = pairVpd(st, fc);
+      let st, ref;
+      if (isVpd) { st = stationVpdPoints(tl.readings); ref = tl.fc; }
+      else {
+        st = m.kind === "event"
+          ? stationEvents().map(e => ({ x: e.x, y: e[key] })).filter(p => p.y != null && Number.isFinite(p.y))
+          : stationReadingPoints(key);
+        ref = manualPoints(key, m);
+      }
+      st = st.filter(p => p.x >= t0); ref = ref.filter(p => p.x >= t0);
+      vpd.pairs = isVpd ? pairVpd(st, ref) : pairManual(st, ref, m.kind);
 
-      const xs = [...st, ...fc].map(p => p.x);
+      const xs = [...st, ...ref].map(p => p.x);
       vpd.min = xs.length ? Math.min(...xs) : Date.now() - 24 * HOUR;
       vpd.max = xs.length ? Math.max(...xs) : Date.now();
+      // At least a day of axis, so a single manual point isn't a zero-width chart.
+      if (vpd.max - vpd.min < 24 * HOUR) vpd.min = vpd.max - 24 * HOUR;
 
-      const gapPts = withBreaks(vpd.pairs.map(p => ({ x: p.x, y: p.f >= VPD_DAY_MIN ? (p.s - p.f) / p.f * 100 : null })));
+      const gapOf = (p) => isVpd ? (p.f >= VPD_DAY_MIN ? (p.s - p.f) / p.f * 100 : null)
+        : m.points ? p.s - p.f : relGap(p.s, p.f);
+      const gapRaw = vpd.pairs.map(p => ({ x: p.x, y: gapOf(p) }));
       const common = { maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
         interaction: { mode: "nearest", axis: "x", intersect: false } };
+
+      // Continuous series are lines; per-irrigation and manual values are dots.
+      const stLine = isVpd || m.kind === "reading";
+      const stDs = stLine
+        ? { data: withBreaks(st), borderWidth: 1.6, pointRadius: 0, tension: 0 }
+        : { data: st, showLine: false, pointRadius: 3.5, pointHoverRadius: 6 };
+      const refDs = isVpd
+        ? { data: withBreaks(ref), borderWidth: 1.6, pointRadius: 0, tension: 0 }
+        : { data: ref, showLine: false, pointRadius: 6, pointHoverRadius: 8, pointStyle: "rectRot", borderColor: "#fff", borderWidth: 1.5 };
+      const gapUnit = m.points ? " נק׳" : "%";
 
       vpd.charts.push(new Chart(document.getElementById("chVpd"), {
         type: "line",
         data: { datasets: [
-          { label: "התחנה שלנו", borderColor: C_ST, backgroundColor: C_ST, data: withBreaks(st), borderWidth: 1.6, pointRadius: 0, tension: 0 },
-          { label: "FieldClimate", borderColor: C_FC, backgroundColor: C_FC, data: withBreaks(fc), borderWidth: 1.6, pointRadius: 0, tension: 0 },
+          { label: "התחנה שלנו", borderColor: C_ST, backgroundColor: C_ST, ...stDs },
+          { label: refName, backgroundColor: C_REF, ...(isVpd ? { borderColor: C_REF } : {}), ...refDs },
         ] },
         options: { ...common,
           plugins: { legend: { position: "top", align: "end", labels: { boxWidth: 18, boxHeight: 2, font: { size: 11 } } },
-                     tooltip: tooltipOpts(" kPa", 2), zoom: zoomOpts() },
-          scales: { x: vpdXScale(true), y: { beginAtZero: true, afterFit: vpdYWidth, ticks: { font: { size: 11 } }, grid: { color: "rgba(0,0,0,0.06)" } } },
+                     tooltip: tooltipOpts(m.unit, m.dec), zoom: zoomOpts() },
+          scales: { x: vpdXScale(true), y: { beginAtZero: m.zero, grace: m.zero ? 0 : "5%", afterFit: vpdYWidth, ticks: { font: { size: 11 } }, grid: { color: "rgba(0,0,0,0.06)" } } },
         },
       }));
       vpd.charts.push(new Chart(document.getElementById("chVpdGap"), {
         type: "line",
-        data: { datasets: [
-          { label: "סטייה", borderColor: C_FC, backgroundColor: "rgba(224,123,36,0.12)", fill: "origin",
-            data: gapPts, borderWidth: 1.4, pointRadius: 0, tension: 0 },
+        data: { datasets: [ isVpd
+          ? { label: "סטייה", borderColor: C_FC, backgroundColor: "rgba(224,123,36,0.12)", fill: "origin",
+              data: withBreaks(gapRaw), borderWidth: 1.4, pointRadius: 0, tension: 0 }
+          : { label: "פער", data: gapRaw.filter(p => p.y != null && Number.isFinite(p.y)), showLine: false, pointRadius: 5, pointHoverRadius: 7,
+              backgroundColor: (c) => { const v = c.raw && c.raw.y; return v != null && Math.abs(v) > GAP_ALERT ? "#d92d20" : C_MAN; } },
         ] },
         options: { ...common,
-          plugins: { legend: { display: false }, tooltip: tooltipOpts("%", 1), zoom: zoomOpts() },
+          plugins: { legend: { display: false }, tooltip: tooltipOpts(gapUnit, 1), zoom: zoomOpts() },
           scales: { x: vpdXScale(true),
-            y: { suggestedMin: -30, suggestedMax: 30, afterFit: vpdYWidth, ticks: { font: { size: 11 }, callback: (v) => "‎" + v + "%" },
+            y: { suggestedMin: -30, suggestedMax: 30, afterFit: vpdYWidth, ticks: { font: { size: 11 }, callback: (v) => "‎" + v + (m.points ? "" : "%") },
                  grid: { color: (c) => c.tick.value === 0 ? "rgba(0,0,0,0.4)" : Math.abs(c.tick.value) === GAP_ALERT ? "rgba(217,45,32,0.35)" : "rgba(0,0,0,0.06)" } } },
         },
       }));
 
-      const rows = dailyVpd(days, vpd.pairs).reverse();
+      // Daily summary of the paired points (station value matched to each reference value).
+      const fmtG = (g) => m.points && g != null
+        ? `<span class="${Math.abs(g) > GAP_ALERT ? "gap-bad" : ""}" dir="ltr">${g > 0 ? "+" : ""}${g.toFixed(1)}</span>`
+        : fmtGap(g);
+      const rows = dailyVpd(days, vpd.pairs).map(r => m.points ? { ...r, gapMean: r.sMean - r.fMean, gapMax: r.sMax - r.fMax } : r).reverse();
       document.getElementById("vpdBody").innerHTML = rows.length ? rows.map(r => `<tr data-day="${r.day}">
           <td>${fmtDay(r.day)}</td>
-          <td class="num">${fmt(r.sMean, 2)}</td><td class="num">${fmt(r.fMean, 2)}</td><td class="num">${fmtGap(r.gapMean)}</td>
-          <td class="num">${fmt(r.sMax, 2)}</td><td class="num">${fmt(r.fMax, 2)}</td><td class="num">${fmtGap(r.gapMax)}</td>
+          <td class="num">${fmt(r.sMean, m.dec)}</td><td class="num">${fmt(r.fMean, m.dec)}</td><td class="num">${fmtG(r.gapMean)}</td>
+          <td class="num">${fmt(r.sMax, m.dec)}</td><td class="num">${fmt(r.fMax, m.dec)}</td><td class="num">${fmtG(r.gapMax)}</td>
         </tr>`).join("") : `<tr><td colspan="7" class="no-data">אין נקודות משותפות לשני המקורות בטווח שנבחר</td></tr>`;
 
-      // Start on the last day of the range (after the table, so its row lights up).
-      setVpdWindow(vpd.max - vpd.win, vpd.max);
+      // Start on the last day of the range (after the table, so its row lights up),
+      // or stay where the user was when only the metric changed.
+      if (prev) setVpdWindow(prev.min, prev.max);
+      else setVpdWindow(vpd.max - vpd.win, vpd.max);
 
-      const ps = vpd.pairs, day = ps.filter(p => p.f >= VPD_DAY_MIN);
+      const ps = vpd.pairs;
       const sAll = mean(ps.map(p => p.s)), fAll = mean(ps.map(p => p.f));
-      document.getElementById("vpdStatus").innerHTML = ps.length
-        ? `בכל הטווח: ממוצע התחנה <b>${fmt(sAll, 2)}</b> מול FieldClimate <b>${fmt(fAll, 2)}</b> kPa — סטייה ${fmtGap(relGap(sAll, fAll))}` +
-          (day.length ? ` · בשעות היום ${fmtGap(relGap(mean(day.map(p => p.s)), mean(day.map(p => p.f))))}` : "") +
-          ` <span class="muted">(${ps.length} נקודות משותפות)</span>`
-        : `אין נקודות משותפות (תחנה: ${st.length} קריאות, FieldClimate: ${fc.length} קריאות)`;
+      const gAll = m.points ? (sAll != null && fAll != null ? sAll - fAll : null) : relGap(sAll, fAll);
+      const unitTxt = m.unit.trim();
+      let html = ps.length
+        ? `בכל הטווח: ממוצע התחנה <b>${fmt(sAll, m.dec)}</b> מול ${refName} <b>${fmt(fAll, m.dec)}</b> ${unitTxt} — ${isVpd ? "סטייה" : "פער"} ${fmtG(gAll)}`
+        : `אין נקודות משותפות (תחנה: ${st.length} ${m.kind === "event" ? "השקיות" : "קריאות"}, ${refName}: ${ref.length} ${isVpd ? "קריאות" : "מדידות"})`;
+      if (ps.length && isVpd) {
+        const day = ps.filter(p => p.f >= VPD_DAY_MIN);
+        if (day.length) html += ` · בשעות היום ${fmtGap(relGap(mean(day.map(p => p.s)), mean(day.map(p => p.f))))}`;
+      }
+      if (ps.length) html += ` <span class="muted">(${ps.length} ${isVpd ? "נקודות משותפות" : "מדידות ידניות מותאמות"})</span>`;
+      document.getElementById("vpdStatus").innerHTML = html;
     }
 
     document.getElementById("vpdBar").addEventListener("click", (ev) => {
