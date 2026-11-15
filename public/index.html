@@ -2908,6 +2908,9 @@
     Object.keys(history).forEach(f => {
       if (!SQUARE_SKIP.has(f) && !f.toLowerCase().includes("timestamp")) candidates.add(f);
     });
+    // A real load cell (weight_kg) replaces the old scale1 field — both are "משקל",
+    // so an old scale1 (0, from an earlier firmware) would show as a second tile.
+    if (candidates.has("weight_kg")) candidates.delete("scale1");
 
     const orderOf = k => { const i = SENSOR_FIELDS.indexOf(k); return i < 0 ? 999 : i; };
     const keys = [...candidates].sort((a, b) => orderOf(a) - orderOf(b) || a.localeCompare(b));

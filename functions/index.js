@@ -1447,6 +1447,12 @@ async function stationProbeDay(db, stationId, day) {
   if (!plot) return null;
   const fieldOf = {};
   for (const [f, line] of Object.entries(plot.map || {})) fieldOf[line] = f;
+  // Location set without a probe map (station4 at B01): fall back to the
+  // dashboard's own labels — ec = "EC יציאה" (drain), ec2 = "EC כניסה" (feed).
+  if (!Object.keys(fieldOf).length) {
+    fieldOf.drainEc = "ec";
+    fieldOf.dripEc = "ec2";
+  }
   const lines = PROBE_LINES.filter((l) => fieldOf[l]);
   // Per-plant water, as the dashboard computes it (waterMl in index.html): the
   // drip meter sits on ONE dripper of a plant, the drain meter collects all
