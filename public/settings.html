@@ -244,6 +244,7 @@
             החלקה שבה עומדת התחנה קובעת איזה ברז Galcon מוצג לידה (למשל B07 = בקר B, ברז 7) ואילו בדיקות ידניות
             מושוות אליה. המיקום מוצג ליד שם התחנה בכל האפליקציה. כשמעבירים תחנה מוסיפים שורה מיום המעבר —
             הימים שלפני נשארים עם המיקום הקודם.
+            אפשר לדייק עם גמלון ושורה: <b dir="ltr">B01.02.03</b> = חלקה B01, גמלון 2, שורה 3.
           </span>
           <div id="locList" style="margin-top:12px;font-size:14px;"></div>
           <div class="form-grid" style="margin-top:14px;">
@@ -254,6 +255,18 @@
             <div class="field">
               <label>חלקה / ברז</label>
               <select id="locCode" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;background:var(--card);color:var(--text);font-family:inherit;"></select>
+            </div>
+            <div class="field">
+              <label>גמלון <span style="color:var(--muted);">(לא חובה)</span></label>
+              <input id="locGable" type="number" min="1" max="999" step="1" inputmode="numeric" dir="ltr" placeholder="למשל 2" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;background:var(--card);color:var(--text);font-family:inherit;" />
+            </div>
+            <div class="field">
+              <label>שורה <span style="color:var(--muted);">(לא חובה)</span></label>
+              <input id="locRow" type="number" min="1" max="999" step="1" inputmode="numeric" dir="ltr" placeholder="למשל 3" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:15px;background:var(--card);color:var(--text);font-family:inherit;" />
+            </div>
+            <div class="field">
+              <label>מיקום מדויק</label>
+              <div id="locPreview" dir="ltr" style="padding:10px 12px;font-size:16px;font-weight:700;text-align:right;"></div>
             </div>
             <div class="field">
               <label>חיישן EC <span dir="ltr" style="color:var(--muted);">(ec)</span></label>
@@ -1077,7 +1090,7 @@
     // ===================== Station location (plot / Galcon valve) =====================
     // Rows at berries/{stationId}/control/location/{pushId} = { from, code, map };
     // merged with the old hard-coded defaults by public/plots.js.
-    const locEls = Object.fromEntries(["locList", "locFrom", "locCode", "locAddBtn", "locMsg",
+    const locEls = Object.fromEntries(["locList", "locFrom", "locCode", "locGable", "locRow", "locPreview", "locAddBtn", "locMsg",
       ...Plots.FIELDS.map(f => "locMap_" + f)].map(id => [id, document.getElementById(id)]));
     let locUnsub = null, locRows = {};
     const locSay = (text, bad) => {
@@ -1089,6 +1102,14 @@
       const i = Plots.INFO[c];
       return `<option value="${c}">${c}${i.variety ? " · " + i.variety : ""}${i.pots ? " · " + i.pots + " עציצים" : ""}</option>`;
     }).join("");
+    const locPos = () => ({
+      code: locEls.locCode.value,
+      gable: parseInt(locEls.locGable.value, 10) > 0 ? parseInt(locEls.locGable.value, 10) : null,
+      row: parseInt(locEls.locRow.value, 10) > 0 ? parseInt(locEls.locRow.value, 10) : null,
+    });
+    const locPreview = () => { locEls.locPreview.textContent = Plots.label(locPos()); };
+    ["locCode", "locGable", "locRow"].forEach(id => locEls[id].addEventListener("input", locPreview));
+    locEls.locCode.addEventListener("change", locPreview);
     const todayIl = () => { const p = ilParts(new Date()); return `${p.year}-${p.month}-${p.day}`; };
     const fmtDay = (f) => f ? f.split("-").reverse().join("/") : "מההתחלה";
 
@@ -1103,7 +1124,7 @@
           const info = Plots.INFO[r.code] || {};
           return `<tr>
             <td dir="ltr">${fmtDay(r.from)}</td>
-            <td><b>${r.code}</b>${info.variety ? " · " + info.variety : ""}</td>
+            <td><b dir="ltr">${Plots.label(r)}</b>${info.variety ? " · " + info.variety : ""}</td>
             <td dir="ltr">${mapTxt(r.map)}</td>
             <td>${id ? `<button class="btn" data-loc-del="${id}" style="padding:4px 10px;">מחק</button>`
               : `<span style="color:var(--muted);font-size:12px;">ברירת מחדל</span>`}</td>
@@ -1119,6 +1140,9 @@
       // The form starts from the location in force today.
       const cur = Plots.at(list, todayIl());
       if (cur) locEls.locCode.value = cur.code;
+      locEls.locGable.value = (cur && cur.gable) || "";
+      locEls.locRow.value = (cur && cur.row) || "";
+      locPreview();
       Plots.FIELDS.forEach(f => { locEls["locMap_" + f].value = (cur && cur.map[f]) || ""; });
     }
 
@@ -1136,7 +1160,9 @@
     locEls.locAddBtn.addEventListener("click", async () => {
       const stationId = stationSelect.value;
       const from = locEls.locFrom.value;                 // "YYYY-MM-DD"
-      const code = locEls.locCode.value;
+      const { code, gable, row } = locPos();
+      if (locEls.locGable.value && !gable || locEls.locRow.value && !row) { locSay("גמלון ושורה — מספר שלם חיובי.", true); return; }
+      if (row && !gable) { locSay("כשמציינים שורה צריך לציין גם גמלון.", true); return; }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) { locSay("בחר תאריך.", true); return; }
       if (!Plots.validCode(code)) { locSay("בחר חלקה.", true); return; }
       const map = {};
@@ -1153,10 +1179,12 @@
         await Promise.all(same.map(id => remove(ref(db, `berries/${stationId}/control/location/${id}`))));
         await push(ref(db, `berries/${stationId}/control/location`), {
           from, code, map,
+          ...(gable ? { gable } : {}),
+          ...(row ? { row } : {}),
           createdAt: new Date().toISOString(),
           createdBy: user.email || user.phoneNumber || user.uid,
         });
-        locSay(`נשמר: ${stationId} ב־${code} מ־${fmtDay(from)}.`);
+        locSay(`נשמר: ${stationId} ב־${Plots.label({ code, gable, row })} מ־${fmtDay(from)}.`);
       } catch (e) {
         locSay("שגיאה בשמירה: " + (e.message || e), true);
       } finally {

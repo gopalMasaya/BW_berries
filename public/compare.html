@@ -295,7 +295,7 @@
       let rows = null;
       try { rows = (await get(ref(db, `berries/${stationId}/control/location`))).val(); }
       catch (e) { console.warn("location", stationId, e); }
-      const plots = Plots.merge(stationId, rows).map(p => ({ from: p.from, code: p.code, fields: toFields(p.map) }));
+      const plots = Plots.merge(stationId, rows).map(p => ({ from: p.from, code: p.code, label: Plots.label(p), fields: toFields(p.map) }));
       return plots.length ? { stationId, plots } : null;
     }))).filter(Boolean);
     const plotAt = (pair, day) => pair.plots.find(p => day >= p.from) || pair.plots[pair.plots.length - 1];
@@ -1202,9 +1202,9 @@
       // Current plot first, earlier ones after it: "B01 (לפני 25/09: B09) ↔ station1".
       const prev = p.plots.slice(1).map((q, i) => {
         const [, m, d] = p.plots[i].from.split("-");
-        return `לפני ${d}/${m}: ${q.code}`;
+        return `לפני ${d}/${m}: ${q.label || q.code}`;
       });
-      o.textContent = `${p.plots[0].code}${prev.length ? ` (${prev.join(", ")})` : ""} ↔ ${p.stationId}`;
+      o.textContent = `${p.plots[0].label || p.plots[0].code}${prev.length ? ` (${prev.join(", ")})` : ""} ↔ ${p.stationId}`;
       pairSel.appendChild(o);
     }
     try { const saved = localStorage.getItem(PAIR_STORAGE_KEY); if (PAIRS.some(p => p.stationId === saved)) pairSel.value = saved; } catch {}

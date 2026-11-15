@@ -3231,10 +3231,10 @@
     const p = Plots.at(MANUAL_PLOTS[deviceId]);
     return p ? p.code : "";
   }
-  // Station name with its location: "Station 004 · B07".
+  // Station name with its exact location: "Station 004 · B01.02.03" (plot.gable.row).
   function stationLabel(st){
     if (!st) return "";
-    const code = stationPlotCode(st.deviceId);
+    const code = Plots.label(Plots.at(MANUAL_PLOTS[st.deviceId]));
     return (st.name || st.deviceId) + (code ? " · " + code : "");
   }
 

@@ -1363,6 +1363,173 @@ galconApp.get("/programs", async (req, res) => {
   }
 });
 
+// ── Station probes for the qrCode irrigation report ─────────────────────────
+// GET /station-probes?date=YYYY-MM-DD → per station and location (plots.js:
+// Settings rows on top of the defaults), the day's irrigations as the station
+// saw them, each with the mean EC/pH of every line a probe sits on
+// (dripEc / drainEc / dripPh / drainPh), plus a whole-day mean. EC in dS/m.
+// Irrigations are split from the flow counters the way the dashboard does it
+// (segmentIrrigations in public/index.html): an event starts when the drip
+// meter moves again after the drip stopped (or after a 15 min hole); the drain
+// tail that follows stays in the event.
+// station1 is not connected right now — skipped (PROBE_SKIP).
+const PlotsLib = require("./plots");
+const WaterSwapLib = require("./waterSwap");
+const calib = require("./calibration");
+const PROBE_SKIP = new Set(["station1"]);
+const PROBE_GAP_MS = 15 * 60000;   // no drip this long ⇒ next drip is a new event
+const PROBE_DRIP_END_MS = 2 * 60000;
+const PROBE_LINES = ["dripEc", "drainEc", "dripPh", "drainPh"];
+
+function probeMean(vals) {
+  const v = vals.filter((x) => Number.isFinite(x) && x > 0);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+
+// One reading's value on a line, calibrated: ingest stores corrected values
+// (item.cal set; EC in µS/cm); older readings are corrected here the same way.
+function probeLineValue(item, field) {
+  const v = Number(item[field]);
+  if (!Number.isFinite(v) || v <= 0) return null;
+  return field.startsWith("ec") ? v / 1000 : v;
+}
+
+// Split readings into irrigation events by the flow counters (see header).
+function probeSegment(rows, byOut) {
+  let prevIn = null; let prevOut = null; let lastB = null; let cur = null;
+  let dripEnded = false;
+  const events = [];
+  for (const r of rows) {
+    const wIn = Number(r.item.waterIn) || 0;
+    const wOut = Number(r.item.waterOut) || 0;
+    let dIn = 0; let dOut = 0;
+    if (prevIn !== null) {
+      dIn = wIn >= prevIn ? wIn - prevIn : wIn;
+      dOut = wOut >= prevOut ? wOut - prevOut : wOut;
+    }
+    prevIn = wIn; prevOut = wOut;
+    const dB = byOut ? dOut : dIn;
+    const dT = byOut ? dIn : dOut;
+    if (dB > 0) {
+      if (!cur || dripEnded || (lastB && r.t - lastB >= PROBE_GAP_MS)) {
+        cur = {start: r.t, end: r.t, drainEnd: null, samples: [], pIn: 0, pOut: 0};
+        events.push(cur);
+        dripEnded = false;
+      }
+      cur.end = r.t;
+      if (dT > 0) cur.drainEnd = r.t;
+      cur.pIn += dIn; cur.pOut += dOut;
+      cur.samples.push(r);
+      lastB = r.t;
+    } else if (cur) {
+      if (!dripEnded && lastB && r.t - lastB >= PROBE_DRIP_END_MS) dripEnded = true;
+      if (dT > 0) {
+        cur.drainEnd = r.t;
+        cur.pIn += dIn; cur.pOut += dOut;
+        cur.samples.push(r);
+      }
+    }
+  }
+  return events;
+}
+
+async function stationProbeDay(db, stationId, day) {
+  const [y, m, d] = day.split("-");
+  const [locSnap, swapSnap, calSnap, probes, dataSnap, wcSnap] = await Promise.all([
+    db.ref(`berries/${stationId}/control/location`).get(),
+    db.ref(`berries/${stationId}/control/waterSwap`).get(),
+    db.ref(`berries/${stationId}/calibration`).orderByKey().endAt(day).limitToLast(40).get(),
+    calib.stationProbes(db, stationId),
+    db.ref(`berries/${stationId}/${m}${y}`).orderByKey().startAt(d).endAt(d + "").get(),
+    db.ref(`berries/${stationId}/control/wateringConfig`).get(),
+  ]);
+  const plot = PlotsLib.at(PlotsLib.merge(stationId, locSnap.val()), day);
+  if (!plot) return null;
+  const fieldOf = {};
+  for (const [f, line] of Object.entries(plot.map || {})) fieldOf[line] = f;
+  const lines = PROBE_LINES.filter((l) => fieldOf[l]);
+  // Per-plant water, as the dashboard computes it (waterMl in index.html): the
+  // drip meter sits on ONE dripper of a plant, the drain meter collects all
+  // the station's pots. Defaults = the dashboard's.
+  const wc = wcSnap.val() || {};
+  const pos = (v, dflt) => (Number(v) > 0 ? Number(v) : dflt);
+  const mlPulse = pos(wc.mlPerPulse, 2.4);
+  const mlIn = mlPulse * pos(wc.drippersPerPlant, 1);
+  const mlOut = mlPulse / pos(wc.potsPerStation, 1);
+
+  const swap = WaterSwapLib.compile(swapSnap.val());
+  const coef = calib.coefficientsAt(calib.appliedDays(calSnap.val()), probes, day);
+  const rows = [];
+  for (const [key, stored] of Object.entries(dataSnap.val() || {})) {
+    if (!stored || typeof stored !== "object" || !stored.serverTimestamp) continue;
+    if (!key.startsWith(d + m + y)) continue;
+    const t = Date.parse(stored.serverTimestamp);
+    if (!Number.isFinite(t)) continue;
+    let item = WaterSwapLib.apply(swap, stored, key);
+    if (!item.cal) item = calib.calibrateFields({...item}, coef, probes);
+    rows.push({t, item});
+  }
+  rows.sort((a, b) => a.t - b.t);
+
+  const lineMeans = (samples) => {
+    const o = {};
+    for (const l of lines) {
+      const mv = probeMean(samples.filter((s) => !s.item.calMode)
+          .map((s) => probeLineValue(s.item, fieldOf[l])));
+      o[l] = mv == null ? null : Math.round(mv * 100) / 100;
+    }
+    return o;
+  };
+  // Drop phantom events: under 0.05 L on both meters (the dashboard's rule).
+  const real = (e) => Math.round(e.pIn * mlIn / 100) > 0 || Math.round(e.pOut * mlOut / 100) > 0;
+  let events = probeSegment(rows, false).filter(real);
+  let boundary = "in";
+  if (!events.length) { events = probeSegment(rows, true).filter(real); boundary = "out"; }
+  const iso = (t) => (t == null ? null : new Date(t).toISOString());
+  return {
+    stationId,
+    code: plot.code,
+    label: PlotsLib.label(plot),
+    gable: plot.gable || null,
+    row: plot.row || null,
+    lines,
+    readings: rows.length,
+    lastReading: rows.length ? iso(rows[rows.length - 1].t) : null,
+    boundary,
+    day: lineMeans(rows),
+    events: events.map((e) => ({
+      start: iso(e.start), end: iso(e.end), drainEnd: iso(e.drainEnd),
+      n: e.samples.length, ...lineMeans(e.samples),
+      dripMl: Math.round(e.pIn * mlIn),
+      drainMl: Math.round(e.pOut * mlOut),
+    })),
+  };
+}
+
+galconApp.get("/station-probes", async (req, res) => {
+  try {
+    const day = String(req.query.date || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      return res.status(400).json({ok: false, error: "date=YYYY-MM-DD required"});
+    }
+    return res.json(await memo("probes|" + day, MEMO_LIVE_MS, async () => {
+      const db = admin.database();
+      const reg = (await db.ref("stations").get()).val() || {};
+      const ids = [...new Set([...Object.keys(reg), ...Object.keys(PlotsLib.DEFAULTS)])]
+          .filter((id) => !PROBE_SKIP.has(id)).sort();
+      const out = await Promise.all(ids.map((id) => stationProbeDay(db, id, day)
+          .catch((e) => {
+            logger.error("station-probes", {id, error: e.message});
+            return null;
+          })));
+      return {ok: true, date: day, stations: out.filter(Boolean)};
+    }));
+  } catch (err) {
+    logger.error("station-probes failed", err);
+    return res.status(500).json({ok: false, error: err.message || "server error"});
+  }
+});
+
 exports.galcon = onRequest({cors: true, timeoutSeconds: 60}, galconApp);
 // ── Daily sensor calibration ────────────────────────────────────────────────
 // Compares the morning's first manual solution measurement (qrCode app) with

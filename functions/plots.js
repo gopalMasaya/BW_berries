@@ -110,7 +110,7 @@
   }
   // "B01.02.03" / "B01.2.3" / "B01" -> { code, gable, row } (null when not a valid code).
   function parseLabel(text) {
-    const m = String(text || "").trim().toUpperCase().match(/^([A-D]d{2})(?:[.-/ ](d{1,3}))?(?:[.-/ ](d{1,3}))?$/);
+    const m = String(text || "").trim().toUpperCase().match(/^([A-D]\d{2})(?:[./ -](\d{1,3}))?(?:[./ -](\d{1,3}))?$/);
     return m ? { code: m[1], gable: cleanPos(m[2]), row: cleanPos(m[3]) } : null;
   }
   function cleanMap(m) {
