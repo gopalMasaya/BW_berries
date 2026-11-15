@@ -130,12 +130,27 @@ app.post("/ingest", async (req, res) => {
       return res.status(400).json({ok: false, error: "invalid json body"});
     }
 
-    const now = new Date();
+    const receivedAt = new Date();
+    // A reading the station stored while offline and sends late carries
+    // ageSec (seconds since it was measured). It is filed at measurement time
+    // -- key and serverTimestamp, which every view uses as the reading's time
+    // -- and keeps the arrival time in receivedAt. Up to 3 days back.
+    const ageSec = Number(payload.ageSec);
+    const late = Number.isFinite(ageSec) && ageSec > 0 && ageSec <= 3 * 86400;
+    const now = late ? new Date(receivedAt.getTime() - ageSec * 1000) :
+      receivedAt;
     // Prefer the device's Israel-local time; fall back to server time
     // rendered in Israel local if the device didn't send a valid time.
-    const {monthKey, tsKey} =
+    // A late reading's device time is not trusted (it may be uptime-based).
+    const {monthKey, tsKey} = late ? buildKeysFromDate(now) :
         buildKeysFromDeviceTime(payload.time, now) || buildKeysFromDate(now);
 
+    if (late) {
+      payload.receivedAt = receivedAt.toISOString();
+      payload.ageSec = Math.round(ageSec);
+    } else {
+      delete payload.ageSec;
+    }
     payload.serverTimestamp = now.toISOString();
     payload.stationId = stationId;
     // During a buffer calibration the probes sit in a bottle, not the drain:
