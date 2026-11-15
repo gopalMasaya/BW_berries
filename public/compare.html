@@ -888,13 +888,18 @@
         interaction: { mode: "nearest", axis: "x", intersect: false } };
 
       // Continuous series are lines; per-irrigation and manual values are dots.
-      const stLine = isVpd || m.kind === "reading";
-      const stDs = stLine
+      // EC/pH: the station line bridges short dropouts (station3 skips readings
+      // now and then) and only breaks on a 2 h silence; the manual records are
+      // joined by a dashed line so their trend reads as a graph too.
+      const stDs = isVpd
         ? { data: withBreaks(st), borderWidth: 1.6, pointRadius: 0, tension: 0 }
-        : { data: st, showLine: false, pointRadius: 3.5, pointHoverRadius: 6 };
+        : m.kind === "reading"
+          ? { data: withBreaks(st, 2 * HOUR), borderWidth: 1.8, pointRadius: 0, pointHoverRadius: 4, tension: 0.15 }
+          : { data: st, showLine: false, pointRadius: 3.5, pointHoverRadius: 6 };
       const refDs = isVpd
         ? { data: withBreaks(ref), borderWidth: 1.6, pointRadius: 0, tension: 0 }
-        : { data: ref, showLine: false, pointRadius: 6, pointHoverRadius: 8, pointStyle: "rectRot", borderColor: "#fff", borderWidth: 1.5 };
+        : { data: ref, showLine: true, borderColor: C_MAN, borderWidth: 1.6, borderDash: DASH, tension: 0.15,
+            pointRadius: 6, pointHoverRadius: 8, pointStyle: "rectRot", pointBorderColor: "#fff", pointBorderWidth: 1.5 };
       const gapUnit = m.points ? " נק׳" : "%";
 
       vpd.charts.push(new Chart(document.getElementById("chVpd"), {
