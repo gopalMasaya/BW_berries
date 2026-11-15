@@ -228,6 +228,7 @@ function assess(stationId, rows, prev, now) {
     coverage: Math.round(coverage * 1000) / 10,
     gaps24h: gaps.length, longestGapMin: longest ? longest.min : 0,
     longestGapFrom: longest ? longest.from : null,
+    gapList: [...gaps].sort((a, b) => b.min - a.min).slice(0, 10),
     lateReadings24h: lateRows,
     wifiFails24h, apiFailsMax, reboots24h: reboots,
     queued: Number.isFinite(queued) ? queued : null,
