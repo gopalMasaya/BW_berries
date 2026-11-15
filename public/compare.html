@@ -128,14 +128,26 @@
           <div id="warnings"></div>
         </div>
 
-        <!-- TEMPORARY: station SHT3x VPD vs FieldClimate. Remove this block, the
-             vpd-* CSS, the zoom/hammer scripts and the "VPD" section of the
-             script once the comparison is done. -->
+        <!-- Timeline: one metric at a time (dropdown). VPD = station SHT3x vs
+             FieldClimate (TEMPORARY source); the others = station vs the manual
+             measurements, each manual record at its own time. -->
         <div class="card" id="vpdCard" style="display:none;">
-          <div class="fs-head"><h3 style="font-size:15px;margin:0 0 4px;">VPD — התחנה שלנו מול FieldClimate</h3><button class="fs-btn" title="מסך מלא">⛶</button></div>
+          <div class="fs-head">
+            <h3 style="font-size:15px;margin:0 0 4px;" id="vpdTitle">VPD — התחנה שלנו מול FieldClimate</h3>
+            <select id="vpdMetric" style="margin-inline-start:auto;margin-inline-end:8px;height:32px;">
+              <option value="vpd">VPD</option>
+              <option value="dripMl">טפטפת — מ״ל להשקיה</option>
+              <option value="drainMl">נקז — מ״ל להשקיה</option>
+              <option value="drainPct">אחוז נקז להשקיה</option>
+              <option value="ecIn">EC טפטפת</option>
+              <option value="ecOut">EC נקז</option>
+              <option value="ph1">pH טפטפת</option>
+              <option value="ph2">pH נקז</option>
+            </select>
+            <button class="fs-btn" title="מסך מלא">⛶</button>
+          </div>
           <p class="hint">
-            <span class="src-dot src-station"></span>התחנה שלנו &nbsp;<span class="src-dot src-fc"></span>FieldClimate.
-            שני המקורות מודדים כל 5 דקות.
+            <span id="vpdLegend"></span>
             <b>גרירה</b> = גלילה בזמן · <b>גלגלת / צביטה</b> = זום · או הכפתורים והפס למטה.
           </p>
           <div id="vpdStatus" class="hint"></div>
