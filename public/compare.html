@@ -1235,8 +1235,11 @@
           return new Map();
         }),
         Promise.all([loadMlPerPulse(pair.stationId), fetchStation(pair.stationId, from, to), calibP])
-          .then(([ml, readings, cal]) => ({ ml, n: readings.length, byDay: summarizeStation(readings, ml, makeCalibrator(cal, day => plotAt(pair, day).fields)), vpd: stationVpdPoints(readings) }))
-          .catch(e => { console.error("station", e); warn.push(`תחנה: ${e.message}`); return { ml: null, n: 0, byDay: new Map(), vpd: [] }; }),
+          .then(([ml, readings, cal]) => {
+            const calibrate = makeCalibrator(cal, day => plotAt(pair, day).fields);
+            return { ml, n: readings.length, readings, calibrate, byDay: summarizeStation(readings, ml, calibrate) };
+          })
+          .catch(e => { console.error("station", e); warn.push(`תחנה: ${e.message}`); return { ml: null, n: 0, readings: [], calibrate: () => ({}), byDay: new Map() }; }),
         calibP,
         fcP,
       ]);
