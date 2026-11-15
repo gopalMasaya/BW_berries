@@ -958,6 +958,7 @@
         if (day.length) html += ` · בשעות היום ${fmtGap(relGap(mean(day.map(p => p.s)), mean(day.map(p => p.f))))}`;
       }
       if (ps.length) html += ` <span class="muted">(${ps.length} ${isVpd ? "נקודות משותפות" : "מדידות ידניות מותאמות"})</span>`;
+      if (!isVpd && !st.length) html += `<div class="warn-line">⚠️ לתחנה אין קריאות ${esc(m.title)} בטווח הזה — אין לה חיישן במקום הזה, או שלא שידרה. מוצגות רק המדידות הידניות.</div>`;
       document.getElementById("vpdStatus").innerHTML = html;
     }
 
