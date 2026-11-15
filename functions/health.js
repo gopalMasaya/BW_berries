@@ -230,7 +230,22 @@ async function runHealthCheck(db, {write = true} = {}) {
   for (const id of ids) {
     try {
       const rows = await fetchRecent(db, id, now, DAY);
-      out[id] = assess(id, rows, prevAll[id], now);
+      let prev = prevAll[id];
+      // First run for this station: learn its fields from a week back once,
+      // so a sensor that died before the monitor existed is still caught.
+      if (!prev || !prev.fieldsSeen) {
+        const week = await fetchRecent(db, id, now, FIELD_MEMORY_DAYS * DAY);
+        const fieldsSeen = {};
+        for (const {t, item} of week) {
+          for (const [f, v] of Object.entries(item)) {
+            if (typeof v === "number" && Number.isFinite(v)) fieldsSeen[f] = t;
+          }
+        }
+        const lastSeen = week.length ? week[week.length - 1].t :
+          await lastReadingTime(db, id);
+        prev = {...(prev || {}), fieldsSeen, lastSeen};
+      }
+      out[id] = assess(id, rows, prev, now);
     } catch (e) {
       out[id] = {stationId: id, checkedAt: now, status: "error", error: String(e.message || e)};
     }

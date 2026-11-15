@@ -1471,3 +1471,21 @@ exports.driftCheck = onRequest({cors: true, timeoutSeconds: 180, invoker: "publi
             .json({ok: false, error: err.message || "server error"});
       }
     });
+
+// ---- Station health monitor (health.js) ----
+// Every 3 hours: per-station verdict at health/stations/{id} (online, coverage,
+// gaps, WiFi/API failures, reboots, silent or frozen sensors, offline queue).
+const {runHealthCheck} = require("./health");
+exports.healthCheck = onSchedule({
+  schedule: "15 */3 * * *",
+  timeZone: "Asia/Jerusalem",
+  timeoutSeconds: 120,
+  memory: "512MiB",
+}, async () => {
+  const out = await runHealthCheck(admin.database());
+  const bad = Object.values(out).filter((h) => h.status !== "ok");
+  if (bad.length) {
+    logger.warn("station health", bad.map((h) =>
+      `${h.stationId}: ${(h.issues || []).map((i) => i.code).join(",")}`));
+  }
+});
