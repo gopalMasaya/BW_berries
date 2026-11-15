@@ -162,9 +162,9 @@
             <button data-step="1" title="קדימה">מאוחר ▶</button>
             <span class="vpd-range" id="vpdRange"></span>
           </div>
-          <div class="vpd-lbl">VPD (kPa)</div>
+          <div class="vpd-lbl" id="vpdLblMain">VPD (kPa)</div>
           <div class="vpd-main"><canvas id="chVpd"></canvas></div>
-          <div class="vpd-lbl">סטייה של התחנה מ-FieldClimate (%) — רק כש-FieldClimate ≥ 0.5 kPa, כי בלילה VPD קרוב לאפס והאחוז חסר משמעות</div>
+          <div class="vpd-lbl" id="vpdLblGap"></div>
           <div class="vpd-gap"><canvas id="chVpdGap"></canvas></div>
           <input type="range" class="vpd-scroll" id="vpdScroll" min="0" max="1000" value="1000" step="1" />
 
