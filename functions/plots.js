@@ -4,7 +4,7 @@
 //
 // Set in Settings → "📍 מיקום התחנה", stored per station at
 //   berries/{stationId}/control/location/{pushId} =
-//     { from: "YYYY-MM-DD", code: "B07",
+//     { from: "YYYY-MM-DD", code: "B07", gable: 2, row: 3,   // gable/row optional
 //       map: { ec: "drainEc", ph1: "drainPh", ... } }   // field → line
 // The lines are dripEc / drainEc / dripPh / drainPh. A station that moves gets
 // a new row from the day it moved, so history keeps its own plot.
@@ -97,6 +97,22 @@
 
   const validCode = (c) => /^[A-D]\d{2}$/.test(String(c || ""));
   const validFrom = (f) => f === "" || /^\d{4}-\d{2}-\d{2}$/.test(String(f || ""));
+  // Gable (גמלון) / row inside the plot: positive integer or absent.
+  const cleanPos = (v) => { const n = parseInt(v, 10); return n > 0 && n < 1000 ? n : null; };
+  const pad2 = (n) => String(n).padStart(2, "0");
+  // Exact place as text: "B01.02.03" = plot B01, gable 2, row 3 ("B01.02" / "B01").
+  function label(p) {
+    if (!p || !p.code) return "";
+    let t = p.code;
+    if (p.gable) { t += "." + pad2(p.gable); if (p.row) t += "." + pad2(p.row); }
+    else if (p.row) t += ".--." + pad2(p.row);
+    return t;
+  }
+  // "B01.02.03" / "B01.2.3" / "B01" -> { code, gable, row } (null when not a valid code).
+  function parseLabel(text) {
+    const m = String(text || "").trim().toUpperCase().match(/^([A-D]d{2})(?:[.-/ ](d{1,3}))?(?:[.-/ ](d{1,3}))?$/);
+    return m ? { code: m[1], gable: cleanPos(m[2]), row: cleanPos(m[3]) } : null;
+  }
   function cleanMap(m) {
     const out = {};
     for (const f of FIELDS) if (m && LINES.includes(m[f])) out[f] = m[f];
@@ -108,7 +124,7 @@
   function merge(stationId, entries, defaults) {
     const cfg = Object.values(entries || {})
       .filter((e) => e && validCode(e.code) && validFrom(e.from || ""))
-      .map((e) => ({ from: e.from || "", code: e.code, map: cleanMap(e.map) }))
+      .map((e) => ({ from: e.from || "", code: e.code, gable: cleanPos(e.gable), row: cleanPos(e.row), map: cleanMap(e.map) }))
       .sort((a, b) => (a.from < b.from ? 1 : a.from > b.from ? -1 : 0));
     const first = cfg.length ? cfg[cfg.length - 1].from : null;
     const defs = ((defaults || DEFAULTS)[stationId] || [])
@@ -124,7 +140,7 @@
     return list.find((p) => d >= p.from) || list[list.length - 1];
   }
 
-  const api = { INFO, LINES, FIELDS, DEFAULTS, merge, at, validCode };
+  const api = { INFO, LINES, FIELDS, DEFAULTS, merge, at, validCode, label, parseLabel };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Plots = api;
 })(typeof self !== "undefined" ? self : this);
