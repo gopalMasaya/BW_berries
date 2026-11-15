@@ -72,6 +72,22 @@ async function fetchRecent(db, stationId, now, ms) {
   return out.sort((a, b) => a.t - b.t);
 }
 
+/** Time of the newest reading in the last 3 month nodes (null = none). */
+async function lastReadingTime(db, stationId) {
+  const d = new Date();
+  for (let i = 0; i < 3; i++) {
+    const mk = String(d.getUTCMonth() + 1).padStart(2, "0") + d.getUTCFullYear();
+    const val = (await db.ref(`berries/${stationId}/${mk}`)
+        .orderByKey().limitToLast(5).get()).val() || {};
+    const ts = Object.values(val).map((x) => Date.parse(x && x.serverTimestamp))
+        .filter(Number.isFinite);
+    if (ts.length) return Math.max(...ts);
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() - 1);
+  }
+  return null;
+}
+
 /** Sum of a counter's increases (a drop = reboot, counts from the new value). */
 function counterDelta(rows, field) {
   let prev = null;
