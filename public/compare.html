@@ -613,10 +613,10 @@
 
     // Insert a null wherever the series goes quiet, so Chart.js breaks the line
     // instead of drawing a straight bridge across the outage.
-    function withBreaks(pts) {
+    function withBreaks(pts, gapMs = GAP_BREAK_MS) {
       const out = [];
       for (let i = 0; i < pts.length; i++) {
-        if (i && pts[i].x - pts[i - 1].x > GAP_BREAK_MS) out.push({ x: pts[i - 1].x + 1, y: null });
+        if (i && pts[i].x - pts[i - 1].x > gapMs) out.push({ x: pts[i - 1].x + 1, y: null });
         out.push(pts[i]);
       }
       return out;
