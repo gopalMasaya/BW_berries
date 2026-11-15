@@ -128,7 +128,7 @@ function assess(stationId, rows, prev, now) {
 
   // ---- online ----
   if (silentMin == null) {
-    add("crit", "offline", "התחנה לא שידרה בכלל ב-24 השעות האחרונות",
+    add("crit", "offline", "התחנה לא שידרה בכלל ב-3 החודשים האחרונים",
         "לבדוק חשמל/סוללה ותקשורת באתר (נורות, חיבור לרשת).");
   } else if (silentMin >= OFFLINE_CRIT_MIN) {
     add("crit", "offline",
