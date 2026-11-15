@@ -1261,7 +1261,8 @@
       renderTable(days, rows);
 
       document.getElementById("vpdCard").style.display = "";
-      renderVpd(days, station.vpd, fcVpd);
+      Object.assign(tl, { days, readings: station.readings, manual, calibrate: station.calibrate, ml: station.ml, fc: fcVpd, events: null });
+      renderTimeline(false);
 
       document.getElementById("dayBody").onclick = (ev) => {
         const tr = ev.target.closest("tr.day-row");
