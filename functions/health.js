@@ -267,6 +267,23 @@ async function runHealthCheck(db, {write = true} = {}) {
       out[id] = {stationId: id, checkedAt: now, status: "error", error: String(e.message || e)};
     }
   }
+  // Stations silent at the same moment share a cause: the site's network or
+  // power, not one station's hardware.
+  const list = Object.values(out).filter((h) => h.gapList);
+  for (const h of list) {
+    const shared = [];
+    for (const g of h.gapList.filter((x) => x.min >= 30)) {
+      const others = list.filter((o) => o !== h && o.gapList.some((x) =>
+        x.min >= 30 && Math.abs(x.from - g.from) <= 10 * 60000)).map((o) => o.stationId);
+      if (others.length) shared.push(`${fmtIL(g.from)} (${g.min} דק׳, גם ${others.join(", ")})`);
+    }
+    if (shared.length) {
+      h.issues.push({level: "info", code: "shared-outage",
+        text: "נפילה בו-זמנית עם תחנות אחרות: " + shared.join("; "),
+        fix: "סיבה משותפת — רשת/אינטרנט/חשמל באתר, לא התחנה עצמה. לבדוק את הנתב ואת מקור החשמל שלו."});
+    }
+  }
+
   if (write) {
     const p = ilParts(new Date(now));
     const histKey = `${p.year}-${p.month}-${p.day}_${p.hour}`;
